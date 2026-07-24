@@ -838,6 +838,20 @@ if (!empty($_SESSION['rotation_reminder_age'])):
 <?php endif; ?>
 
 <?php
+// Phase 118 (2026-07-24): "operating without HTTPS" acknowledge banner.
+//   Admins only, and only when NOT on HTTPS. Reappears once the admin's
+//   acknowledgment is missing or older than 7 days (per-admin). Clicking
+//   "I acknowledge" POSTs to api/http-encryption-ack.php, records the ack +
+//   an audit entry, and hides the banner for another week. Non-admins (and the
+//   pre-auth login page) get the gentler dismissible note from
+//   https_warning_banner() instead. See inc/http-encryption-notice.php.
+require_once NEWUI_ROOT . '/inc/http-encryption-notice.php';
+if (http_enc_should_prompt_admin((int) ($_SESSION['user_id'] ?? 0))) {
+    echo http_enc_ack_banner_html($_SESSION['csrf_token'] ?? '');
+}
+?>
+
+<?php
 // Phase 13 (2026-06-11): pending-database-migrations banner.
 //   For admins only. Fetches /api/migrations-check.php once per page
 //   load; if pending > 0 OR tracking_table is missing, shows a yellow

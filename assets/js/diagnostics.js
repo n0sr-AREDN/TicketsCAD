@@ -184,6 +184,12 @@
     function renderEnv() {
         clear('diagEnv');
         lines.push('--- This device & browser ---');
+        // Phase 118: honest, always-visible connection-encryption indicator.
+        // The browser authoritatively knows the scheme (no proxy ambiguity).
+        var secure = window.location.protocol === 'https:';
+        put('diagEnv', secure ? 'ok' : 'warn',
+            'Connection encrypted (HTTPS): ' + (secure ? 'yes' : 'NO — served over plain HTTP'),
+            secure ? '' : 'Traffic between this browser and the server is not encrypted in transit. See docs/HTTPS-SETUP.md to enable HTTPS.');
         var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
             || window.navigator.standalone === true;
         put('diagEnv', 'ok', 'Installed as an app (home-screen PWA): ' + (standalone ? 'yes' : 'no'),

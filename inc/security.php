@@ -100,6 +100,14 @@ function https_warning_banner()
         return '';
     }
 
+    // Phase 118 (2026-07-24): administrators get the per-admin acknowledge-weekly
+    // banner from the navbar (inc/http-encryption-notice.php) instead — don't
+    // double up. Non-admins, and the pre-auth login page (where is_admin() isn't
+    // defined), still get this gentle, dismissible "not fully encrypted" note.
+    if (function_exists('is_admin') && is_admin()) {
+        return '';
+    }
+
     return '<div class="alert alert-warning py-2 mb-2 small d-flex align-items-center" role="alert" id="httpsWarning">'
          . '<i class="bi bi-exclamation-triangle-fill me-2"></i>'
          . '<span>This connection is not fully encrypted. Configure HTTPS for complete security.</span>'

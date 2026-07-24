@@ -3,6 +3,30 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.0.4] - 2026-07-24
+
+### Added
+- **[docs/HTTPS-SETUP.md](docs/HTTPS-SETUP.md)** — a step-by-step guide to putting
+  HTTPS in front of TicketsCAD, with recipes for four situations: a public domain
+  (Caddy + automatic Let's Encrypt), no open ports (Cloudflare Tunnel), a LAN with
+  a domain (Caddy + DNS validation), and a LAN with no domain (mkcert).
+- For installs that deliberately run on plain HTTP, an **administrator can now
+  acknowledge** the "not encrypted" reminder. Acknowledging quiets it for 7 days,
+  after which it returns on the next admin sign-in and must be re-acknowledged
+  (each acknowledgment is audit-logged) — so the reminder can be quieted without
+  ever being permanently forgotten. Non-admins and the login page keep the gentle
+  dismissible note.
+- Diagnostics now shows a "Connection encrypted (HTTPS): yes/no" row.
+
+### Fixed
+- Docker on small hosts (Raspberry Pi, low-RAM VMs): added troubleshooting for
+  `container ticketscad_db is unhealthy` — the database container exiting before it
+  becomes healthy, usually from out-of-memory (build + database competing for RAM),
+  a 32-bit OS (MariaDB 11 is 64-bit only), or a half-initialized data volume. See
+  [docs/DOCKER.md](docs/DOCKER.md).
+- The "skip to content" accessibility link no longer lands on a warning banner
+  (it now targets the page's real content).
+
 ## [4.0.3] - 2026-07-24
 
 ### Fixed

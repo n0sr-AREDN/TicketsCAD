@@ -78,8 +78,21 @@
     // no <main>, fall back to the first .container after the header.
     function ensureSkipTarget() {
         if (document.getElementById('main-content')) return;
-        var target = document.querySelector('main')
-            || document.querySelector('header ~ .container, header ~ .container-fluid, header ~ div');
+        var target = document.querySelector('main');
+        if (!target) {
+            // Fall back to the first content container after the header — but
+            // SKIP warning banners (pw-rotation, pending-migrations, the Phase 118
+            // HTTPS notice). Those are `.alert role=alert` bars in this same zone;
+            // stamping main-content on one makes "skip to content" land on a
+            // dismissible warning instead of the page, and clobbers the banner's
+            // own id (Phase 118, 2026-07-24).
+            var sibs = document.querySelectorAll('header ~ .container, header ~ .container-fluid, header ~ div');
+            for (var i = 0; i < sibs.length; i++) {
+                if (sibs[i].classList.contains('alert') || sibs[i].getAttribute('role') === 'alert') continue;
+                target = sibs[i];
+                break;
+            }
+        }
         if (target) {
             target.id = 'main-content';
             // tabindex="-1" lets it receive focus programmatically without

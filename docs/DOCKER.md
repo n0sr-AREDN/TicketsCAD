@@ -255,11 +255,44 @@ Notes:
 
 | Symptom                                   | Likely cause / fix                                                                 |
 |-------------------------------------------|------------------------------------------------------------------------------------|
+| `dependency failed to start: container ticketscad_db is unhealthy` | The database container **exited** before it became healthy — the app then refuses to start. Get the real reason with `docker compose logs db`. See "Database won't start on a small host" below — on Raspberry Pi and low-RAM VMs this is almost always out-of-memory or a 32-bit OS. |
 | App log stuck on "Waiting for database"   | DB still initializing on first boot — wait; `docker compose logs db` for errors.   |
 | "database not reachable after 120s"       | Wrong `NEWUI_DB_PASS` vs. what the DB was first created with. If you changed it after first boot, the `db_data` volume still has the old one — `docker compose down -v` to reset (destroys data) or fix the password to match. |
 | Login page loads but assets are 404       | `.htaccess` disabled — the image enables `AllowOverride All`; if you customized Apache, restore it. |
 | Forgot the generated admin password       | `docker compose exec app php tools/create_admin.php --username=admin --email=you@example.com` prints a fresh temp password (first login forces a change). |
 | Want a clean slate                        | `docker compose down -v && docker compose up -d --build` (deletes ALL data).       |
+
+### Database won't start on a small host (Raspberry Pi, low-RAM VMs)
+
+If `docker compose up` ends with `dependency failed to start: container
+ticketscad_db is unhealthy`, the MariaDB container exited before it finished
+starting. Always look at the real reason first:
+
+```bash
+docker compose logs db
+```
+
+On a Raspberry Pi or a small VM, the cause is almost always one of these:
+
+1. **Out of memory.** MariaDB gets OOM-killed — often while the app image is
+   still building in parallel (that build is CPU/RAM heavy and can take 15+
+   minutes on a Pi). The db log ends abruptly or the host shows an OOM message.
+   - Check free memory: `free -h`.
+   - Give the Pi swap if it has little RAM (a 2 GB swapfile is plenty), or build
+     the image and start the database in two steps so they don't compete:
+     `docker compose build` first, then `docker compose up -d`.
+   - 1 GB Pis are tight; 2 GB or more is comfortable.
+
+2. **32-bit operating system.** MariaDB 11 only ships 64-bit images
+   (`arm64`/`amd64`). On a Pi, run the **64-bit** Raspberry Pi OS —
+   `uname -m` should print `aarch64`, not `armv7l`/`armhf`.
+
+3. **A half-initialized data volume** from an earlier failed attempt. Start
+   completely clean (this deletes any data, which is fine on a first install):
+   `docker compose down -v` then `docker compose up -d`.
+
+Once `docker compose logs db` shows `mariadbd: ready for connections`, the app
+container will start on its own.
 
 ---
 
