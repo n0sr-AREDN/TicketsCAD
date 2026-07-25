@@ -59,14 +59,26 @@ docker compose logs app | grep -i password
 
 ## Keeping it updated — learn this one, it's worth it
 
-The best way to get every fix and every updated help document is **git**: you
-"clone" the project once, and from then on a single `git pull` brings in the
-latest — no re-downloading, no copying files over the top. It's genuinely worth
-the 15 minutes to learn, and we made two short walkthroughs that assume zero
-command-line experience:
+Updates come from this project's **git** repository either way: you "clone" it
+once, and `git pull` fetches the newer code — no re-downloading a zip, no copying
+files over the top. What you do **after** the pull depends on how you installed,
+and this part matters:
 
-- **Windows (Git Bash):** https://youtu.be/uZl3teJMMHM
-- **Linux & macOS (Terminal):** https://youtu.be/Zczb4ypmDc8
+- **XAMPP / manual install:** pull the new code into your TicketsCAD folder, then
+  run the update (migration) step. Two short walkthroughs that assume zero
+  command-line experience:
+  - Windows (Git Bash): https://youtu.be/uZl3teJMMHM
+  - Linux & macOS (Terminal): https://youtu.be/Zczb4ypmDc8
+
+- **Docker install:** from your `ticketscad` folder, run `git pull` **and then**
+  `docker compose up -d --build`. The **`--build` is required** — a plain
+  `git pull` on its own does **not** update a running container, because the app
+  code is baked into the container's image when it is built. The rebuild is what
+  actually picks up the new code (and the container applies any database updates
+  automatically when it restarts). Back up first; the full procedure is in the
+  [Docker guide's Upgrading section](DOCKER.md#5-upgrading). (The two videos above
+  show the XAMPP/manual flow, not the Docker rebuild, so follow the Docker guide
+  for a Docker install.)
 
 ## Learn the basics (free, beginner-friendly)
 
