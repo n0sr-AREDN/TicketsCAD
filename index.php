@@ -20,6 +20,15 @@ if (empty($_SESSION['user_id'])) {
     header('Location: login.php');
     exit;
 }
+
+// Phase 119 (2026-07-25) — before any DB-dependent rendering, verify the
+// database can actually be read. If it's reachable but its tables can't be read
+// (usually MySQL still recovering after an unclean shutdown), show a calm
+// "your data is not lost" page instead of a dashboard that spins forever and
+// reads like a fresh install. Healthy installs pass this in one indexed read.
+require_once __DIR__ . '/inc/db-health-gate.php';
+db_health_gate();
+
 require_once __DIR__ . '/inc/force-pw-change.php';
 force_pw_change_redirect();
 

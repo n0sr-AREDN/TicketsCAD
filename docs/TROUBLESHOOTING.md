@@ -24,6 +24,7 @@ If your symptom isn't here, check [FAQ.md](FAQ.md), then [/help.php → Troubles
   - [Session keeps logging me out after 30 seconds](#session-too-short)
   - [Trusted device cookie ignored](#remember-device-ignored)
 - [Dashboard + UI](#dashboard--ui)
+  - [App looks empty / "fresh install" after a crash or power loss](#app-empty-after-crash)
   - [Dashboard widgets are blank](#widgets-blank)
   - [Map shows blank tiles](#map-blank-tiles)
   - [SSE indicator stuck gray (no real-time)](#sse-gray)
@@ -349,6 +350,33 @@ ini_set('session.cookie_secure', '1');   // required when SameSite=None
 ---
 
 ## Dashboard + UI
+
+### app-empty-after-crash
+
+**Symptom:** After a hard shutdown or power loss (the laptop died, the plug was pulled, a forced power-off) with MySQL running, TicketsCAD now loads only the top bar and spins forever — or shows a "database not ready / your data is not lost" page — and it looks like a fresh install. You're afraid the data you entered is gone.
+
+**Your data is almost certainly fine.** It is on disk, in MySQL's data directory. What happened is that MySQL didn't shut down cleanly, and InnoDB — the storage engine that holds incidents, assignments, users, and the dashboard layout — hasn't finished recovering, so those tables can't be read yet. This is a MySQL recovery situation, not TicketsCAD deleting anything. (Newer versions of TicketsCAD detect this and show a calm "your data is not lost" page instead of an endless spinner.)
+
+**Recover it — in this order:**
+
+1. **Easiest first.** Stop MySQL, wait ~15 seconds, start it again (XAMPP Control Panel Stop → Start, or `sudo systemctl restart mariadb`), then reload TicketsCAD. Often InnoDB just needs a clean second start to finish recovery.
+
+2. **Make a safety copy before changing anything.** Stop MySQL and copy the entire data directory somewhere safe:
+   - XAMPP (Windows): `C:\xampp\<version>\mysql\data`
+   - Linux: `/var/lib/mysql`
+
+   That folder **is** your data. As long as you have a copy, nothing can be permanently lost.
+
+3. **Read the error log** for the real cause. XAMPP: Control Panel → MySQL → **Logs** → `mysql_error.log`. Linux: `/var/log/mysql/error.log`. Look near the bottom for lines mentioning `InnoDB` (e.g. "Database page corruption", "log sequence number", "Plugin 'InnoDB' registration ... failed").
+
+4. **If InnoDB won't start, recover the data with force-recovery, then export + reimport:**
+   - Add `innodb_force_recovery=1` under `[mysqld]` in `my.ini` / `my.cnf` (XAMPP: `C:\xampp\<version>\mysql\bin\my.ini`). Start at **1**; if MySQL still won't start, try **2**, then **3**. Do NOT go above 3–4, and never write data at 4+.
+   - Start MySQL, then **immediately export** the `newui` database — phpMyAdmin → Export, or `mysqldump newui > newui-rescue.sql`. This is the rescue of your data.
+   - Remove the `innodb_force_recovery` line, restart MySQL, drop and recreate a clean `newui` database, and import `newui-rescue.sql`.
+
+**Prevent it:** always **Stop** MySQL (and Apache) in the XAMPP Control Panel before shutting the machine down. A hard power-off with MySQL running is the usual cause. Regular backups (Settings → Backup, or `mysqldump`) turn even a total loss into a quick restore — see [BACKUP-RECOVERY-RUNBOOK.md](BACKUP-RECOVERY-RUNBOOK.md).
+
+---
 
 ### widgets-blank
 

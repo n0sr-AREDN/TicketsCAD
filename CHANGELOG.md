@@ -3,6 +3,21 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.0.6] - 2026-07-25
+
+### Fixed
+- After a crash or power loss with MySQL running, the dashboard could spin
+  forever and look like a fresh install — because MySQL hadn't finished
+  recovering and the incident tables couldn't be read yet. The data was never
+  lost, but nothing said so. The dashboard now detects "database reachable but
+  its tables can't be read" and shows a calm **"Your data is not lost"** page —
+  with what to check and a link to recovery steps — instead of an endless
+  spinner. A genuine, readable empty database (a real fresh install) is
+  unaffected.
+- Added a TROUBLESHOOTING.md section, "App looks empty / fresh install after a
+  crash or power loss," with the safe recovery procedure (back up the data
+  folder first, `innodb_force_recovery`, export, reimport) and prevention.
+
 ## [4.0.5] - 2026-07-24
 
 ### Fixed
