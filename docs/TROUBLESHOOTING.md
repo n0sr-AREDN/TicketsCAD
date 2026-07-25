@@ -16,6 +16,7 @@ If your symptom isn't here, check [FAQ.md](FAQ.md), then [/help.php → Troubles
   - [Migration failed with column-type mismatch](#migration-column-mismatch)
   - [MariaDB strict mode rejecting empty datetime](#strict-mode)
   - [PHP can't connect to MariaDB](#php-cant-connect-mariadb)
+  - [MySQL / MariaDB won't start or won't stay running](#mysql-wont-start)
 - [Login + auth](#login--auth)
   - [Locked out of admin account](#admin-lockout)
   - [Forgot all backup codes + lost authenticator](#lost-tfa)
@@ -210,6 +211,48 @@ $db_host = '127.0.0.1';  // forces TCP
 
 ---
 
+### mysql-wont-start
+
+**Symptom:** The XAMPP Control Panel says **"Error: MySQL shutdown unexpectedly"** — MySQL starts and then stops on its own, over and over, or won't start at all. TicketsCAD then can't reach the database (and on older versions the dashboard just spins). This looks like TicketsCAD is broken, but it isn't: **this is MySQL/MariaDB itself failing to start**, a Windows/XAMPP-level problem. Your data is still on disk in `C:\xampp\mysql\data` — nothing you entered is deleted by this.
+
+**First, read the log the right way.** XAMPP Control Panel → MySQL → **Logs** → `mysql_error.log`. What matters is *how far it gets before it stops*:
+
+- If you see `InnoDB: Database page corruption`, `Plugin 'InnoDB' registration ... failed`, or it **never** prints `InnoDB: ... started; log sequence number ...`, that's an **InnoDB** problem — follow [App looks empty / fresh install after a crash](#app-empty-after-crash), which covers `innodb_force_recovery`.
+- If InnoDB **does** start cleanly (`InnoDB: 10.x.x started; log sequence number ...`, no corruption errors) but MySQL still dies — often right after `Server socket created on IP: '::'` and before `ready for connections` — then the problem is **not your data and not InnoDB**. **Do not** use `innodb_force_recovery` for this; it's the wrong tool. Work through the causes below instead.
+
+**Cause 1 — a stuck `mysqld.exe` process** (the most common "won't stay running"). A previous crash can leave a MySQL process running that holds the data files, so the next start can't take over and quits.
+- Open Task Manager (`Ctrl+Shift+Esc`) → **Details** tab → look for `mysqld.exe`. If one is listed, select it → **End task**. Then click **Start** in the XAMPP Control Panel again.
+
+**Cause 2 — port 3306 is already in use** (a second MySQL install, Skype, or a stale process holding the port). In a Command Prompt:
+```
+netstat -ano | findstr :3306
+```
+If anything is listed, note the PID in the last column and end that process in Task Manager (or change the MySQL port in XAMPP).
+
+**Cause 3 — antivirus is locking or quarantining the data files.** Windows Defender or third-party AV scanning `C:\xampp\mysql\data` can lock a file mid-startup and kill `mysqld` with **no error** in the MySQL log. Open **Windows Security → Virus & threat protection → Protection history** and look for anything mentioning `mysqld.exe` or the xampp folder. If you find it, add an **exclusion** for the whole `C:\xampp` folder.
+
+**Get the real error MySQL is hiding.** The XAMPP log often leaves out the actual fatal line. Run the server by hand to see it printed live:
+```
+cd C:\xampp\mysql\bin
+mysqld.exe --console
+```
+The last 10–15 lines it prints are the ones that matter (press `Ctrl+C` to stop it). **Windows Event Viewer** is another place the real cause appears: Start → *Event Viewer* → Windows Logs → **Application** → look for an Error from `mysqld.exe` (it names the "faulting module").
+
+**Cause 4 — corrupt system tables** in the `mysql` database (the Aria engine). If `mysqld --console` points at the `mysql` schema or an `Aria` error, let it repair them:
+```
+cd C:\xampp\mysql\bin
+mysqld.exe --console --aria-recover-options=BACKUP,FORCE
+```
+Once it starts, stop it (`Ctrl+C`), remove that flag, and start normally.
+
+**If none of that works, you still don't lose your data.** Your incident data is in `C:\xampp\mysql\data`, and (per the log above) InnoDB reads it fine, so it can be recovered onto a fresh install. Moving InnoDB data files across installs correctly is fiddly and easy to get wrong, so **make a copy of the whole `C:\xampp\mysql\data` folder first**, then reach out — that copy guarantees the data is safe, and the exact restore steps depend on your setup.
+
+**Prevent it:** always click **Stop** on MySQL (and Apache) in the XAMPP Control Panel **before** shutting the computer down — a hard power-off with MySQL running is the usual trigger. And turn on TicketsCAD's backups (Settings → Backup) so a bad day is a quick restore instead of a rescue.
+
+**On Linux**, the equivalents are `sudo systemctl status mariadb` and `journalctl -u mariadb -n 50` for the real error, `sudo ss -ltnp | grep 3306` for the port, and `/var/log/mysql/error.log` for the startup log.
+
+---
+
 ## Login + auth
 
 ### admin-lockout
@@ -375,6 +418,8 @@ ini_set('session.cookie_secure', '1');   // required when SameSite=None
    - Remove the `innodb_force_recovery` line, restart MySQL, drop and recreate a clean `newui` database, and import `newui-rescue.sql`.
 
 **Prevent it:** always **Stop** MySQL (and Apache) in the XAMPP Control Panel before shutting the machine down. A hard power-off with MySQL running is the usual cause. Regular backups (Settings → Backup, or `mysqldump`) turn even a total loss into a quick restore — see [BACKUP-RECOVERY-RUNBOOK.md](BACKUP-RECOVERY-RUNBOOK.md).
+
+**If MySQL won't even start or stay running** (the XAMPP panel says "MySQL shutdown unexpectedly"), that's a separate problem — see [MySQL / MariaDB won't start or won't stay running](#mysql-wont-start).
 
 ---
 
