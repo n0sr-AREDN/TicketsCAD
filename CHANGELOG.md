@@ -3,6 +3,15 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.0.5] - 2026-07-24
+
+### Fixed
+- [docs/TRACCAR-SETUP.md](docs/TRACCAR-SETUP.md): documented that installs serving
+  NewUI from a subdirectory (a "dual mode" setup where NewUI runs alongside the
+  legacy app under `/newui/`) must include that prefix in the position-forwarder
+  URL — e.g. `https://<host>/newui/api/location.php?provider=traccar`. A missing
+  prefix is the usual cause of an HTTP 404 from Traccar's forwarder.
+
 ## [4.0.4] - 2026-07-24
 
 ### Added

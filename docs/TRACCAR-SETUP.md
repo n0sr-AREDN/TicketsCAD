@@ -17,6 +17,14 @@ If you're new to TicketsCAD itself, finish [INSTALL.md](INSTALL.md) first.
 
 All four paths land in the same `location_reports` table; the dispatch map, breadcrumbs, geofences, and stale-position dimming treat them all the same.
 
+> **If NewUI is served from a subdirectory, include it in the URL.** Every URL in
+> this guide is written as `https://<your-tickets-host>/api/location.php?...`,
+> which assumes NewUI is at the web root. If you run it alongside the legacy app
+> (a "dual mode" install where NewUI lives under `/newui/`), put that prefix in the
+> path — e.g. `https://<your-tickets-host>/newui/api/location.php?provider=traccar`.
+> A missing prefix is the usual cause of an **HTTP 404** from the forwarder.
+> (Thanks to a beta tester for flagging this.)
+
 ---
 
 ## Prerequisites — once per TicketsCAD install
