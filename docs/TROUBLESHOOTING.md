@@ -238,12 +238,19 @@ mysqld.exe --console
 ```
 The last 10–15 lines it prints are the ones that matter (press `Ctrl+C` to stop it). **Windows Event Viewer** is another place the real cause appears: Start → *Event Viewer* → Windows Logs → **Application** → look for an Error from `mysqld.exe` (it names the "faulting module").
 
-**Cause 4 — corrupt system tables** in the `mysql` database (the Aria engine). If `mysqld --console` points at the `mysql` schema or an `Aria` error, let it repair them:
+**Cause 4 — a corrupt system table in the `mysql` database** (very common after a power loss). If `mysqld --console` ends with something like:
 ```
-cd C:\xampp\mysql\bin
-mysqld.exe --console --aria-recover-options=BACKUP,FORCE
+[ERROR] Table '.\mysql\db' is marked as crashed and last (automatic?) repair failed
+[ERROR] Fatal error: Can't open and lock privilege tables: ...
 ```
-Once it starts, stop it (`Ctrl+C`), remove that flag, and start normally.
+then one of MySQL's internal permission tables is damaged. This is **not your data** — the `mysql` database holds permission bookkeeping; your records are in your own database on the InnoDB engine, which the log above shows starting cleanly. Repair the named table **offline** (MySQL must be stopped, which it already is).
+
+First, check which storage engine that table uses: look in `C:\xampp\mysql\data\mysql\` for the file named after the table (e.g. `db`). A `.MAI` extension means **Aria**; a `.MYI` extension means **MyISAM** (on most XAMPP MariaDB 10.4 installs it's Aria / `.MAI`). Then, from `C:\xampp\mysql\bin`, run the matching repair, using the exact table name the error reported:
+```
+aria_chk --recover --force "C:\xampp\mysql\data\mysql\db"      # Aria (.MAI)
+myisamchk --recover --force "C:\xampp\mysql\data\mysql\db"     # MyISAM (.MYI)
+```
+Start MySQL again. If it then names a *different* system table (`tables_priv`, `columns_priv`, etc.), repair that one the same way. (As a lighter first attempt you can let the server self-repair on startup with `mysqld.exe --console --aria-recover-options=BACKUP,FORCE`, but if the log already says "last automatic repair failed", go straight to the offline `aria_chk` / `myisamchk` above.)
 
 **If none of that works, you still don't lose your data.** Your incident data is in `C:\xampp\mysql\data`, and (per the log above) InnoDB reads it fine, so it can be recovered onto a fresh install. Moving InnoDB data files across installs correctly is fiddly and easy to get wrong, so **make a copy of the whole `C:\xampp\mysql\data` folder first**, then reach out — that copy guarantees the data is safe, and the exact restore steps depend on your setup.
 
