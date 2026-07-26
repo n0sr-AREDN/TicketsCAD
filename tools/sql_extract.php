@@ -173,6 +173,42 @@ function sql_extract_is_query(string $sql): bool
 }
 
 /**
+ * Every table a statement REFERENCES, however it is used.
+ *
+ * Phase 125b: the written-columns view above only sees tables the code INSERTs
+ * into with a literal column list. A table the code only READS is invisible to
+ * it — so when a beta tester lost four tables to crash recovery, the ones he
+ * only read from could be dropped without anything noticing. Table existence is
+ * checkable even when column coverage is not, so collect it separately.
+ *
+ * @return array<int, string>
+ */
+function sql_extract_referenced_tables(string $sql): array
+{
+    $norm  = sql_extract_normalize($sql);
+    $found = [];
+    $patterns = [
+        '/\bFROM\s+`?([a-z0-9_]+)`?/i',
+        '/\bJOIN\s+`?([a-z0-9_]+)`?/i',
+        '/\bINSERT\s+(?:IGNORE\s+)?INTO\s+`?([a-z0-9_]+)`?/i',
+        '/\bUPDATE\s+`?([a-z0-9_]+)`?\s+SET\b/i',
+        '/\bDELETE\s+FROM\s+`?([a-z0-9_]+)`?/i',
+    ];
+    foreach ($patterns as $p) {
+        if (preg_match_all($p, $norm, $m)) {
+            foreach ($m[1] as $t) {
+                $t = strtolower($t);
+                // `FROM (` subqueries and SQL keywords are not tables.
+                if ($t !== '' && !in_array($t, ['select', 'dual', 'values'], true)) {
+                    $found[] = $t;
+                }
+            }
+        }
+    }
+    return array_values(array_unique($found));
+}
+
+/**
  * Columns a statement WRITES to: INSERT column lists and UPDATE SET targets.
  * These are the columns whose absence breaks a save.
  *

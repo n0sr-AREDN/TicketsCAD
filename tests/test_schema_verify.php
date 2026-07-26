@@ -115,6 +115,19 @@ try {
     }
 }
 
+// ── 5b. TABLE-EXISTENCE coverage (Phase 125b) ────────────────────────────
+// The per-column manifest only sees tables written with a literal column list.
+// A beta tester lost four tables to crash recovery and two of them — the ones
+// the code only reads — were invisible to the first version of this check.
+$reqTables = schema_verify_required_tables();
+is_true(count($reqTables) > count($manifest),
+    'table coverage is wider than column coverage (catches read-only tables)',
+    count($reqTables) . ' tables vs ' . count($manifest) . ' with columns');
+foreach (['member_comm_identifiers', 'newui_vehicles', 'permission_review_dismissals', 'teams'] as $t) {
+    is_true(in_array($t, $reqTables, true) || isset($manifest[$t]),
+        "a dropped `$t` would be detected (one of the four a tester actually lost)");
+}
+
 // ── 6. Runtime drift capture names the column ────────────────────────────
 is_true(schema_drift_classify(
     "SQLSTATE[42S22]: Column not found: 1054 Unknown column 'nims_resource_type' in 'INSERT INTO'"

@@ -65,6 +65,34 @@ function schema_verify_manifest(): array
 }
 
 /**
+ * Tables the code references at all — including ones it only READS.
+ *
+ * Phase 125b. The per-column manifest only covers tables written with a literal
+ * column list, so a dropped read-only table was invisible. That is precisely
+ * what a beta tester hit: of the four tables he lost to crash recovery, the
+ * check would have named only some of them.
+ *
+ * @return array<int, string>
+ */
+function schema_verify_required_tables(): array
+{
+    static $cache = null;
+    if ($cache !== null) {
+        return $cache;
+    }
+    $cache = [];
+    $raw = @file_get_contents(schema_verify_manifest_path());
+    if ($raw === false || $raw === '') {
+        return $cache;
+    }
+    $data = json_decode($raw, true);
+    if (is_array($data) && !empty($data['required_tables']) && is_array($data['required_tables'])) {
+        $cache = array_map('strtolower', $data['required_tables']);
+    }
+    return $cache;
+}
+
+/**
  * Compare the live schema against the manifest.
  *
  * @return array{
@@ -136,6 +164,20 @@ function schema_verify(): array
         }
     }
 
+    // Table-existence coverage: catches a dropped table the code only reads,
+    // which the per-column pass above cannot see.
+    foreach (schema_verify_required_tables() as $tbl) {
+        if (isset($manifest[$tbl])) {
+            continue;                                  // already checked above
+        }
+        $result['checked_tables']++;
+        if (!isset($live[strtolower($prefix . $tbl)])) {
+            $result['missing_tables'][] = $tbl;
+            $result['ok'] = false;
+        }
+    }
+
+    $result['missing_tables'] = array_values(array_unique($result['missing_tables']));
     sort($result['missing_tables']);
     ksort($result['missing_columns']);
     return $result;

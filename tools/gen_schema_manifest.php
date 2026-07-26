@@ -59,12 +59,21 @@ sort($files);
 
 $required = [];   // table => [col => [files]]
 $skipped  = [];   // table.col => reason (code writes it, this DB lacks it)
+$refTables = [];  // table => true  (referenced anywhere, exists here)
 
 foreach ($files as $file) {
     $src = file_get_contents($file);
     if ($src === false) { continue; }
     foreach (sql_extract_strings($src) as [$line, $sql]) {
         if (!sql_extract_is_query($sql)) { continue; }
+
+        // Table EXISTENCE coverage — includes tables the code only reads.
+        // Same safety rule: only record it if it exists in this known-good DB,
+        // which automatically excludes lazily-created and optional tables.
+        foreach (sql_extract_referenced_tables($sql) as $t) {
+            if (isset($live[$t])) { $refTables[$t] = true; }
+        }
+
         foreach (sql_extract_written_columns($sql) as $tbl => $cols) {
             if (!isset($live[$tbl])) { continue; }             // not a real table here
             foreach ($cols as $col) {
@@ -90,11 +99,17 @@ foreach ($required as $tbl => $cols) {
     $out['tables'][$tbl] = array_keys($cols);
     $totalCols += count($cols);
 }
+// Tables the code touches at all — catches a dropped read-only table, which the
+// per-column list above cannot see.
+ksort($refTables);
+$out['required_tables'] = array_keys($refTables);
+
 $out['_meta'] = [
-    'generated_by' => 'tools/gen_schema_manifest.php',
-    'purpose'      => 'columns this code writes to; checked by inc/schema-verify.php',
-    'tables'       => count($out['tables']),
-    'columns'      => $totalCols,
+    'generated_by'    => 'tools/gen_schema_manifest.php',
+    'purpose'         => 'columns this code writes to + tables it references; checked by inc/schema-verify.php',
+    'tables'          => count($out['tables']),
+    'columns'         => $totalCols,
+    'required_tables' => count($out['required_tables']),
 ];
 
 $json = json_encode($out, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";

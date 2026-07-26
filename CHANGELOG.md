@@ -3,6 +3,42 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.1.2] - 2026-07-26
+
+Fixes three things a **brand-new install** was missing. Found by doing something
+that should have been routine and was not: cloning the public tag onto an empty
+database and running the documented install steps. On its first run, the
+self-check added in 4.1.1 reported that a fresh install did not satisfy its own
+schema.
+
+**Upgrading:** `git pull` then `php sql/run_migrations.php` (Docker:
+`git pull && docker compose up -d --build`).
+
+### Fixed
+- **`responder_notes` was created by no migration.** Two endpoints created it
+  on the fly just before writing, so *saving* a unit note worked — but three
+  others read it, so on an install where no note had been written yet the Notes
+  Log report queried a table that did not exist. It is now created at install
+  time like any other table.
+- **`permission_review_dismissals` had the same problem**, created on demand by
+  the RBAC code. It is also one of the tables a user lost to crash recovery —
+  and because nothing ever created it, no repair could put it back.
+- **`user_tfa.last_used_counter`** (two-factor replay protection) only appeared
+  the first time somebody enrolled in 2FA. It is now part of the schema from the
+  start.
+- **The schema check missed tables it only reads.** It covered tables written
+  with an explicit column list, so a table the code merely reads from could be
+  dropped without anything noticing — of four tables one user actually lost,
+  only two would have been named. Coverage now includes every table the code
+  touches: **169 tables, 1011 columns**, up from 128.
+
+### Verified
+On a genuine fresh install — public tag, empty database, documented steps — the
+self-check passes. Dropping all four of the tables that user lost and running
+the ordinary `php sql/run_migrations.php` (no flags) names all four, repairs
+them, and passes the re-check; a team saves afterwards through the real save
+path; and the Notes Log query works before any note exists.
+
 ## [4.1.1] - 2026-07-26
 
 TicketsCAD can now check — and repair — its own database structure.
