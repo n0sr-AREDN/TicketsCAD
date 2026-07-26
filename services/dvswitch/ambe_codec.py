@@ -169,7 +169,15 @@ def _selftest() -> int:
         recovered = struct.unpack("<160h", pcm2)
         peak = max(abs(s) for s in recovered)
         LOG.info("round-trip PCM peak amplitude = %d (should be >> 0)", peak)
-        if peak < 100:
+        # Threshold note (2026-07-25): this was `< 100`, which FAILED on a
+        # known-good production bridge (measured peak 55) and in the container
+        # image (43) — i.e. it reported broken on hardware that demonstrably
+        # puts audio on the air. AMBE is a model-based codec: a single isolated
+        # 20 ms frame decodes quiet because the decoder has no history to
+        # predict from. The meaningful assertions are "not digital silence" and
+        # "sine and silence encode differently" (checked below), not absolute
+        # amplitude. A false FAIL here sends operators chasing a working codec.
+        if peak < 10:
             print(f"FAIL: round-trip audio is silent (peak={peak})")
             return 1
 

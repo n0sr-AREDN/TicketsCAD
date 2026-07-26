@@ -1,0 +1,58 @@
+# TicketsCAD DMR bridge — standalone compose (Phase 120, 2026-07-25).
+#
+#   cp .env.example .env      # then fill in your master + DMR identity
+#   docker compose up -d --build
+#
+# The bridge is deliberately its own compose project: it is commonly run on a
+# different host from the CAD (near your master, or on a box you keep up 24/7),
+# and it must keep running even when you redeploy the CAD.
+#
+# Point the CAD at it: in Settings → Communications → DMR, set the channel's
+# bridge host to this container's reachable address and bridge port to 18091,
+# with the same bearer token as DMR_BEARER_TOKEN below.
+services:
+  dmr-bridge:
+    build:
+      context: ..              # services/dvswitch — the bridge source
+      dockerfile: docker/Dockerfile
+    image: ticketscad-dmr-bridge:local
+    container_name: ticketscad_dmr_bridge
+    restart: unless-stopped
+    # HBP to your master is OUTBOUND; only the CAD-facing HTTP port is published.
+    # Bind to 127.0.0.1 if the CAD runs on this same host — the bearer token is
+    # the only thing protecting this port, so do not expose it to the internet.
+    ports:
+      - "${DMR_BIND_ADDR:-0.0.0.0}:${DMR_HTTP_PORT:-18091}:18091"
+    environment:
+      # ── Identity (yours — must match your radioid.net registration) ──
+      DMR_ID: ${DMR_ID:?set DMR_ID in .env}
+      DMR_CALLSIGN: ${DMR_CALLSIGN:?set DMR_CALLSIGN in .env}
+      DMR_OPERATOR_ID: ${DMR_OPERATOR_ID:-${DMR_ID}}
+      # ── Your master (HBLink3 / BrandMeister / …) ──
+      DMR_MASTER_HOST: ${DMR_MASTER_HOST:?set DMR_MASTER_HOST in .env}
+      DMR_MASTER_PORT: ${DMR_MASTER_PORT:-62031}
+      DMR_MASTER_PASSWORD: ${DMR_MASTER_PASSWORD:?set DMR_MASTER_PASSWORD in .env}
+      DMR_COLOR_CODE: ${DMR_COLOR_CODE:-1}
+      DMR_DEFAULT_TG: ${DMR_DEFAULT_TG:-0}
+      # ── CAD link ──
+      DMR_BEARER_TOKEN: ${DMR_BEARER_TOKEN:?set DMR_BEARER_TOKEN in .env}
+      DMR_HTTP_PORT: 18091
+      DMR_LOG_LEVEL: ${DMR_LOG_LEVEL:-INFO}
+      # ── Optional station metadata (cosmetic; shown on dashboards) ──
+      DMR_LOCATION: ${DMR_LOCATION:-TicketsCAD}
+      DMR_DESCRIPTION: ${DMR_DESCRIPTION:-TicketsCAD DMR bridge}
+      DMR_LATITUDE: ${DMR_LATITUDE:-0.0}
+      DMR_LONGITUDE: ${DMR_LONGITUDE:-0.0}
+    volumes:
+      - bridge_cache:/var/cache/ticketscad-dvswitch
+    healthcheck:
+      # /health is bearer-protected; a 200 means the bridge is up AND the token
+      # you gave the CAD is the one the bridge expects.
+      test: ["CMD-SHELL", "curl -fsS -H \"Authorization: Bearer $${DMR_BEARER_TOKEN}\" http://127.0.0.1:18091/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  bridge_cache:
