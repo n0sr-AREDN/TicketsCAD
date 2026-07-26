@@ -232,7 +232,7 @@ function handleGet() {
                     mt.background AS type_color, mt.color AS type_text_color,
                     ms.status_val AS status_name,
                     ms.background AS status_color, ms.color AS status_text_color,
-                    t.name AS team_name
+                    t.`team` AS team_name
              FROM " . db_table('member') . " m
              LEFT JOIN " . db_table('member_types') . " mt ON m.member_type_id = mt.id
              LEFT JOIN " . db_table('member_status') . " ms ON m.member_status_id = ms.id
@@ -406,7 +406,7 @@ function handleGet() {
                     mt.background AS type_color, mt.color AS type_text_color,
                     ms.status_val AS status_name,
                     ms.background AS status_color, ms.color AS status_text_color,
-                    t.name AS team_name
+                    t.`team` AS team_name
              FROM " . db_table('member') . " m
              LEFT JOIN " . db_table('member_types') . " mt ON m.member_type_id = mt.id
              LEFT JOIN " . db_table('member_status') . " ms ON m.member_status_id = ms.id
@@ -436,7 +436,7 @@ function handleGet() {
                     mt.background AS type_color, mt.color AS type_text_color,
                     ms.status_val AS status_name,
                     ms.background AS status_color, ms.color AS status_text_color,
-                    t.name AS team_name,
+                    t.`team` AS team_name,
                     miq.qualification_level, miq.ptb_status
              FROM " . db_table('member') . " m
              INNER JOIN " . db_table('member_ics_qualifications') . " miq ON m.id = miq.member_id
@@ -458,7 +458,8 @@ function handleGet() {
         // Also return standard lookup data for filter UI
         $types = safe_fetch_all_m("SELECT * FROM " . db_table('member_types') . " ORDER BY name");
         $statuses = safe_fetch_all_m("SELECT id, status_val AS name, color, background FROM " . db_table('member_status') . " ORDER BY id");
-        $teams = safe_fetch_all_m("SELECT * FROM " . db_table('teams') . " WHERE active = 1 ORDER BY name");
+        // Canonical column is `team` (Phase 123) — `name` was an invented duplicate.
+        $teams = safe_fetch_all_m("SELECT *, `team` AS name FROM " . db_table('teams') . " WHERE active = 1 ORDER BY `team`");
         $certifications = safe_fetch_all_m("SELECT * FROM " . db_table('certifications') . " ORDER BY category, name");
 
         json_response([
@@ -500,7 +501,7 @@ function handleGet() {
                 mt.background AS type_color, mt.color AS type_text_color,
                 ms.status_val AS status_name,
                 ms.background AS status_color, ms.color AS status_text_color,
-                t.name AS team_name
+                t.`team` AS team_name
          FROM " . db_table('member') . " m
          LEFT JOIN " . db_table('member_types') . " mt ON m.member_type_id = mt.id
          LEFT JOIN " . db_table('member_status') . " ms ON m.member_status_id = ms.id

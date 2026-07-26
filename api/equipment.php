@@ -117,7 +117,7 @@ function handleGet() {
             "SELECT e.*, et.name AS type_name, et.icon AS type_icon, et.requires_checkout,
                     CONCAT(m.first_name, ' ', m.last_name) AS assigned_member_name,
                     m.callsign AS assigned_member_callsign,
-                    t.name AS assigned_team_name,
+                    t.`team` AS assigned_team_name,
                     CONCAT(om.first_name, ' ', om.last_name) AS owner_name,
                     om.callsign AS owner_callsign
              FROM " . db_table('newui_equipment') . " e
@@ -234,7 +234,7 @@ function handleGet() {
         "SELECT e.*, et.name AS type_name, et.icon AS type_icon,
                 CONCAT(m.first_name, ' ', m.last_name) AS assigned_member_name,
                 m.callsign AS assigned_member_callsign,
-                t.name AS assigned_team_name,
+                t.`team` AS assigned_team_name,
                 CONCAT(om.first_name, ' ', om.last_name) AS owner_name,
                 om.callsign AS owner_callsign
          FROM " . db_table('newui_equipment') . " e
@@ -261,7 +261,9 @@ function handleGet() {
         $memOrgVars
     );
     $teams = safe_fetch_all_eq(
-        "SELECT id, name FROM " . db_table('teams') . " WHERE active = 1 ORDER BY name"
+        // Canonical column is `team` (Phase 123); aliased to `name` so the JS
+        // contract for this endpoint is unchanged.
+        "SELECT id, `team` AS name FROM " . db_table('teams') . " WHERE active = 1 ORDER BY `team`"
     );
 
     json_response([

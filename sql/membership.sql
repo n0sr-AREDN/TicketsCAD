@@ -65,17 +65,18 @@ CREATE TABLE IF NOT EXISTS `member` (
   KEY `last_name` (`last_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `teams` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `name` varchar(128) NOT NULL,
-  `description` text DEFAULT NULL,
-  `team_type` varchar(64) DEFAULT NULL COMMENT 'RACES, CERT, Medical, Fire, etc.',
-  `leader_id` int(11) DEFAULT NULL COMMENT 'Member ID of team leader',
-  `deputy_id` int(11) DEFAULT NULL COMMENT 'Member ID of deputy',
-  `active` tinyint(1) DEFAULT 1,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uniq_name` (`name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- `teams` is deliberately NOT created here (Phase 123, 2026-07-25).
+--
+-- This file used to define a SECOND, invented `teams` table (name, description,
+-- team_type, leader_id, deputy_id) alongside the real one in base_schema.sql
+-- (team, sub-group, ttypes_id, mission, leader, leader_dpty). Both used
+-- CREATE TABLE IF NOT EXISTS, so the schema you ended up with depended on which
+-- script ran first — and where both were applied, different code paths wrote to
+-- different halves and produced teams with a type but no name.
+--
+-- The canonical definition lives in base_schema.sql. Do not redefine it here.
+-- If `teams` needs a new column, ALTER the canonical table in a run_*.php
+-- migration after checking the live columns with SHOW COLUMNS first.
 
 CREATE TABLE IF NOT EXISTS `certifications` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
