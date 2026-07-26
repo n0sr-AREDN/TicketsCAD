@@ -17,6 +17,7 @@ If your symptom isn't here, check [FAQ.md](FAQ.md), then [/help.php → Troubles
   - [MariaDB strict mode rejecting empty datetime](#strict-mode)
   - [PHP can't connect to MariaDB](#php-cant-connect-mariadb)
   - [MySQL / MariaDB won't start or won't stay running](#mysql-wont-start)
+  - ["Save failed" / schema is behind the code](#schema-out-of-date)
 - [Login + auth](#login--auth)
   - [Locked out of admin account](#admin-lockout)
   - [Forgot all backup codes + lost authenticator](#lost-tfa)
@@ -155,6 +156,57 @@ cd /var/www/newui && sudo -u www-data php sql/run_migrations.php
 ```
 
 For a live install with data, **always take a backup first**, then run the failing migration step manually in a transaction so you can roll back if needed.
+
+---
+
+### schema-out-of-date
+
+**Symptom:** a screen loads but will not save. The error is a bare
+`Save failed: HTTP 400`, or names a column —
+`Unknown column 'nims_resource_type' in 'INSERT INTO'`. TicketsCAD may show a
+banner reading **"Database schema does not match this version."**
+
+**Cause:** the database STRUCTURE is behind the code. Your records are intact —
+a table is missing a column that this version writes to. This happens when:
+
+- a table was dropped and re-created by hand during crash recovery
+- the database was restored from a backup taken on an older version
+- the files were updated (`git pull`) but the migrations were not run
+- a `CREATE TABLE` was copied from somewhere and omitted some columns
+
+**Why the migration runner used to miss this:** it recorded which migration
+*scripts had run*, not whether their schema still existed. Drop a table that a
+migration created, and every script still showed as applied — so the runner
+reported "0 pending" while the app was broken. As of v4.1.1 it checks the
+database itself and re-applies automatically when the two disagree.
+
+**Fix:**
+
+```bash
+php tools/check-schema.php
+```
+
+That reports exactly which tables and columns are missing and changes nothing.
+Then:
+
+```bash
+php tools/check-schema.php --repair
+```
+
+That re-applies the schema migrations and re-checks in a fresh process. The
+migrations are idempotent — they add what is absent and never delete data. If
+you want to be certain first, take a backup: `php tools/backup_run.php`.
+
+`php sql/run_migrations.php` now performs the same check and repairs itself, so
+either command works.
+
+**If it still reports missing columns after a repair,** that is a gap in
+TicketsCAD rather than something you did wrong — no migration covers that
+column. Please open an issue with the output:
+<https://github.com/openises/TicketsCAD/issues>
+
+**Where to see it before it bites:** Status → **File & Code Health** shows a
+"Database schema vs this version" row on every install.
 
 ---
 

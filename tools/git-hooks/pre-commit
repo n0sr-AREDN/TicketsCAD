@@ -67,6 +67,21 @@ if [ -f tools/api_contract_audit.php ]; then
     fi
 fi
 
+# ── 4. Schema manifest freshness (needs DB; warn-and-pass if unreachable) ──
+# Phase 125: sql/schema_manifest.json is what an INSTALL checks itself against.
+# If it goes stale, every user's self-check silently stops covering new columns.
+if [ -f tools/gen_schema_manifest.php ]; then
+    OUT="$("$PHP" tools/gen_schema_manifest.php --check 2>&1)"
+    CODE=$?
+    if echo "$OUT" | grep -qi "connection failed\|Access denied\|Unknown database"; then
+        echo "⚠ schema manifest check skipped (database unreachable) — CI will run it"
+    elif [ $CODE -ne 0 ]; then
+        echo "✗ sql/schema_manifest.json is stale — run: php tools/gen_schema_manifest.php"
+        echo "$OUT" | tail -5
+        FAILED=1
+    fi
+fi
+
 if [ $FAILED -ne 0 ]; then
     echo ""
     echo "Commit blocked by the QA gate. Fix the findings above, or for a"

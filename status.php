@@ -793,6 +793,35 @@ $csrf     = csrf_token();
 
         var html = '';
 
+        // ── Database schema row (Phase 125) ────────────────────────
+        // Every other row here is about FILES. This one asks whether the
+        // database actually has the columns the code writes to — the failure
+        // that otherwise shows up as an unexplained "Save failed: HTTP 400".
+        var sc = data.schema || {};
+        if (sc.checked) {
+            html += '<div class="status-detail-row">';
+            html += '<span class="status-detail-label">Database schema vs this version</span>';
+            html += '<span class="status-detail-value">';
+            if (sc.ok) {
+                html += esc(String(sc.checked_tables)) + ' tables, ' +
+                        esc(String(sc.checked_columns)) + ' columns verified ' + sevBadge('ok');
+            } else {
+                html += '<span class="text-danger fw-bold">SCHEMA BEHIND CODE</span> — ';
+                var parts = [];
+                (sc.missing_tables || []).forEach(function (t) {
+                    parts.push('missing table <code>' + esc(t) + '</code>');
+                });
+                Object.keys(sc.missing_columns || {}).forEach(function (t) {
+                    parts.push('<code>' + esc(t) + '</code> missing ' +
+                               esc((sc.missing_columns[t] || []).join(', ')));
+                });
+                html += parts.join('; ');
+                html += '<br><span class="text-muted">Your data is intact — saving to these screens ' +
+                        'will fail until repaired. Run <code>php tools/check-schema.php --repair</code></span>';
+            }
+            html += '</span></div>';
+        }
+
         // ── Version row (stale-code detector) ─────────────────────
         var v = data.version || {};
         html += '<div class="status-detail-row">';

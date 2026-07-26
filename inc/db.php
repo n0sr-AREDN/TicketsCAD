@@ -84,6 +84,12 @@ function db_query(string $sql, array $params = []): PDOStatement
         // still propagates exactly as before. See inc/db-damage.php.
         require_once __DIR__ . '/db-damage.php';
         db_damage_note($e);
+        // Phase 125 (2026-07-26): note a MISSING COLUMN (MySQL 1054) too. A
+        // schema behind the code otherwise surfaces as an opaque HTTP 400 on
+        // save, with no indication of which column or how to fix it — that
+        // cost a beta tester four rounds on `teams`. See inc/schema-verify.php.
+        require_once __DIR__ . '/schema-verify.php';
+        schema_drift_note($e);
         throw $e;
     }
 }

@@ -3,6 +3,48 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.1.1] - 2026-07-26
+
+TicketsCAD can now check — and repair — its own database structure.
+
+Every health check up to now was about *files*: permissions, stale code,
+missing libraries. None of them could see the failure that actually costs
+self-hosters their evening: a database whose **structure** has fallen behind the
+code, so a screen loads fine and then refuses to save with a bare
+`HTTP 400`.
+
+**Upgrading:** `git pull` then `php sql/run_migrations.php` (Docker:
+`git pull && docker compose up -d --build`).
+
+### Added
+- **`php tools/check-schema.php`** — reports exactly which tables and columns
+  your database is missing, and changes nothing. **`--repair`** re-applies the
+  schema migrations and re-checks in a fresh process. The migrations are
+  idempotent and delete nothing.
+- **A "Database schema vs this version" row** on Status → File & Code Health, so
+  drift is visible before someone hits it.
+- **A save that fails on a missing column now says so** — which column, that
+  your data is intact, and the command to fix it — instead of an unexplained
+  `HTTP 400`.
+- [docs/TROUBLESHOOTING.md#schema-out-of-date](docs/TROUBLESHOOTING.md#schema-out-of-date).
+
+### Fixed
+- **The migration runner no longer reports health it has not verified.** It
+  decided "already applied" from its own tracker table, which records whether a
+  migration *script ran* — not whether the schema that script produced still
+  exists. So if a table was dropped during crash recovery, or the database was
+  restored from an older backup, every script still read as applied: the runner
+  did nothing and reported everything up to date while the app was broken.
+  Recovering required `--force`, and nothing suggested it. It now asks the
+  database, and re-applies automatically when the two disagree.
+- **The commit-time schema gate could not see any of the writers.** It examined
+  each SQL string in isolation, but the code builds queries by concatenation —
+  so the `INSERT` keyword and the column list never appeared together and all 89
+  writer statements were skipped. That is why last release's `teams` problem
+  reached a user instead of being caught. The gate now reads concatenated SQL,
+  and a generated manifest of every column the code writes to (128 tables, 1008
+  columns) is checked against your live database.
+
 ## [4.1.0] - 2026-07-26
 
 A resilience release. Everything here comes from real installs run by real

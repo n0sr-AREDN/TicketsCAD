@@ -1,0 +1,1274 @@
+{
+    "tables": {
+        "action": [
+            "action_type",
+            "date",
+            "description",
+            "responder",
+            "ticket_id",
+            "updated",
+            "user"
+        ],
+        "active_sessions": [
+            "created_at",
+            "expires_at",
+            "ip_address",
+            "last_active",
+            "session_id",
+            "user_agent",
+            "user_id"
+        ],
+        "ai_conversation_messages": [
+            "callsign",
+            "content",
+            "role"
+        ],
+        "ai_conversations": [
+            "callsign",
+            "exchange_count",
+            "first_seen_at",
+            "last_seen_at"
+        ],
+        "ai_pending_responses": [
+            "caller_callsign",
+            "caller_src_id",
+            "channel_id",
+            "created_at",
+            "draft_response",
+            "inbound_call_id",
+            "status",
+            "target_kind",
+            "target_ref",
+            "transcript"
+        ],
+        "allocates": [
+            "al_as_of",
+            "group",
+            "resource_id",
+            "type",
+            "user_id"
+        ],
+        "aprs_watchlist": [
+            "added_by",
+            "added_by_name",
+            "callsign",
+            "note"
+        ],
+        "assigns": [
+            "as_of",
+            "clear",
+            "current_zone_id",
+            "dispatched",
+            "last_checkin_at",
+            "on_scene",
+            "rec_facility_id",
+            "responder_id",
+            "responding",
+            "signed_out_at",
+            "status_id",
+            "ticket_id",
+            "user_id",
+            "zone_updated_at"
+        ],
+        "atak_unbound_uids": [
+            "atak_uid",
+            "callsign_seen",
+            "channel_ref",
+            "last_lat",
+            "last_lng",
+            "position_count",
+            "transport"
+        ],
+        "bridge_tokens": [
+            "bridge_id",
+            "created_by",
+            "token_hash"
+        ],
+        "capacity_categories": [
+            "icon",
+            "name",
+            "sort_order",
+            "unit_label"
+        ],
+        "captions": [
+            "capt",
+            "repl"
+        ],
+        "certifications": [
+            "category",
+            "description",
+            "fema_course_code",
+            "name",
+            "nims_credential_type",
+            "refresh_months",
+            "required"
+        ],
+        "codes": [
+            "code",
+            "sort",
+            "text"
+        ],
+        "comm_channel_state": [
+            "channel_id",
+            "state"
+        ],
+        "comm_channels": [
+            "adapter",
+            "capabilities_json",
+            "channel_key",
+            "config_json",
+            "enabled",
+            "label",
+            "managed",
+            "regulatory_class",
+            "sort_order"
+        ],
+        "conditions": [
+            "_by",
+            "_from",
+            "_on",
+            "description",
+            "icon",
+            "title"
+        ],
+        "config": [
+            "key",
+            "value"
+        ],
+        "console_view_strips": [
+            "channel_id",
+            "controls_json",
+            "layout_json",
+            "overrides_json",
+            "position",
+            "view_id",
+            "width"
+        ],
+        "console_views": [
+            "created_by",
+            "icon",
+            "name",
+            "owner_user_id",
+            "sort_order"
+        ],
+        "dashboard_layouts": [
+            "hidden_widgets",
+            "layout_json",
+            "layout_name",
+            "user_id"
+        ],
+        "dmr_channels": [
+            "bridge_host",
+            "bridge_port",
+            "bridge_token",
+            "chat_channel",
+            "created_by",
+            "enabled",
+            "label",
+            "link_mode",
+            "network",
+            "talkgroup",
+            "usrp_listen_port",
+            "usrp_send_port"
+        ],
+        "dmr_messages": [
+            "audio_format",
+            "audio_path",
+            "call_ended_at",
+            "call_started_at",
+            "channel_id",
+            "direction",
+            "duration_ms",
+            "error",
+            "member_id",
+            "radio_callsign",
+            "radio_id",
+            "routed_to",
+            "talkgroup",
+            "ticket_id",
+            "transcript",
+            "transcript_engine",
+            "transcript_partials"
+        ],
+        "dmr_ws_tokens": [
+            "channel_id",
+            "created",
+            "token",
+            "user",
+            "user_id",
+            "user_level"
+        ],
+        "email_list_members": [
+            "added_by",
+            "display_name",
+            "inline_email",
+            "list_id",
+            "member_type",
+            "ref_id"
+        ],
+        "email_lists": [
+            "created_by",
+            "description",
+            "name",
+            "slug"
+        ],
+        "equipment_assignments": [
+            "equipment_id",
+            "issued_at",
+            "issued_by",
+            "member_id"
+        ],
+        "external_api_rate_limits": [
+            "bucket_min",
+            "count",
+            "token_id"
+        ],
+        "external_api_tokens": [
+            "created_by",
+            "description",
+            "expires_at",
+            "ip_allowlist_json",
+            "name",
+            "rate_limit_per_hour",
+            "scopes_json",
+            "token_hash",
+            "token_prefix",
+            "user_id"
+        ],
+        "external_links": [
+            "active",
+            "category",
+            "created_by",
+            "description",
+            "icon",
+            "sort_order",
+            "title",
+            "url"
+        ],
+        "fac_status": [
+            "_by",
+            "_from",
+            "_on",
+            "bg_color",
+            "description",
+            "group",
+            "sort",
+            "status_available",
+            "status_unavailable",
+            "status_val",
+            "text_color"
+        ],
+        "fac_types": [
+            "description",
+            "icon",
+            "name"
+        ],
+        "facilities": [
+            "_by",
+            "_on",
+            "bed_auto_mode",
+            "beds_a",
+            "beds_info",
+            "beds_o",
+            "callsign",
+            "capab",
+            "city",
+            "contact_email",
+            "contact_name",
+            "contact_phone",
+            "deleted_at",
+            "deleted_by",
+            "description",
+            "handle",
+            "lat",
+            "lng",
+            "name",
+            "state",
+            "status_about",
+            "status_id",
+            "street",
+            "type",
+            "updated"
+        ],
+        "facility_bed_auto_log": [
+            "applied_by",
+            "assign_id",
+            "delta_a",
+            "delta_o",
+            "facility_id",
+            "responder_id",
+            "status_id",
+            "status_val",
+            "ticket_id"
+        ],
+        "facility_capacity": [
+            "available",
+            "category_id",
+            "facility_id",
+            "notes",
+            "total",
+            "updated_by"
+        ],
+        "facility_notes": [
+            "category",
+            "created_at",
+            "detail",
+            "facility_id",
+            "note",
+            "source_ip",
+            "user_id",
+            "username"
+        ],
+        "file_uploads": [
+            "description",
+            "entity_id",
+            "entity_type",
+            "file_path",
+            "file_size",
+            "filename",
+            "mime_type",
+            "orig_name",
+            "uploaded_by",
+            "uploaded_by_name"
+        ],
+        "files": [
+            "_by",
+            "_from",
+            "_on",
+            "filename",
+            "filetype",
+            "orig_filename",
+            "title",
+            "type"
+        ],
+        "geofence_unit_state": [
+            "entered_at",
+            "exited_at",
+            "geofence_id",
+            "state",
+            "unit_identifier",
+            "updated_at"
+        ],
+        "geofences": [
+            "active",
+            "alert_channels_json",
+            "alert_on_enter",
+            "alert_on_exit",
+            "created_by",
+            "markup_id",
+            "name",
+            "notify_users_json"
+        ],
+        "hints": [
+            "hint",
+            "tag"
+        ],
+        "ics_forms": [
+            "created_by",
+            "created_by_name",
+            "form_data_json",
+            "form_type",
+            "incident_id",
+            "status",
+            "title",
+            "updated_at"
+        ],
+        "ics_positions": [
+            "active",
+            "category",
+            "code",
+            "description",
+            "nims_typing_level",
+            "required_certs",
+            "sort_order",
+            "title"
+        ],
+        "in_types": [
+            "color",
+            "description",
+            "group",
+            "match_pattern",
+            "protocol",
+            "radius",
+            "set_severity",
+            "sort",
+            "type"
+        ],
+        "internal_messages": [
+            "body",
+            "from_user_id",
+            "incident_id",
+            "is_broadcast",
+            "priority",
+            "subject"
+        ],
+        "location_ingest_tokens": [
+            "created_by",
+            "device_unique_id",
+            "label",
+            "notes",
+            "provider_id",
+            "revoked_at",
+            "secret_hash"
+        ],
+        "location_reports": [
+            "accuracy",
+            "altitude",
+            "auth_token_id",
+            "battery",
+            "heading",
+            "lat",
+            "lng",
+            "provider_id",
+            "raw_data",
+            "received_at",
+            "reported_at",
+            "speed",
+            "unit_identifier"
+        ],
+        "log": [
+            "code",
+            "from",
+            "info",
+            "ticket_id",
+            "when",
+            "who"
+        ],
+        "login_attempts": [
+            "cleared_at",
+            "created_at",
+            "failure_reason",
+            "ip_address",
+            "success",
+            "user_agent",
+            "username"
+        ],
+        "map_image_overlays": [
+            "anchor_json",
+            "created_by",
+            "enabled",
+            "file_path",
+            "mime",
+            "name",
+            "opacity",
+            "sort_order"
+        ],
+        "member": [
+            "deleted_at",
+            "deleted_by",
+            "member_status_id",
+            "updated_at",
+            "user_id"
+        ],
+        "member_callsigns": [
+            "callsign",
+            "expiry_date",
+            "frn",
+            "grant_date",
+            "grid_square",
+            "is_primary",
+            "license_type",
+            "member_id",
+            "oper_class",
+            "source"
+        ],
+        "member_certifications": [
+            "certificate_number",
+            "certification_id",
+            "earned_date",
+            "expiry_date",
+            "issuing_authority",
+            "member_id",
+            "notes",
+            "verification_url"
+        ],
+        "member_comm_identifiers": [
+            "comm_mode_id",
+            "created_at",
+            "is_primary",
+            "label",
+            "member_id",
+            "values_json"
+        ],
+        "member_ics_qualifications": [
+            "created_at",
+            "evaluator",
+            "ics_position_id",
+            "member_id",
+            "notes",
+            "ptb_start_date",
+            "ptb_status",
+            "qualification_level"
+        ],
+        "member_organizations": [
+            "created_at",
+            "join_date",
+            "member_id",
+            "member_type_id",
+            "org_id",
+            "status"
+        ],
+        "member_status": [
+            "background",
+            "color",
+            "description",
+            "status_val"
+        ],
+        "member_tracking_tokens": [
+            "created_by",
+            "member_id",
+            "secret_hash",
+            "token_label"
+        ],
+        "member_types": [
+            "_by",
+            "_from",
+            "_on",
+            "background",
+            "color",
+            "description",
+            "name",
+            "org_id"
+        ],
+        "mesh_bridge_channels": [
+            "bridge_id",
+            "channel_id",
+            "slot"
+        ],
+        "mesh_bridges": [
+            "created_by",
+            "host_hint",
+            "label"
+        ],
+        "mesh_channels": [
+            "created_by",
+            "downlink_enabled",
+            "is_primary",
+            "modem_preset",
+            "name",
+            "notes",
+            "psk_b64",
+            "region",
+            "uplink_enabled"
+        ],
+        "mesh_nodes": [
+            "adv_lat",
+            "adv_lon",
+            "adv_type",
+            "bridge_id",
+            "firmware_ver",
+            "hw_model",
+            "is_self",
+            "last_alt_m",
+            "last_hops",
+            "last_lat",
+            "last_lng",
+            "last_rssi",
+            "last_seen_at",
+            "last_snr",
+            "long_name",
+            "manuf_name",
+            "max_tx_power",
+            "node_id",
+            "protocol",
+            "public_key",
+            "radio_bw",
+            "radio_cr",
+            "radio_freq",
+            "radio_sf",
+            "role",
+            "self_info_at",
+            "short_name",
+            "tx_power"
+        ],
+        "mesh_outbox": [
+            "in_reply_to_packet_id",
+            "kind",
+            "payload_json",
+            "queued_by",
+            "target_bridge_id",
+            "target_protocol",
+            "thread_key"
+        ],
+        "message_recipients": [
+            "message_id",
+            "to_user_id"
+        ],
+        "message_routes": [
+            "created_at",
+            "created_by",
+            "description",
+            "dest_channel",
+            "dest_subaddress_json",
+            "direction",
+            "enabled",
+            "filters_json",
+            "name",
+            "priority",
+            "recipient_predicate_json",
+            "source_channel",
+            "transform_json"
+        ],
+        "messages": [
+            "body",
+            "channel",
+            "created_at",
+            "delivered_at",
+            "direction",
+            "error",
+            "msg_type",
+            "payload",
+            "priority",
+            "recipient",
+            "sender",
+            "status",
+            "subject"
+        ],
+        "mileage_log": [
+            "created_at",
+            "end_odo",
+            "ended_at",
+            "miles",
+            "notes",
+            "responder_id",
+            "start_odo",
+            "started_at",
+            "ticket_id",
+            "user_id"
+        ],
+        "mmarkup_cats": [
+            "_by",
+            "_from",
+            "_on",
+            "category",
+            "color",
+            "default_visible",
+            "description",
+            "icon",
+            "sort_order"
+        ],
+        "newui_audit_log": [
+            "activity",
+            "category",
+            "details",
+            "event_time",
+            "ip_address",
+            "severity",
+            "summary",
+            "target_id",
+            "target_type",
+            "user_id",
+            "user_name"
+        ],
+        "newui_equipment_log": [
+            "action",
+            "created_at",
+            "equipment_id",
+            "member_id",
+            "notes",
+            "performed_by"
+        ],
+        "newui_equipment_types": [
+            "description",
+            "icon",
+            "name",
+            "requires_checkout",
+            "sort_order"
+        ],
+        "newui_event_participants": [
+            "event_id",
+            "member_id",
+            "role",
+            "self_signup",
+            "status"
+        ],
+        "newui_major_incident_links": [
+            "linked_at",
+            "linked_by",
+            "major_id",
+            "ticket_id"
+        ],
+        "newui_major_incidents": [
+            "closed_at",
+            "commander",
+            "created_at",
+            "description",
+            "lat",
+            "lng",
+            "name",
+            "severity",
+            "status",
+            "updated_at"
+        ],
+        "newui_shift_assignments": [
+            "assigned_by",
+            "assignment_date",
+            "member_id",
+            "notes",
+            "role_id",
+            "self_signup",
+            "slot_id",
+            "status"
+        ],
+        "newui_vehicle_types": [
+            "description",
+            "icon",
+            "name",
+            "sort_order"
+        ],
+        "notification_log": [
+            "body",
+            "channel",
+            "error",
+            "event_type",
+            "recipient",
+            "rule_id",
+            "sent_at",
+            "status",
+            "subject",
+            "ticket_id"
+        ],
+        "owntracks_outbox": [
+            "created_by",
+            "member_id",
+            "payload_json"
+        ],
+        "par_config": [
+            "cadence_minutes",
+            "in_types_id",
+            "is_disabled",
+            "scope",
+            "updated_at"
+        ],
+        "par_cycles": [
+            "cycle_window_s",
+            "initiated_at",
+            "initiated_by",
+            "initiated_kind",
+            "notes",
+            "status",
+            "ticket_id"
+        ],
+        "par_unit_acks": [
+            "expected",
+            "par_cycle_id",
+            "responder_id",
+            "state"
+        ],
+        "patient": [
+            "date",
+            "description",
+            "dob",
+            "fullname",
+            "gender",
+            "name",
+            "ticket_id",
+            "updated",
+            "user"
+        ],
+        "pending_routed_messages": [
+            "body",
+            "channel",
+            "created_by",
+            "priority",
+            "route_id",
+            "scheduled_send_at",
+            "status",
+            "subject",
+            "target",
+            "ticket_id"
+        ],
+        "places": [
+            "apply_to",
+            "city",
+            "information",
+            "lat",
+            "lon",
+            "name",
+            "state",
+            "street",
+            "zoom"
+        ],
+        "push_subscriptions": [
+            "auth",
+            "channel",
+            "device_label",
+            "endpoint",
+            "filters_json",
+            "last_used_at",
+            "p256dh",
+            "user_agent",
+            "user_id"
+        ],
+        "radioid_users": [
+            "callsign",
+            "city",
+            "country",
+            "dmr_id",
+            "fetched_at",
+            "fname",
+            "state",
+            "surname"
+        ],
+        "region": [
+            "boundary",
+            "category",
+            "def_area_code",
+            "def_city",
+            "def_lat",
+            "def_lng",
+            "def_st",
+            "def_zoom",
+            "description",
+            "group_name",
+            "owner"
+        ],
+        "responder": [
+            "aprs",
+            "at_facility",
+            "callsign",
+            "capab",
+            "cellphone",
+            "city",
+            "contact_name",
+            "contact_via",
+            "deleted_at",
+            "deleted_by",
+            "description",
+            "direcs",
+            "excl_zone",
+            "followmee_tracker",
+            "glat",
+            "gtrack",
+            "handle",
+            "icon_str",
+            "instam",
+            "javaprssrvr",
+            "lat",
+            "lng",
+            "locatea",
+            "mob_tracker",
+            "mobile",
+            "multi",
+            "name",
+            "ogts",
+            "other",
+            "pager_p",
+            "pager_s",
+            "personal_for_member_id",
+            "phone",
+            "ring_fence",
+            "send_no",
+            "smsg_id",
+            "state",
+            "status_about",
+            "status_updated",
+            "street",
+            "t_tracker",
+            "traccar",
+            "type",
+            "un_status_id",
+            "updated",
+            "user_id",
+            "xastir_tracker"
+        ],
+        "responder_notes": [
+            "by_user",
+            "by_username",
+            "category",
+            "created_at",
+            "note",
+            "responder_id"
+        ],
+        "roadinfo": [
+            "_by",
+            "_from",
+            "_on",
+            "address",
+            "conditions",
+            "description",
+            "lat",
+            "lng",
+            "title",
+            "username"
+        ],
+        "role_permissions": [
+            "permission_id",
+            "role_id"
+        ],
+        "roles": [
+            "description",
+            "is_default",
+            "name",
+            "org_id",
+            "sort_order"
+        ],
+        "routing_log": [
+            "dest_channel",
+            "dest_message_id",
+            "error",
+            "payload_summary",
+            "route_id",
+            "source_channel",
+            "source_message_id",
+            "status"
+        ],
+        "scheduling_permission_assignments": [
+            "profile_id",
+            "scope_id",
+            "scope_type",
+            "target_id",
+            "target_type"
+        ],
+        "settings": [
+            "name",
+            "value"
+        ],
+        "signals": [
+            "code",
+            "description",
+            "hide",
+            "sort_order"
+        ],
+        "sop_pages": [
+            "content",
+            "created_at",
+            "created_by",
+            "parent_id",
+            "slug",
+            "sort_order",
+            "title",
+            "updated_at",
+            "updated_by"
+        ],
+        "sop_revisions": [
+            "content",
+            "edited_at",
+            "edited_by",
+            "page_id",
+            "summary",
+            "title"
+        ],
+        "sse_events": [
+            "event_type",
+            "payload",
+            "user_id",
+            "visibility_ids",
+            "visibility_scope"
+        ],
+        "status_transitions": [
+            "conditions_json",
+            "created_by",
+            "from_status_id",
+            "to_status_id"
+        ],
+        "status_workflow_layout": [
+            "pos_x",
+            "pos_y",
+            "status_id"
+        ],
+        "talkgroups": [
+            "call_type",
+            "description",
+            "dmr_id",
+            "enabled",
+            "name",
+            "sort_order"
+        ],
+        "team_members": [
+            "assigned_date",
+            "member_id",
+            "position_code",
+            "role",
+            "team_id"
+        ],
+        "teams": [
+            "by",
+            "created_at",
+            "formed",
+            "from",
+            "leader",
+            "leader_dpty",
+            "mission",
+            "nims_resource_type",
+            "nims_typing_level",
+            "on",
+            "rtlt_code",
+            "sub-group",
+            "team",
+            "ttypes_id",
+            "updated_at"
+        ],
+        "tfa_remember_tokens": [
+            "created_at",
+            "device_fingerprint",
+            "expires_at",
+            "ip_address",
+            "token_hash",
+            "user_agent",
+            "user_id"
+        ],
+        "ticket": [
+            "_by",
+            "address_about",
+            "affected",
+            "booked_date",
+            "city",
+            "comments",
+            "contact",
+            "date",
+            "deleted_at",
+            "deleted_by",
+            "description",
+            "facility",
+            "in_types_id",
+            "incident_number",
+            "lat",
+            "lng",
+            "nine_one_one",
+            "org",
+            "org_id",
+            "owner",
+            "phone",
+            "problemend",
+            "problemstart",
+            "rec_facility",
+            "scope",
+            "severity",
+            "signal",
+            "state",
+            "status",
+            "street",
+            "to_address",
+            "updated"
+        ],
+        "tts_engines": [
+            "config_json",
+            "driver",
+            "enabled",
+            "engine_key",
+            "label",
+            "sort_order"
+        ],
+        "un_status": [
+            "bed_delivery",
+            "bg_color",
+            "description",
+            "dispatch",
+            "excl_from_reset",
+            "extra_data_label",
+            "extra_data_required",
+            "extra_data_target",
+            "extra_data_type",
+            "group",
+            "hide",
+            "hide_from_board",
+            "incident_action",
+            "resets_par",
+            "sort",
+            "status_val",
+            "text_color",
+            "units_filter",
+            "watch"
+        ],
+        "unit_assignment_roles": [
+            "active",
+            "code",
+            "description",
+            "name",
+            "sort_order"
+        ],
+        "unit_location_bindings": [
+            "active",
+            "assignment_id",
+            "priority",
+            "provider_id",
+            "responder_id",
+            "source",
+            "unit_identifier"
+        ],
+        "unit_personnel_assignments": [
+            "assigned_by",
+            "member_id",
+            "notes",
+            "released_at",
+            "responder_id",
+            "role",
+            "status"
+        ],
+        "unit_types": [
+            "description",
+            "icon",
+            "name"
+        ],
+        "user": [
+            "can_login",
+            "home_org_id",
+            "level",
+            "member",
+            "must_change_password",
+            "passwd",
+            "preferred_lang",
+            "user"
+        ],
+        "user_password_history": [
+            "created_at",
+            "hash",
+            "user_id"
+        ],
+        "user_roles": [
+            "delegated_by",
+            "delegation_depth",
+            "expires_at",
+            "granted_at",
+            "granted_by",
+            "org_id",
+            "reason",
+            "role_id",
+            "scope_id",
+            "scope_kind",
+            "user_id"
+        ],
+        "user_screen_prefs": [
+            "prefs_json",
+            "screen",
+            "user_id"
+        ],
+        "user_tfa": [
+            "backup_codes_json",
+            "confirmed",
+            "enrolled_at",
+            "last_used_at",
+            "last_used_counter",
+            "secret_encrypted",
+            "user_id"
+        ],
+        "warnings": [
+            "_by",
+            "_from",
+            "_on",
+            "city",
+            "description",
+            "lat",
+            "lng",
+            "loc_type",
+            "radius",
+            "state",
+            "street",
+            "title"
+        ],
+        "weather_alert_areas": [
+            "active",
+            "kind",
+            "label",
+            "lat",
+            "lng",
+            "radius_miles",
+            "sort_order",
+            "state_code",
+            "zones"
+        ],
+        "weather_alert_dispatch": [
+            "alert_id",
+            "created_at",
+            "detail",
+            "nws_message_type",
+            "rule_id",
+            "status"
+        ],
+        "weather_alert_rules": [
+            "action_mode",
+            "active",
+            "area_id",
+            "event_allow",
+            "event_deny",
+            "label",
+            "message_types",
+            "min_severity",
+            "min_urgency",
+            "repeat_on_update",
+            "sort_order",
+            "target",
+            "target_ref"
+        ],
+        "weather_alerts": [
+            "area_desc",
+            "centroid_lat",
+            "centroid_lng",
+            "certainty",
+            "description",
+            "ends",
+            "event",
+            "expires",
+            "first_seen",
+            "geocode_ugc",
+            "headline",
+            "instruction",
+            "last_seen",
+            "message_type",
+            "nws_id",
+            "onset",
+            "polygon",
+            "severity",
+            "status",
+            "urgency"
+        ],
+        "webhook_deliveries": [
+            "attempt",
+            "duration_ms",
+            "error",
+            "event_type",
+            "http_status",
+            "payload",
+            "replayed_from_id",
+            "response_body",
+            "status",
+            "subscription_id",
+            "webhook_id"
+        ],
+        "webhook_subscriptions": [
+            "active",
+            "created_by",
+            "description",
+            "event_filters_json",
+            "hmac_secret",
+            "ip_allowlist_json",
+            "last_failure_at",
+            "last_success_at",
+            "name",
+            "retry_policy_json",
+            "target_url"
+        ],
+        "zello_outbox": [
+            "body",
+            "channel",
+            "kind",
+            "queued_by",
+            "recipient",
+            "source",
+            "status"
+        ],
+        "zello_user_config": [
+            "auto_connect",
+            "enabled",
+            "play_sounds",
+            "ptt_key",
+            "updated",
+            "user_id",
+            "zello_password",
+            "zello_username"
+        ],
+        "zello_ws_tokens": [
+            "created",
+            "token",
+            "user",
+            "user_level"
+        ]
+    },
+    "_meta": {
+        "generated_by": "tools/gen_schema_manifest.php",
+        "purpose": "columns this code writes to; checked by inc/schema-verify.php",
+        "tables": 128,
+        "columns": 1008
+    }
+}

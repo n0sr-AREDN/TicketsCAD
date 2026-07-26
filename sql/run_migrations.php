@@ -112,6 +112,40 @@ foreach ($migrations as $name => $m) {
 
 echo sprintf("Already applied: %d   Pending: %d\n\n", $applied, count($pending));
 
+// ── 3b. Verify the OUTCOME, not just the bookkeeping ────────────────────
+//
+// Phase 125 (2026-07-26). The tracker above records whether a script RAN. It
+// cannot know whether the schema that script produced still exists. If a table
+// is dropped during crash recovery, or the database is restored from an older
+// backup, every script still shows as applied and this runner does nothing —
+// while the app is broken. A beta tester hit exactly that: he dropped four
+// damaged tables, ran this script, was told everything was up to date, and had
+// to discover --force on his own.
+//
+// So: ask the database. If the schema is behind what the code writes to, the
+// tracker is not to be trusted for this run. Every migration here is required
+// to be idempotent, so re-running them is safe and is the documented repair.
+if (!$force) {
+    require_once __DIR__ . '/../inc/schema-verify.php';
+    $verify = schema_verify();
+    if ($verify['available'] && !$verify['ok']) {
+        echo "SCHEMA CHECK: this database does not match the code.\n";
+        foreach ($verify['missing_tables'] as $t) {
+            echo "  missing table  `{$t}`\n";
+        }
+        foreach ($verify['missing_columns'] as $t => $cols) {
+            echo "  missing column(s) on `{$t}`: " . implode(', ', $cols) . "\n";
+        }
+        echo "\n  The migration tracker says these scripts already ran, but their\n";
+        echo "  schema is not present. Re-applying every migration (they are\n";
+        echo "  idempotent — nothing is deleted).\n\n";
+        $pending = $migrations;   // self-force; no need for the admin to know --force
+        $force   = true;
+    } elseif ($verify['available']) {
+        echo "Schema check: OK ({$verify['checked_tables']} tables, {$verify['checked_columns']} columns verified).\n\n";
+    }
+}
+
 if ($listOnly) {
     echo "Status report (--list):\n";
     foreach ($migrations as $name => $m) {

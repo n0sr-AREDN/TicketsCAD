@@ -534,6 +534,52 @@ function health_check_dependencies(): array
     }
 }
 
+/**
+ * Does the database have the columns this version of the code writes to?
+ *
+ * Phase 125 (2026-07-26). Every other check here is about FILES. None of them
+ * could see the failure that actually cost a beta tester his week: a database
+ * whose structure had fallen behind the code, so saving a team returned an
+ * unexplained HTTP 400. The migration runner could not see it either — its
+ * tracker records whether a script RAN, not whether its schema still exists.
+ *
+ * CRITICAL rather than warn: a missing column is not degraded, it is a screen
+ * that cannot save.
+ */
+function health_check_schema(): array
+{
+    try {
+        require_once __DIR__ . '/schema-verify.php';
+        $v = schema_verify();
+
+        if (!$v['available']) {
+            // Cannot verify (no manifest, unreadable information_schema).
+            // Report it, but never as a failure of the user's install.
+            return [
+                'checked'  => false,
+                'error'    => $v['error'] ?? 'schema could not be verified',
+                'severity' => 'ok',
+                'summary'  => schema_verify_summary($v),
+            ];
+        }
+
+        return [
+            'checked'              => true,
+            'ok'                   => $v['ok'],
+            'checked_tables'       => $v['checked_tables'],
+            'checked_columns'      => $v['checked_columns'],
+            'missing_tables'       => $v['missing_tables'],
+            'missing_columns'      => $v['missing_columns'],
+            'missing_column_count' => $v['missing_column_count'],
+            'severity'             => $v['ok'] ? 'ok' : 'critical',
+            'summary'              => schema_verify_summary($v),
+            'remedy'               => $v['ok'] ? '' : schema_verify_repair_hint(),
+        ];
+    } catch (Throwable $e) {
+        return ['checked' => false, 'error' => 'schema check failed', 'severity' => 'ok'];
+    }
+}
+
 function health_check_all(): array
 {
     try {
@@ -542,6 +588,7 @@ function health_check_all(): array
         $opcache    = health_check_opcache();
         $version    = health_check_version_match();
         $deps       = health_check_dependencies();
+        $schema     = health_check_schema();
 
         $critical = 0;
         $warn     = 0;
@@ -565,6 +612,11 @@ function health_check_all(): array
         if (($deps['severity'] ?? '') === 'warn') {
             $warn++;
         }
+        if (($schema['severity'] ?? '') === 'critical') {
+            $critical++;
+        } elseif (($schema['severity'] ?? '') === 'warn') {
+            $warn++;
+        }
 
         return [
             'checked'      => true,
@@ -576,6 +628,7 @@ function health_check_all(): array
             'opcache'      => $opcache,
             'version'      => $version,
             'dependencies' => $deps,
+            'schema'       => $schema,
             'summary'      => ['critical' => $critical, 'warn' => $warn],
         ];
     } catch (Throwable $e) {

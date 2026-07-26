@@ -109,6 +109,16 @@ function json_response($data, int $status = 200): void
             $status = 503;   // service degraded, not a client error
         }
     }
+    // Phase 125 (2026-07-26): if this request failed because the database is
+    // missing a column the code writes to, say so. Otherwise the caller sees a
+    // bare "Save failed: HTTP 400" and has no way to know the problem is schema
+    // drift, not their input — which is exactly what happened on `teams`.
+    // Only rewrites replies that are ALREADY errors; a successful request is
+    // never touched.
+    if ($status >= 400 && function_exists('schema_drift_seen') && schema_drift_seen()) {
+        $data   = schema_drift_payload();
+        $status = 503;   // the install is degraded, the request was not invalid
+    }
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($data, JSON_UNESCAPED_UNICODE);

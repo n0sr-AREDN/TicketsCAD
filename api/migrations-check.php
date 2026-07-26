@@ -125,4 +125,27 @@ foreach ($onDisk as $name => $hash) {
     }
 }
 
+// Phase 125 (2026-07-26): the tracker above only knows which SCRIPTS ran. It
+// cannot know whether their schema still exists, so on an install whose tables
+// were dropped during crash recovery — or restored from an older backup — this
+// endpoint would cheerfully report "pending: 0" while saves failed. Ask the
+// database as well, and let the caller see both answers.
+require_once __DIR__ . '/../inc/schema-verify.php';
+$verify = schema_verify();
+$response['schema'] = [
+    'verified'             => (bool) $verify['available'],
+    'ok'                   => (bool) $verify['ok'],
+    'checked_tables'       => $verify['checked_tables'],
+    'checked_columns'      => $verify['checked_columns'],
+    'missing_tables'       => $verify['missing_tables'],
+    'missing_columns'      => $verify['missing_columns'],
+    'missing_column_count' => $verify['missing_column_count'],
+    'summary'              => schema_verify_summary($verify),
+    'repair'               => $verify['ok'] ? '' : schema_verify_repair_hint(),
+];
+// "Up to date" must mean the schema is right, not merely that the scripts ran.
+if ($verify['available'] && !$verify['ok']) {
+    $response['needs_attention'] = true;
+}
+
 json_response($response);
