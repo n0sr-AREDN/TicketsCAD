@@ -230,6 +230,170 @@ function backup_maybe_run_opportunistic(): void {
     }
 }
 
+/**
+ * Extract the SQL text out of a backup archive (.zip / .gz / .sql).
+ * Shared by the restore tool and the drill so they cannot drift apart.
+ */
+function backup_extract_sql(string $archive): ?string {
+    if (!is_file($archive)) return null;
+    if (substr($archive, -4) === '.zip') {
+        if (!class_exists('ZipArchive')) return null;
+        $zip = new ZipArchive();
+        if ($zip->open($archive) !== true) return null;
+        $sql = null;
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            if (substr($zip->getNameIndex($i), -4) === '.sql') { $sql = $zip->getFromIndex($i); break; }
+        }
+        $zip->close();
+        return is_string($sql) ? $sql : null;
+    }
+    if (substr($archive, -3) === '.gz') {
+        if (!function_exists('gzopen')) return null;
+        $fh = gzopen($archive, 'rb');
+        if (!$fh) return null;
+        $sql = '';
+        while (!gzeof($fh)) { $sql .= gzread($fh, 1048576); }
+        gzclose($fh);
+        return $sql !== '' ? $sql : null;
+    }
+    $sql = file_get_contents($archive);
+    return is_string($sql) && $sql !== '' ? $sql : null;
+}
+
+/** Apply a dump to an already-open PDO handle. Returns [applied, errors, firstErrors]. */
+function backup_apply_sql(PDO $pdo, string $sql, int $maxReportedErrors = 3): array {
+    $applied = 0; $errors = 0; $reported = [];
+    try { $pdo->exec('SET FOREIGN_KEY_CHECKS=0'); } catch (Throwable $e) {}
+    foreach (preg_split('/;\s*[\r\n]+/', $sql) as $stmt) {
+        $stmt = trim($stmt);
+        if ($stmt === '' || str_starts_with($stmt, '--') || str_starts_with($stmt, '/*')) continue;
+        try { $pdo->exec($stmt); $applied++; }
+        catch (Throwable $e) {
+            $errors++;
+            if (count($reported) < $maxReportedErrors) $reported[] = substr($e->getMessage(), 0, 160);
+        }
+    }
+    try { $pdo->exec('SET FOREIGN_KEY_CHECKS=1'); } catch (Throwable $e) {}
+    return [$applied, $errors, $reported];
+}
+
+/**
+ * RESTORE DRILL — the thing that turns "verified" into "proven".
+ *
+ * backup_verify() proves an archive is readable and contains schema. That is
+ * necessary but not sufficient: the only way to know a backup RESTORES is to
+ * restore it. This does exactly that, into a throwaway database, and then
+ * reports how many rows of real content came back — so you learn "this backup
+ * yields 8 people and 214 incidents", not merely "the file opens".
+ *
+ * It needs database-admin credentials because creating a database is a
+ * privilege the app's own user should NOT have (a correctly-permissioned
+ * install denies it — verified 2026-07-25). Credentials are passed in per-run
+ * and never stored.
+ *
+ * The live database is only ever READ (row counts, for comparison). The scratch
+ * database is always dropped, including on failure.
+ *
+ * @return array ok, scratch, applied, errors, tables, counts[], compare[], detail
+ */
+function backup_drill(string $archive, string $adminUser, string $adminPass,
+                      array $countTables = ['member', 'ticket', 'responder', 'facilities']): array {
+    // 'conclusive' distinguishes "we drilled and the BACKUP is bad" from "we
+    // could not drill at all" (bad credentials, no privilege, host unreachable).
+    // Reporting a setup problem as a failed backup would send someone chasing a
+    // healthy backup — the same class of misleading message this phase exists to
+    // remove. Only a conclusive run may condemn a backup.
+    $out = ['ok' => false, 'conclusive' => false, 'scratch' => null, 'applied' => 0,
+            'errors' => 0, 'tables' => 0, 'counts' => [], 'compare' => [], 'detail' => ''];
+
+    [$vok, $vdetail] = backup_verify($archive);
+    if (!$vok) {
+        $out['conclusive'] = true;   // we read the archive; it really is unusable
+        $out['detail'] = 'archive failed verification: ' . $vdetail;
+        return $out;
+    }
+
+    $sql = backup_extract_sql($archive);
+    if ($sql === null) {
+        $out['conclusive'] = true;
+        $out['detail'] = 'could not extract SQL from the archive';
+        return $out;
+    }
+
+    $host = $GLOBALS['db_host'] ?? 'localhost';
+    $live = (string) ($GLOBALS['db_name'] ?? '');
+    // Distinct, obviously-temporary name. Never the live database.
+    $scratch = ($live !== '' ? $live : 'ticketscad') . '_drill_' . substr(bin2hex(random_bytes(4)), 0, 8);
+    if (strcasecmp($scratch, $live) === 0) { $out['detail'] = 'refusing to drill onto the live database'; return $out; }
+    $out['scratch'] = $scratch;
+
+    $root = null;
+    try {
+        $root = new PDO("mysql:host={$host};charset=utf8mb4", $adminUser, $adminPass,
+                        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    } catch (Throwable $e) {
+        $out['detail'] = 'could not connect with the supplied admin credentials: ' . $e->getMessage();
+        return $out;
+    }
+
+    try {
+        $root->exec("CREATE DATABASE `{$scratch}` CHARACTER SET utf8mb4");
+    } catch (Throwable $e) {
+        $out['detail'] = 'could not create the scratch database (needs CREATE privilege): ' . $e->getMessage();
+        return $out;
+    }
+
+    // Declared out here so the finally block can CLOSE it before dropping the
+    // database. Leaving this handle open makes DROP DATABASE wait forever on a
+    // metadata lock — the drill hangs and leaks the scratch database. (Found by
+    // running a real drill, 2026-07-25; every unit test passed while it
+    // deadlocked, which is exactly why this had to be exercised for real.)
+    $pdo = null;
+    try {
+        $pdo = new PDO("mysql:host={$host};dbname={$scratch};charset=utf8mb4", $adminUser, $adminPass,
+                       [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        [$applied, $errors, $reported] = backup_apply_sql($pdo, $sql);
+        $out['applied'] = $applied;
+        $out['errors']  = $errors;
+
+        $out['tables'] = (int) $pdo->query(
+            "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = " . $pdo->quote($scratch)
+        )->fetchColumn();
+
+        foreach ($countTables as $t) {
+            try { $out['counts'][$t] = (int) $pdo->query("SELECT COUNT(*) FROM `{$t}`")->fetchColumn(); }
+            catch (Throwable $e) { $out['counts'][$t] = null; }   // table not in this backup
+        }
+
+        // Compare against what is live right now — a drill that restores an
+        // EMPTY copy of a populated system should not read as a pass.
+        foreach ($countTables as $t) {
+            try { $out['compare'][$t] = (int) db_fetch_value("SELECT COUNT(*) FROM `{$t}`"); }
+            catch (Throwable $e) { $out['compare'][$t] = null; }
+        }
+
+        $restoredRows = array_sum(array_map(static fn($v) => (int) $v, $out['counts']));
+        $out['conclusive'] = true;   // the restore actually ran — this verdict is real
+        $out['ok'] = ($out['tables'] > 0 && $errors === 0);
+        $out['detail'] = $out['ok']
+            ? "restored {$applied} statements into {$out['tables']} tables, {$restoredRows} rows across sampled tables"
+            : "restore produced {$errors} error(s): " . implode(' | ', $reported);
+    } catch (Throwable $e) {
+        $out['detail'] = 'drill failed: ' . $e->getMessage();
+    } finally {
+        // Release the scratch connection FIRST — an open handle on that database
+        // blocks DROP DATABASE on a metadata lock (indefinitely).
+        $pdo = null;
+        // ALWAYS clean up the scratch database, success or failure.
+        try { $root->exec("DROP DATABASE IF EXISTS `{$scratch}`"); }
+        catch (Throwable $e) { $out['detail'] .= ' (WARNING: could not drop scratch database ' . $scratch . ')'; }
+    }
+
+    backup_setting_set('backup_last_drill_at', (string) time());
+    backup_setting_set('backup_last_drill_status', $out['ok'] ? 'passed' : ('failed: ' . $out['detail']));
+    return $out;
+}
+
 /** Status for the UI / health page. */
 function backup_status(): array {
     $lastOk    = (int) backup_setting('backup_last_ok_at', '0');
@@ -245,6 +409,10 @@ function backup_status(): array {
         'last_ok_at'      => $lastOk ?: null,
         'last_ok_age_hours' => $ageHours,
         'last_status'     => backup_setting('backup_last_status', 'never run'),
+        // A backup that has never been restored is still only a hypothesis —
+        // surface when the last restore DRILL ran so "restorable" is evidenced.
+        'last_drill_at'     => (int) backup_setting('backup_last_drill_at', '0') ?: null,
+        'last_drill_status' => backup_setting('backup_last_drill_status', 'never drilled'),
         'stale'           => $stale,
         'warning'         => $stale
             ? 'No verified backup recently — if this machine lost power now, recent work could be lost.'

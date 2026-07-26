@@ -120,6 +120,45 @@ is_file($runner) ? ok('tools/backup_run.php exists for cron / Task Scheduler') :
 $st = backup_status();
 (array_key_exists('stale', $st) && array_key_exists('last_status', $st) && array_key_exists('warning', $st))
     ? ok('status reports staleness for the UI') : bad('status shape');
+(array_key_exists('last_drill_at', $st) && array_key_exists('last_drill_status', $st))
+    ? ok('status reports when a restore drill last ran') : bad('drill status in status()');
+
+// ── 7. The restore DRILL — "verified" vs "proven" ──────────────────
+// A drill must never condemn a backup for a SETUP problem. Bad credentials are
+// inconclusive; only a run that actually restored may declare a backup bad.
+$tmp2 = rtrim(sys_get_temp_dir(), '/\\') . '/tcad_drill_' . getmypid();
+@mkdir($tmp2, 0777, true);
+$sqlOk = "$tmp2/drillgood.sql";
+file_put_contents($sqlOk, "CREATE TABLE `member` (id INT);\n" . str_repeat("-- pad\n", 100));
+
+$r = backup_drill($sqlOk, 'definitely_not_a_real_user_' . getmypid(), 'wrong-password');
+($r['ok'] === false && empty($r['conclusive']))
+    ? ok('bad admin credentials → INCONCLUSIVE, not a failed backup')
+    : bad('bad creds are inconclusive', json_encode(['ok' => $r['ok'], 'conclusive' => $r['conclusive'] ?? null]));
+(stripos($r['detail'], 'credential') !== false || stripos($r['detail'], 'connect') !== false)
+    ? ok('the message blames credentials, not the backup') : bad('credential message', $r['detail']);
+
+// A genuinely unusable archive IS conclusive — we read it and it is bad.
+$bad = "$tmp2/notabackup.sql";
+file_put_contents($bad, str_repeat("no schema in here at all\n", 100));
+$r2 = backup_drill($bad, 'someuser', 'somepass');
+($r2['ok'] === false && !empty($r2['conclusive']))
+    ? ok('an unusable archive is a CONCLUSIVE failure') : bad('bad archive conclusive');
+
+// The drill must never target the live database.
+(strpos((string) ($r['scratch'] ?? ''), (string) ($GLOBALS['db_name'] ?? 'newui')) === 0
+    || $r['scratch'] === null)
+    ? ok('scratch database is a distinct, throwaway name') : bad('scratch naming', (string) $r['scratch']);
+
+$rs2 = @file_get_contents("$base/tools/restore.php") ?: '';
+(strpos($rs2, "--drill") !== false && strpos($rs2, 'DROP DATABASE') === false)
+    ? ok('restore.php exposes --drill (and does not itself drop databases)')
+    : bad('--drill wired into restore.php');
+(strpos($rs2, 'never written') !== false || stripos($rs2, 'only read') !== false)
+    ? ok('drill states the live database is only read') : bad('drill safety wording');
+
+foreach (glob("$tmp2/*") ?: [] as $f) @unlink($f);
+@rmdir($tmp2);
 
 echo "\n$pass passed, $fail failed\n";
 exit($fail ? 1 : 0);

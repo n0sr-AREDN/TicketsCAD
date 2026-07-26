@@ -33,15 +33,22 @@ require_once __DIR__ . '/../inc/backup_schedule.php';
 function say(string $s): void { echo '[' . date('H:i:s') . "] $s\n"; }
 function fail(string $s): void { say('ERROR: ' . $s); exit(1); }
 
-$opts    = getopt('', ['file:', 'list', 'dry-run', 'yes', 'help']);
+$opts    = getopt('', ['file:', 'list', 'dry-run', 'yes', 'drill', 'admin-user:', 'admin-pass:', 'help']);
 $dir     = backup_dir();
 
 if (isset($opts['help'])) {
     echo "Restore a TicketsCAD backup.\n\n"
        . "  --list             show available backups\n"
-       . "  --file <path>      the archive to restore\n"
+       . "  --file <path>      the archive to restore (newest if omitted with --drill)\n"
        . "  --dry-run          inspect only; change nothing\n"
        . "  --yes              actually perform the restore (required to write)\n\n"
+       . "  --drill            PROVE a backup restores, without touching your data:\n"
+       . "                     restores it into a throwaway database, reports what\n"
+       . "                     came back, then drops it. Needs database-admin rights\n"
+       . "                     (creating a database is a privilege the app's own user\n"
+       . "                     should not have), supplied per-run and never stored:\n"
+       . "                       --admin-user <u> --admin-pass <p>\n"
+       . "                     or the TCAD_ADMIN_USER / TCAD_ADMIN_PASS env vars.\n\n"
        . "A safety backup of the CURRENT database is taken before anything is written.\n";
     exit(0);
 }
@@ -59,6 +66,62 @@ if (isset($opts['list'])) {
             date('Y-m-d H:i', filemtime($f)),
             $ok ? 'verified' : 'UNREADABLE (' . $detail . ')');
     }
+    exit(0);
+}
+
+// ── --drill: prove a backup restores, without touching the live database ───
+if (isset($opts['drill'])) {
+    $file = $opts['file'] ?? '';
+    if ($file === '') {   // default to the newest backup — the one that matters
+        $cand = glob(rtrim($dir, '/\\') . '/*.{zip,gz,sql}', GLOB_BRACE) ?: [];
+        usort($cand, static fn($a, $b) => filemtime($b) <=> filemtime($a));
+        $file = $cand[0] ?? '';
+        if ($file === '') fail('no backups found in ' . $dir);
+    } elseif (!is_file($file)) {
+        $alt = rtrim($dir, '/\\') . '/' . basename($file);
+        if (is_file($alt)) $file = $alt; else fail('no such file: ' . $file);
+    }
+
+    $adminUser = $opts['admin-user'] ?? getenv('TCAD_ADMIN_USER') ?: '';
+    $adminPass = $opts['admin-pass'] ?? getenv('TCAD_ADMIN_PASS');
+    if ($adminPass === false) $adminPass = '';
+    if ($adminUser === '') {
+        fail("a drill needs database-admin credentials (creating a database is a privilege the\n"
+           . "         app's own user should not have). Pass --admin-user <u> [--admin-pass <p>],\n"
+           . '         or set TCAD_ADMIN_USER / TCAD_ADMIN_PASS to keep them out of shell history.');
+    }
+
+    say('RESTORE DRILL — this restores into a throwaway database and drops it.');
+    say('Your live database is only read (for comparison); it is never written.');
+    say('Archive: ' . $file . ' (' . backup_format_size((int) filesize($file)) . ')');
+
+    $r = backup_drill($file, $adminUser, (string) $adminPass);
+    say('Scratch database: ' . ($r['scratch'] ?? '(none)') . ' (dropped afterwards)');
+
+    if (!$r['ok']) {
+        if (empty($r['conclusive'])) {
+            // We never got as far as restoring — this says nothing about the backup.
+            say('DRILL COULD NOT RUN — ' . $r['detail']);
+            say('This is a setup problem (credentials/privileges), NOT a verdict on your backup.');
+            say('The backup itself was read and verified before this point; it is unaffected.');
+            exit(2);
+        }
+        say('DRILL FAILED — ' . $r['detail']);
+        say('This backup should NOT be relied on. Take a fresh one and drill again.');
+        exit(1);
+    }
+
+    say('Restored ' . $r['applied'] . ' statements into ' . $r['tables'] . ' tables, '
+        . $r['errors'] . ' errors.');
+    say('Row counts recovered from the backup, next to what is live now:');
+    foreach ($r['counts'] as $t => $n) {
+        $live = $r['compare'][$t] ?? null;
+        $flag = ($n !== null && $live !== null && $live > 0 && $n === 0) ? '   <-- EMPTY in backup!' : '';
+        printf("    %-14s backup: %-8s live: %-8s%s\n", $t,
+            $n === null ? 'n/a' : (string) $n,
+            $live === null ? 'n/a' : (string) $live, $flag);
+    }
+    say('DRILL PASSED — this backup restores.');
     exit(0);
 }
 
