@@ -86,7 +86,11 @@ foreach (glob("$base/sql/*.sql") ?: [] as $f) {
 // backfill, drop the duplicates, fix the code). They are listed — not ignored —
 // so the debt is visible and, critically, so any NEW duplicate fails the suite.
 // Remove entries from this list as they are fixed; never add to it.
-$knownDebt = ['constituents', 'member', 'member_status', 'member_types'];
+// Phase 124 (2026-07-26): all four are FIXED — base_schema.sql is now the single
+// source of CREATE TABLE, and the columns the removed definitions contributed
+// are ensured by sql/run_schema_canonicalize.php. The list is empty and must
+// stay that way: any table defined twice now fails the suite outright.
+$knownDebt = [];
 
 $dupes = [];
 foreach ($byTable as $t => $files) {

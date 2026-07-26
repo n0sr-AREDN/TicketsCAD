@@ -3,6 +3,65 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.1.0] - 2026-07-26
+
+A resilience release. Everything here comes from real installs run by real
+people this week — a power loss that looked like total data loss, a Docker CAD
+with no way to run the radio bridge, and a database table that existed in two
+incompatible shapes at once.
+
+**Upgrading:** back up first, then run the migrations as usual
+(`php sql/run_migrations.php`). Two schema-normalizing migrations are included;
+both are idempotent, neither deletes a row, and both report anything they cannot
+safely decide rather than guessing.
+
+### Added
+- **Automatic backups, on by default.** A daily backup runs on its own — no
+  setup, no scheduler required (it also works from cron or Windows Task
+  Scheduler via `tools/backup_run.php`). Interval, retention and destination are
+  configurable, and a warning appears if there has been no recent verified
+  backup.
+- **Backups are verified, not assumed.** Every archive is reopened and checked
+  to contain a real database dump before it counts as a success.
+- **A restore tool — `tools/restore.php`.** There previously was no way to
+  restore a backup. It is dry-run by default, verifies the archive before
+  touching anything, and takes a safety backup of the current database first, so
+  restoring the wrong file is itself undoable.
+- **`restore.php --drill` — prove a backup restores.** Restores a backup into a
+  throwaway database, reports how many tables and rows came back next to what is
+  live, then drops it. Your real database is only read.
+- **Docker deployment for the DMR bridge** — `services/dvswitch/docker/` and
+  [docs/RADIO-DMR-DOCKER.md](docs/RADIO-DMR-DOCKER.md). Runs the bridge and its
+  AMBE vocoder together, configured entirely by environment variables, and
+  refuses to start if the vocoder is not answering (a bridge with a dead vocoder
+  otherwise connects normally and passes silence).
+- **[A getting-started guide for beginners](docs/GETTING-STARTED-FOR-BEGINNERS.md)**
+  — what TicketsCAD is, how to open it, the address-versus-folder gotcha, and
+  free links for learning the command line, Docker and git.
+
+### Fixed
+- **A damaged database table no longer looks like an empty list.** After an
+  unclean shutdown a single unreadable table could make a whole screen render
+  empty — which reads as "my data is gone" when the records are safe. Affected
+  screens now say which table is damaged, that the data is likely recoverable,
+  and where the repair steps are.
+- **Teams could exist with no name, and on some installs the Teams screen would
+  not load or save.** The `teams` table had two competing definitions, so the
+  columns an install ended up with depended on the order the setup scripts ran,
+  and the built-in seed wrote to columns that later became read-only — leaving
+  four unnamed teams. There is now one canonical definition, and
+  `sql/run_teams_schema_normalize.php` brings any install onto it.
+- **The same hazard is now impossible.** `member`, `member_types`,
+  `member_status` and `constituents` were each defined by two different files as
+  well; all are consolidated, and a test now fails the build if any table is
+  ever defined twice again.
+- **MySQL troubleshooting** for two situations that cost users an evening each:
+  MySQL not starting or not staying running, and recovering a crashed table
+  after a power loss. See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+- Docker: the guide now states plainly that updating requires
+  `git pull` **and** `docker compose up -d --build` — a pull alone does not
+  update a running container.
+
 ## [4.0.6] - 2026-07-25
 
 ### Fixed

@@ -135,9 +135,43 @@ try {
     }
 } catch (Throwable $e) { /* non-fatal */ }
 
-// ── 4. Drop the duplicate columns ──────────────────────────────────────────
+// ── 3b. Ensure EVERY column the writer needs exists ────────────────────────
+// inc/team-write.php INSERTs the full set below. A table rebuilt from a partial
+// hand-written definition satisfies the read path but fails the INSERT with a
+// 400 — which is exactly what happened to a beta tester on 2026-07-25. Adding a
+// column is safe; the point is that the table must be able to accept a save.
+$required = [
+    'by'                 => "ADD COLUMN `by` int(7) NOT NULL DEFAULT 0",
+    'from'               => "ADD COLUMN `from` varchar(16) NOT NULL DEFAULT ''",
+    'on'                 => "ADD COLUMN `on` datetime DEFAULT NULL",
+    'created_at'         => "ADD COLUMN `created_at` datetime DEFAULT NULL",
+    'updated_at'         => "ADD COLUMN `updated_at` datetime DEFAULT NULL",
+    'nims_resource_type' => "ADD COLUMN `nims_resource_type` varchar(64) NOT NULL DEFAULT ''",
+    'nims_typing_level'  => "ADD COLUMN `nims_typing_level` varchar(16) NOT NULL DEFAULT ''",
+    'rtlt_code'          => "ADD COLUMN `rtlt_code` varchar(32) NOT NULL DEFAULT ''",
+];
+foreach ($required as $col => $ddl) {
+    if ($has($col)) continue;
+    try { db_query("ALTER TABLE {$T} {$ddl}"); say("added required column `{$col}` (needed to SAVE a team)"); $cols[$col] = true; }
+    catch (Throwable $e) { say("WARN could not add `{$col}`: " . $e->getMessage()); }
+}
+$cols = [];
+foreach (db_fetch_all("SHOW COLUMNS FROM {$T}") as $c) { $cols[$c['Field']] = $c; }
+$has = static fn(string $c): bool => isset($cols[$c]);
+
+// ── 4. Drop the STORED duplicate columns ───────────────────────────────────
+// A GENERATED column (e.g. `name` AS (`team`) VIRTUAL, added by
+// seed_scheduling_data.php) is NOT a duplicate — it is a read-only alias that
+// is always in sync by definition, and it is how older `t.name` code keeps
+// working. Dropping it would also fight that script forever, each re-adding
+// what the other removed. Only drop columns that store independent data.
 foreach (['name', 'description', 'team_type', 'leader_id', 'deputy_id'] as $dup) {
     if (!$has($dup)) continue;
+    $extra = strtoupper((string) ($cols[$dup]['Extra'] ?? ''));
+    if (strpos($extra, 'GENERATED') !== false) {
+        say("kept `{$dup}` — it is a GENERATED alias, always in sync (not a duplicate)");
+        continue;
+    }
     try { db_query("ALTER TABLE {$T} DROP COLUMN `{$dup}`"); say("dropped duplicate column `{$dup}`"); }
     catch (Throwable $e) { say("WARN could not drop `{$dup}`: " . $e->getMessage()); }
 }

@@ -2,68 +2,35 @@
 -- Personnel tracking with certifications, teams, and contact info.
 -- Simplified from legacy 65+ field member table to a clean schema.
 
-CREATE TABLE IF NOT EXISTS `member_types` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `name` varchar(64) NOT NULL,
-  `description` varchar(255) DEFAULT NULL,
-  `color` varchar(7) DEFAULT '#6c757d' COMMENT 'Badge color hex',
-  `sort_order` int(11) DEFAULT 0,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uniq_name` (`name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- `member_types` is deliberately NOT created here (Phase 124, 2026-07-26).
+--
+-- base_schema.sql is the single source of CREATE TABLE. This file used to
+-- define a competing version of `member_types`, so the shape an install ended up with
+-- depended on which script ran first — the bug that took a beta tester's
+-- Teams screen down (see Phase 123).
+-- sort_order is ensured by sql/run_schema_canonicalize.php.
+-- To add a column: SHOW COLUMNS the live table first, then ALTER it from an
+-- idempotent run_*.php migration (see sql/run_schema_canonicalize.php).
 
-CREATE TABLE IF NOT EXISTS `member_status` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `name` varchar(64) NOT NULL,
-  `description` varchar(255) DEFAULT NULL,
-  `color` varchar(7) DEFAULT '#6c757d',
-  `bg_color` varchar(7) DEFAULT '#ffffff',
-  `sort_order` int(11) DEFAULT 0,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uniq_name` (`name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- `member_status` is deliberately NOT created here (Phase 124, 2026-07-26).
+--
+-- base_schema.sql is the single source of CREATE TABLE. This file used to
+-- define a competing version of `member_status`, so the shape an install ended up with
+-- depended on which script ran first — the bug that took a beta tester's
+-- Teams screen down (see Phase 123).
+-- Canonical label column is `status_val` (not `name`); see run_schema_canonicalize.php.
+-- To add a column: SHOW COLUMNS the live table first, then ALTER it from an
+-- idempotent run_*.php migration (see sql/run_schema_canonicalize.php).
 
-CREATE TABLE IF NOT EXISTS `member` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `first_name` varchar(64) NOT NULL,
-  `last_name` varchar(64) NOT NULL,
-  `middle_name` varchar(64) DEFAULT NULL,
-  `member_type_id` int(11) DEFAULT NULL,
-  `member_status_id` int(11) DEFAULT NULL,
-  `team_id` int(11) DEFAULT NULL,
-  `callsign` varchar(24) DEFAULT NULL,
-  `title` varchar(64) DEFAULT NULL COMMENT 'Position/title',
-  `email` varchar(128) DEFAULT NULL,
-  `phone_home` varchar(24) DEFAULT NULL,
-  `phone_work` varchar(24) DEFAULT NULL,
-  `phone_cell` varchar(24) DEFAULT NULL,
-  `street` varchar(128) DEFAULT NULL,
-  `city` varchar(64) DEFAULT NULL,
-  `state` varchar(4) DEFAULT NULL,
-  `zip` varchar(16) DEFAULT NULL,
-  `lat` double DEFAULT NULL,
-  `lng` double DEFAULT NULL,
-  `dob` date DEFAULT NULL,
-  `join_date` date DEFAULT NULL,
-  `membership_due` date DEFAULT NULL,
-  `available` enum('Yes','No') DEFAULT 'Yes',
-  `responder_id` int(11) DEFAULT NULL COMMENT 'Link to responder table',
-  `user_id` int(11) DEFAULT NULL COMMENT 'Link to user account',
-  `photo_url` varchar(255) DEFAULT NULL,
-  `emergency_contact` varchar(128) DEFAULT NULL,
-  `emergency_phone` varchar(24) DEFAULT NULL,
-  `emergency_relation` varchar(64) DEFAULT NULL,
-  `medical_info` text DEFAULT NULL COMMENT 'Allergies, medications, conditions',
-  `notes` text DEFAULT NULL,
-  `created_by` int(11) DEFAULT NULL,
-  `created_at` datetime DEFAULT NULL,
-  `updated_at` datetime DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  KEY `member_type_id` (`member_type_id`),
-  KEY `member_status_id` (`member_status_id`),
-  KEY `team_id` (`team_id`),
-  KEY `last_name` (`last_name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- `member` is deliberately NOT created here (Phase 124, 2026-07-26).
+--
+-- base_schema.sql is the single source of CREATE TABLE. This file used to
+-- define a competing version of `member`, so the shape an install ended up with
+-- depended on which script ran first — the bug that took a beta tester's
+-- Teams screen down (see Phase 123).
+-- Legacy field1-65 lives in base_schema; sql/run_member_columns.php adds the modern named columns.
+-- To add a column: SHOW COLUMNS the live table first, then ALTER it from an
+-- idempotent run_*.php migration (see sql/run_schema_canonicalize.php).
 
 -- `teams` is deliberately NOT created here (Phase 123, 2026-07-25).
 --
@@ -116,17 +83,27 @@ INSERT IGNORE INTO `member_types` (`name`, `description`, `color`, `sort_order`)
 ('Inactive', 'Inactive member', '#6c757d', 4),
 ('Alumni', 'Former member', '#adb5bd', 5);
 
-INSERT IGNORE INTO `member_status` (`name`, `description`, `color`, `bg_color`, `sort_order`) VALUES
+-- Canonical columns (Phase 124): member_status uses `status_val` for the label
+-- and `background` for the colour — NOT `name`/`bg_color`. Seeding the wrong
+-- names silently produced unusable rows.
+INSERT IGNORE INTO `member_status` (`status_val`, `description`, `color`, `background`, `sort_order`) VALUES
 ('Active', 'Active and available', '#198754', '#d1e7dd', 1),
 ('On Leave', 'Temporarily unavailable', '#fd7e14', '#fff3cd', 2),
 ('Suspended', 'Membership suspended', '#dc3545', '#f8d7da', 3),
 ('Retired', 'Retired from service', '#6c757d', '#e2e3e5', 4);
 
-INSERT IGNORE INTO `teams` (`name`, `description`, `team_type`, `active`) VALUES
-('Alpha Team', 'Primary response team', 'General', 1),
-('Bravo Team', 'Secondary response team', 'General', 1),
-('Medical Unit', 'Medical response specialists', 'Medical', 1),
-('Communications', 'Radio and communications operators', 'RACES', 1);
+-- Canonical columns: teams uses `team` for the name and `mission` for the
+-- description. This seed previously wrote `name`/`description`/`team_type`;
+-- once `name` became a column generated from `team`, those seeded names
+-- evaporated and left four teams with a type but NO NAME on real installs.
+-- `team_type` was free text with no canonical equivalent (the canonical field
+-- is the numeric `ttypes_id`), so it is deliberately not seeded — set each
+-- team's type from the Teams screen.
+INSERT IGNORE INTO `teams` (`team`, `mission`, `active`) VALUES
+('Alpha Team', 'Primary response team', 1),
+('Bravo Team', 'Secondary response team', 1),
+('Medical Unit', 'Medical response specialists', 1),
+('Communications', 'Radio and communications operators', 1);
 
 INSERT IGNORE INTO `certifications` (`name`, `description`, `required`, `refresh_months`) VALUES
 ('CPR/First Aid', 'Basic CPR and First Aid certification', 1, 24),

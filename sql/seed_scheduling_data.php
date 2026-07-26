@@ -67,13 +67,13 @@ if ($teamCount == 0) {
 
     foreach ($teamData as $t) {
         try {
-            if ($isLegacyTeams) {
-                $pdo->prepare("INSERT INTO teams (`team`, `sub-group`, `ttypes_id`, `mission`, `leader`, `leader_dpty`, `by`, `from`, `on`) VALUES (?, '', 0, ?, 0, 0, 1, '127.0.0.1', NOW())")
-                    ->execute([$t['team'], $t['mission']]);
-            } else {
-                $pdo->prepare("INSERT INTO teams (name, description, active) VALUES (?, ?, 1)")
-                    ->execute([$t['team'], $t['mission']]);
-            }
+            // Phase 124: there is now ONE canonical `teams` schema, so the old
+            // "modern shape" branch is gone. It inserted into `name`/
+            // `description`, which are no longer storage columns — `name` is a
+            // GENERATED alias of `team`, and inserting into a generated column
+            // is an error. Always write the canonical columns.
+            $pdo->prepare("INSERT INTO teams (`team`, `sub-group`, `ttypes_id`, `mission`, `leader`, `leader_dpty`, `by`, `from`, `on`) VALUES (?, '', 0, ?, 0, 0, 1, '127.0.0.1', NOW())")
+                ->execute([$t['team'], $t['mission']]);
             echo "  Created team: {$t['team']}\n";
         } catch (Exception $e) {
             echo "  Skip {$t['team']}: " . $e->getMessage() . "\n";
