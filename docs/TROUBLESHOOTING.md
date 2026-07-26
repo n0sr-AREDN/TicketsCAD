@@ -18,6 +18,7 @@ If your symptom isn't here, check [FAQ.md](FAQ.md), then [/help.php → Troubles
   - [PHP can't connect to MariaDB](#php-cant-connect-mariadb)
   - [MySQL / MariaDB won't start or won't stay running](#mysql-wont-start)
   - ["Save failed" / schema is behind the code](#schema-out-of-date)
+  - [`git pull` says "not a git repository" (ZIP install)](#not-a-git-repository)
 - [Login + auth](#login--auth)
   - [Locked out of admin account](#admin-lockout)
   - [Forgot all backup codes + lost authenticator](#lost-tfa)
@@ -156,6 +157,47 @@ cd /var/www/newui && sudo -u www-data php sql/run_migrations.php
 ```
 
 For a live install with data, **always take a backup first**, then run the failing migration step manually in a transaction so you can roll back if needed.
+
+---
+
+### not-a-git-repository
+
+**Symptom:** updating with `git pull` fails immediately:
+
+```
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+```
+
+**Cause:** you installed by downloading a **ZIP** rather than cloning. A ZIP is
+just the files; it does not contain the hidden `.git` folder that records where
+the code came from, so there is nothing for git to pull from. Our update videos
+say "skip ahead to the update step" — that only applies to a cloned install, and
+that is our documentation's mistake, not yours.
+
+**Fix:** you do not need to reinstall and you do not lose anything. Adopt the
+folder you already have as a git checkout — four commands, and your
+`config.php`, `keys/`, `uploads/` and database are all left alone:
+
+```bash
+git init
+git remote add origin https://github.com/openises/TicketsCAD.git
+git fetch origin
+git checkout -f -B main origin/main
+```
+
+Then finish the update as normal:
+
+```bash
+php sql/run_migrations.php
+php tools/check-schema.php
+```
+
+Docker installs also need `docker compose up -d --build`.
+
+The full walkthrough — including what to back up first and what to do if a later
+pull complains — is in
+**[docs/SWITCH-FROM-ZIP-TO-GIT.md](SWITCH-FROM-ZIP-TO-GIT.md)**.
 
 ---
 

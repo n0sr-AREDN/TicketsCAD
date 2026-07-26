@@ -64,6 +64,14 @@ once, and `git pull` fetches the newer code — no re-downloading a zip, no copy
 files over the top. What you do **after** the pull depends on how you installed,
 and this part matters:
 
+> **Installed by downloading a ZIP instead of cloning?** Then `git pull` will
+> fail with `fatal: not a git repository`, because a ZIP does not include the
+> hidden `.git` folder git needs. You do **not** have to reinstall — you can
+> adopt your existing folder in four commands, keeping your config, keys,
+> uploads and database exactly as they are:
+> **[Switching from a ZIP install to git](SWITCH-FROM-ZIP-TO-GIT.md)**.
+> Do that once, and everything below applies to you too.
+
 - **XAMPP / manual install:** pull the new code into your TicketsCAD folder, then
   run the update (migration) step. Two short walkthroughs that assume zero
   command-line experience:

@@ -166,6 +166,8 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md).
 |-----|----------|
 | [`docs/INSTALL.md`](docs/INSTALL.md) | Administrators bringing up a fresh install |
 | [`docs/INSTALLATION-CHECKLIST.md`](docs/INSTALLATION-CHECKLIST.md) | Step-by-step fresh-install checklist |
+| [`docs/GETTING-STARTED-FOR-BEGINNERS.md`](docs/GETTING-STARTED-FOR-BEGINNERS.md) | Self-hosters who are not developers |
+| [`docs/SWITCH-FROM-ZIP-TO-GIT.md`](docs/SWITCH-FROM-ZIP-TO-GIT.md) | Installed from a ZIP and `git pull` says "not a git repository" |
 | [`docs/USER-GUIDE.md`](docs/USER-GUIDE.md) | Developer-oriented walkthrough |
 | [`docs/NEWUI-USER-GUIDE.md`](docs/NEWUI-USER-GUIDE.md) | End-user / dispatcher walkthrough |
 | [`docs/BACKUP-RECOVERY-RUNBOOK.md`](docs/BACKUP-RECOVERY-RUNBOOK.md) | Backup, recovery + incident response |
