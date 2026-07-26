@@ -97,6 +97,18 @@ function e(?string $value): string
  */
 function json_response($data, int $status = 200): void
 {
+    // Phase 121 (2026-07-25): if a storage-damaged table was hit while building
+    // this response, do NOT return a cheerful empty/partial list — that reads as
+    // "your data is gone". Replace it with a plain explanation naming the table
+    // and pointing at the repair steps. Only affects 2xx replies, and only when
+    // real damage was recorded (a merely-missing table is not damage).
+    if (function_exists('db_damage_intercept')) {
+        $damage = db_damage_intercept($status);
+        if ($damage !== null) {
+            $data   = $damage;
+            $status = 503;   // service degraded, not a client error
+        }
+    }
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($data, JSON_UNESCAPED_UNICODE);

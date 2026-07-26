@@ -72,9 +72,20 @@ function db(): PDO
  */
 function db_query(string $sql, array $params = []): PDOStatement
 {
-    $stmt = db()->prepare($sql);
-    $stmt->execute($params);
-    return $stmt;
+    try {
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+        return $stmt;
+    } catch (Throwable $e) {
+        // Phase 121 (2026-07-25): note STORAGE-LEVEL table damage (a crashed or
+        // tablespace-less table) before rethrowing, so a caller that swallows
+        // the exception and returns [] cannot silently render a damaged table
+        // as an empty screen. Behaviour is otherwise unchanged: the exception
+        // still propagates exactly as before. See inc/db-damage.php.
+        require_once __DIR__ . '/db-damage.php';
+        db_damage_note($e);
+        throw $e;
+    }
 }
 
 /**
