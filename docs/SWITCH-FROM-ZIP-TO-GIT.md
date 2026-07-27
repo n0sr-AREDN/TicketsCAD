@@ -165,22 +165,47 @@ You want to see:
 If instead you get **`Could not open input file: tools/backup_run.php`**, your
 install predates v4.1 and that tool doesn't exist yet — which is very likely if
 you're reading this page. Take the backup from inside TicketsCAD instead:
-**Settings → Backup → Back up now**. Either way, get a backup before continuing.
+**Settings → Backup / Maintenance → Download Full Backup** (there is also a
+**Save to Server** button, which writes it into the `backups/` folder instead of
+downloading it). Either way, get a backup before continuing.
+
+> **Docker installs** have no PHP on the host, so the command above will not run
+> there either. Use the web UI as described, or go through the container:
+> ```bash
+> docker compose exec web php tools/backup_run.php --force
+> ```
+> (substitute your service name for `web`).
 
 ### 1b. The folder
 
 This is the copy that protects any edits you made to program files, which the
 database backup does not cover:
 
+**Copy it somewhere OUTSIDE your web root.** Do not put it beside your TicketsCAD
+folder: on XAMPP that is `htdocs`, on Linux usually `/var/www` — either way the
+copy would be served to the internet, and it contains a `backups/` folder with a
+full database dump in it.
+
 ```bash
-cd ..
-cp -a newui ticketscad-before-git
-cd newui
+cp -a . ~/ticketscad-before-git
 ```
 
-Substitute your folder's actual name for `newui` in both places. On Windows you
-can equally just copy the folder in File Explorer and paste it alongside — same
-result, and easier to verify.
+That copies the folder you are standing in, so there is no folder name to get
+wrong. Check it worked before going on — this must list a file:
+
+```bash
+ls ~/ticketscad-before-git/index.php
+```
+
+If that errors, **stop** and sort it out. This copy is the only thing that can
+bring back an edited program file.
+
+> ### Windows
+>
+> `~` is your user folder (`C:\Users\<your name>`), so that command puts the copy
+> safely outside `htdocs`. You can equally do it in File Explorer: copy the
+> TicketsCAD folder and paste it into your Documents folder. **Not** into
+> `htdocs`.
 
 ---
 
