@@ -38,11 +38,21 @@ Only the program files get replaced, which is the whole point of updating.
 
 ## Before you start
 
-Take a backup. This is one command, and it is the whole point of having one:
+Take a backup. **Include `--force`** — without it this command only backs up if
+one is *due* on the schedule, and if it isn't, it prints "No backup due yet" and
+exits successfully. That looks like it worked:
 
 ```bash
-php tools/backup_run.php
+php tools/backup_run.php --force
 ```
+
+You want to see `Starting backup…` and then `OK — …/backups/ticketscad-….zip`
+followed by `verified: readable archive containing schema`. If you see anything
+else, stop and sort that out before continuing.
+
+If your install predates v4.1 the file won't exist (`Could not open input file`).
+Take the backup from inside TicketsCAD instead: **Settings → Backup → Back up
+now**. Either way, get a backup before you continue.
 
 Also copy your config somewhere outside the folder, purely as a belt-and-braces
 measure:
@@ -159,11 +169,17 @@ git pull
 **The site shows an error after updating** — the code is newer than the
 database. Run `php sql/run_migrations.php`, then `php tools/check-schema.php`.
 
-**You want to go back** — you have a backup from the first step:
+**You want to go back** — you have a backup from the first step. Find its name,
+then restore it (the filename goes after `--file`; a bare path is ignored):
 
 ```bash
-php tools/restore.php <your-backup-file> --yes
+php tools/restore.php --list
+php tools/restore.php --file backups/ticketscad-YYYYMMDD-HHMMSS.zip --yes
 ```
+
+Without `--yes` it only tells you what it *would* do and changes nothing. It also
+takes a safety copy of the current database before it writes, so restoring the
+wrong file is itself undoable.
 
 **Still stuck?** Open an issue with what you typed and what came back:
 <https://github.com/openises/TicketsCAD/issues>

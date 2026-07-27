@@ -237,7 +237,9 @@ php tools/check-schema.php --repair
 
 That re-applies the schema migrations and re-checks in a fresh process. The
 migrations are idempotent — they add what is absent and never delete data. If
-you want to be certain first, take a backup: `php tools/backup_run.php`.
+you want to be certain first, take a backup: `php tools/backup_run.php --force`
+(the `--force` matters — without it the command only runs if a backup is *due*,
+and otherwise prints "No backup due yet" and exits successfully).
 
 `php sql/run_migrations.php` now performs the same check and repairs itself, so
 either command works.
