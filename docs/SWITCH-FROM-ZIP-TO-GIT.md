@@ -61,11 +61,28 @@ measure:
 cp config.php ~/ticketscad-config-backup.php
 ```
 
-You will need **git installed**. If `git --version` says "command not found",
-install it first — the two walkthrough videos cover that:
+### Two checks before you start
+
+```bash
+git --version
+php --version
+```
+
+If either says **command not found**, that program isn't installed or isn't on
+your PATH. On Windows with XAMPP, `php` usually isn't on the PATH — it lives at
+`C:/xampp/php/php.exe`, and you can type that full path wherever this page says
+`php`. For git, the two walkthrough videos cover installing it:
 
 - Windows (Git Bash): <https://youtu.be/uZl3teJMMHM>
 - Linux & macOS (Terminal): <https://youtu.be/Zczb4ypmDc8>
+
+**On Windows, use Git Bash** — right-click inside your TicketsCAD folder and
+choose "Open Git Bash here". Not Command Prompt: the commands on this page
+(`ls`, `cp`, `~/`) are written for a bash shell and don't exist in cmd.
+
+**This whole procedure needs shell access** — SSH, or a terminal on the machine
+itself. If your web host only gives you a file manager in a browser, none of
+this will work; open an issue and we'll help you work out the options.
 
 ---
 
@@ -124,35 +141,74 @@ php tools/check-schema.php
 ```
 
 `check-schema.php` should end with **"Schema OK."** If it reports missing
-columns or tables, run `php tools/check-schema.php --repair`.
+columns or tables, run `php tools/check-schema.php --repair`. If it *still*
+reports something missing after that, stop and open an issue rather than
+guessing.
 
-**Docker installs need one more step** — a pull alone does not update a running
-container, because the code is baked into the image when it is built:
+### Then reload the web server — do not skip this
+
+The checkout above replaced essentially every program file at once, and PHP
+keeps serving the **old** compiled code until the web server is reloaded. Skip
+this and the site behaves as though nothing changed, which reads exactly like
+"the update didn't work":
+
+```bash
+sudo systemctl reload apache2      # or: sudo systemctl reload php8.2-fpm
+```
+
+On Windows with XAMPP, stop and start Apache from the XAMPP Control Panel.
+
+If you ran the git commands as a different user than the web server runs as
+(`root` vs `www-data`, say), also fix ownership — otherwise new files can be
+unreadable to the web server and simply 404 with no error:
+
+```bash
+sudo chown -R www-data:www-data .
+```
+
+Both of these, and why they bite, are covered in
+[docs/UPDATE-CHECKLIST.md](UPDATE-CHECKLIST.md) — worth one read.
+
+**Docker installs** replace the reload with a rebuild, because the code is baked
+into the image when it is built:
 
 ```bash
 docker compose up -d --build
 ```
 
+Note that on Docker the `php` commands above run **inside** the container —
+prefix each with `docker compose exec web` (substitute your service name).
+
+### Finally, look at it
+
+Open TicketsCAD in your browser and log in. Your incidents, units, people and
+settings are all still there — none of that lives in the files that were
+replaced. This is the step that tells you it actually worked.
+
 ---
 
 ## From now on
 
-Updating is two commands, forever:
+Updating is a short routine:
 
 ```bash
 git pull
 php sql/run_migrations.php
+sudo systemctl reload apache2      # or your php-fpm service
 ```
 
 (Docker: `git pull` then `docker compose up -d --build`.)
 
-You can confirm it worked:
+You can confirm git's side worked:
 
 ```bash
 git status
 ```
 
 It should say `On branch main` and `Your branch is up to date with 'origin/main'`.
+You may also see an **"Untracked files"** list — leftovers from your old ZIP that
+the project no longer ships. They are harmless; the two lines that matter are the
+branch line and the up-to-date line.
 
 ---
 
