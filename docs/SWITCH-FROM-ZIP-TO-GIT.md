@@ -78,14 +78,36 @@ TicketsCAD folder** — the folder that contains `index.php`.
 > Open a terminal and `cd` into the folder, e.g.
 > `cd /var/www/newui`. If TicketsCAD is on another machine, SSH in first.
 
-**Confirm you are in the right place** — this must list the file:
+**Confirm you are in the right place** — both of these must list a file:
 
 ```bash
 ls index.php
+ls sql/run_migrations.php
 ```
 
-If it says *No such file or directory*, you are in the wrong folder. Do not
-continue until that command lists `index.php`.
+> ### ⚠ Stop here if the second one is missing
+>
+> `index.php` alone is **not** enough. TicketsCAD v3.44 — the older interface —
+> also has an `index.php` and a `config.php`, so it passes that check too. But
+> v3 is a **different application in a different repository**, and the commands
+> on this page would replace its program files with v4's. That would break it.
+>
+> `sql/run_migrations.php` exists only in **v4 (NewUI)**. If that second command
+> says *No such file or directory*:
+>
+> - You are either in the wrong folder, **or** you are running v3.44.
+> - Check which you have: open TicketsCAD and look at **Help → About**, or look
+>   for a folder called `api` (v4 has one; v3 does not).
+> - **If you are on v3.44, stop.** This page does not apply to you. Upgrading
+>   v3 to v4 is a separate, larger job — open an issue and we will point you at
+>   the right steps.
+
+If `ls index.php` says *No such file or directory*, you are simply in the wrong
+folder. Do not continue until both commands list a file.
+
+**One more thing before you start:** do this when your group is **not actively
+dispatching**. The site is briefly inconsistent while the program files are
+being replaced, and you will restart the web server at the end.
 
 > On a **Docker** install, check for `docker-compose.yml` instead — Docker
 > generates `config.php` *inside* the container, so it is not on your host and
@@ -342,6 +364,11 @@ there's no reason to advertise it. If you're internet-facing, add this to the
 ```apache
 RedirectMatch 404 /\.git
 ```
+
+Note the wrinkle: `.htaccess` is itself a file the project ships, so a future
+update will want to change it and git will tell you your version differs. Keep
+your own copy of that line somewhere, and if a later `git pull` complains about
+`.htaccess`, re-add it after updating.
 
 ---
 
