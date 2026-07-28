@@ -109,12 +109,16 @@ folder. Do not continue until both commands list a file.
 dispatching**. The site is briefly inconsistent while the program files are
 being replaced, and you will restart the web server at the end.
 
-> On a **Docker** install, check for `docker-compose.yml` instead — Docker
-> generates `config.php` *inside* the container, so it is not on your host and
-> its absence does not mean you are lost:
+> On a **Docker** install both checks above still work — `index.php` and
+> `sql/run_migrations.php` are part of the source you check out, not something
+> the container generates. You will also see a `docker-compose.yml` here; that
+> is the file that tells you this is a Docker install:
 > ```bash
 > ls docker-compose.yml
 > ```
+> Note that `config.php` is generated *inside* the container on Docker installs,
+> so it is not on your host — its absence does not mean you are in the wrong
+> folder.
 
 ### Two quick checks
 
@@ -383,19 +387,33 @@ undoable.
 
 Because the app folder is usually also your web root, `git init` creates a
 `.git/` directory that your web server may serve — meaning
-`https://your-site/.git/HEAD` becomes readable, which tells anyone the exact
-version you're running. The source is public so this leaks no secrets, but
-there's no reason to advertise it. If you're internet-facing, add this to the
-`.htaccess` in your TicketsCAD folder:
+`https://your-site/.git/config` becomes readable. The source is public so this
+leaks no passwords, but `.git/` is enough to reconstruct the whole tree and it
+advertises exactly what you're running.
 
-```apache
-RedirectMatch 404 /\.git
+**TicketsCAD now ships the rule that blocks this**, in the `.htaccess` that
+comes with the project. The `git checkout` you ran in Step 2 installed it, so
+you are already covered — there is nothing to add.
+
+To confirm, open this in a browser:
+
+```
+https://your-site/.git/config
 ```
 
-Note the wrinkle: `.htaccess` is itself a file the project ships, so a future
-update will want to change it and git will tell you your version differs. Keep
-your own copy of that line somewhere, and if a later `git pull` complains about
-`.htaccess`, re-add it after updating.
+You want **404 Not Found** or **403 Forbidden**. If a file comes back instead,
+your web server is ignoring `.htaccess` (`AllowOverride None`, or nginx, which
+does not read `.htaccess` at all) — block `.git` in the server config instead,
+or add this to an `.htaccess` the server does honour:
+
+```apache
+RedirectMatch 404 (^|/)\.git(/|$)
+```
+
+> Earlier versions of this guide told you to add that line by hand. Don't, unless
+> the check above actually fails: `.htaccess` is a file the project ships, so a
+> hand-added line becomes a local edit that every future `git pull` has to fight
+> over — the exact friction shipping the rule was meant to remove.
 
 ---
 
