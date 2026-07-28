@@ -3198,7 +3198,7 @@ foreach ($personnelSections as $sec) {
                             <input type="text" class="form-control form-control-sm"
                                    data-key="trusted_proxies"
                                    value="127.0.0.1,::1"
-                                   placeholder="127.0.0.1,::1,10.32.161.0/24">
+                                   placeholder="127.0.0.1,::1,10.0.0.0/8">
                             <div class="form-text">
                                 <?php echo e(t('trusted_proxies.hint', 'Default: 127.0.0.1,::1 (covers single-host NPM / nginx). Add CIDR ranges (e.g., 10.0.0.0/8) for proxies on other hosts.')); ?>
                             </div>
@@ -7486,7 +7486,7 @@ foreach ($personnelSections as $sec) {
                 <summary>Bring up a new bridge host</summary>
                 <ol class="mt-2 mb-0">
                     <li>Provision a Debian 13 VM per the playbook
-                        (current: <code>dvswitch-01</code> at 10.32.161.137).</li>
+                        a dedicated host on your own network for the DVSwitch bridge.</li>
                     <li>Install DVSwitch packages from the
                         <code>hamradio</code> component:
 <pre class="mt-1 mb-1 small bg-body-tertiary p-2"
@@ -7730,8 +7730,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                                     <label class="form-label form-label-sm">Bridge host *</label>
                                     <input type="text" class="form-control form-control-sm"
                                            id="dvsBridgeHost" required
-                                           placeholder="10.32.161.137"
-                                           value="10.32.161.137">
+                                           placeholder="dvswitch.example.lan or 192.0.2.10">
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label form-label-sm">Bridge HTTP port</label>
