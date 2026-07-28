@@ -1,3 +1,28 @@
+# Block web access to the git metadata directory.
+#
+# A ZIP install has no .git folder, so this used to be moot. Converting a ZIP
+# install to a git clone (docs/SWITCH-FROM-ZIP-TO-GIT.md) creates one INSIDE the
+# web root, and on a default Apache config https://your-site/.git/config is then
+# readable — which exposes the remote URL, and .git/ as a whole is enough to
+# reconstruct the full source tree.
+#
+# Shipping the block here rather than asking each admin to add it by hand means
+# it arrives with the update itself, and it survives future updates instead of
+# being a local edit that `git pull` fights over.
+#
+# NOTE for anyone editing this: `<Directory>` and `<DirectoryMatch>` are NOT
+# permitted in .htaccess (server-config / virtual-host only) — Apache answers
+# 500 for the whole site if you use them here. `RedirectMatch` (mod_alias) and
+# `RewriteRule` (mod_rewrite) are both legal in .htaccess, so use those. Two
+# mechanisms are kept because a given install may have only one of the modules.
+<IfModule mod_alias.c>
+    RedirectMatch 404 (^|/)\.git(/|$)
+</IfModule>
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule (^|/)\.git(/|$) - [F,L]
+</IfModule>
+
 # Phase 90 — pretty URL for the beta-tester registration page.
 # /beta-tester  ->  /beta-tester.php
 # Keep the rule narrow: don't blanket-rewrite the whole site.

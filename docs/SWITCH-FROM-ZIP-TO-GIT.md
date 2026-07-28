@@ -172,9 +172,11 @@ downloading it). Either way, get a backup before continuing.
 > **Docker installs** have no PHP on the host, so the command above will not run
 > there either. Use the web UI as described, or go through the container:
 > ```bash
-> docker compose exec web php tools/backup_run.php --force
+> docker compose exec app php tools/backup_run.php --force
 > ```
-> (substitute your service name for `web`).
+> `app` is the service name in the `docker-compose.yml` this project ships. If
+> you wrote your own compose file, use whatever you named the PHP service —
+> `docker compose ps` lists them.
 
 ### 1b. The folder
 
