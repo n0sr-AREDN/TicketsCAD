@@ -681,6 +681,7 @@ if ($action === 'bridges' && $method === 'GET') {
                     (SELECT COUNT(*) FROM `{$prefix}bridge_tokens` t WHERE t.bridge_id = b.id AND t.revoked_at IS NULL) AS active_tokens,
                     (SELECT COUNT(*) FROM `{$prefix}mesh_packet_log` p WHERE p.bridge_id = b.id) AS packet_count
                FROM `{$prefix}mesh_bridges` b
+              WHERE b.deleted_at IS NULL
               ORDER BY b.id"
         );
         json_response(['bridges' => $rows]);
@@ -724,6 +725,58 @@ if ($action === 'mint_token' && $method === 'POST') {
         ]);
     } catch (Exception $e) {
         json_error('mint failed: ' . $e->getMessage(), 500);
+    }
+}
+
+/*
+ * delete_bridge — remove a bridge from the console.
+ *
+ * This action has been documented in the header of this file since the
+ * feature shipped, but was never implemented: calling it fell through to the
+ * unknown-action error. Reported by Chris Byrd (2026-07-28), who had made
+ * test bridges while setting Meshtastic up and had no way to get rid of them.
+ *
+ * Distinct from `revoke` on purpose. Revoke kills the credential and leaves
+ * the bridge listed with its history — what you want for a real bridge whose
+ * token leaked. Delete takes a bridge you created by mistake out of the list.
+ *
+ * Soft delete, matching member / responder / ticket / facilities: mesh_packet_log
+ * rows carry bridge_id, so hard-deleting the parent would orphan genuinely
+ * received traffic. Tokens are revoked at the same time, because a deleted
+ * bridge must not keep authenticating.
+ */
+if ($action === 'delete_bridge' && $method === 'POST') {
+    admin_auth();
+    if (empty($input['csrf_token']) || !csrf_verify($input['csrf_token'])) {
+        json_error('Invalid CSRF token', 403);
+    }
+    $bid = (int) ($input['bridge_id'] ?? 0);
+    if ($bid <= 0) json_error('bridge_id required');
+
+    try {
+        $bridge = db_fetch_one(
+            "SELECT id, label FROM `{$prefix}mesh_bridges`
+              WHERE id = ? AND deleted_at IS NULL LIMIT 1",
+            [$bid]
+        );
+        if (!$bridge) json_error('bridge not found (or already deleted)', 404);
+
+        // Revoke first: if the UPDATE below failed we would rather be left
+        // with a dead credential than a hidden bridge that still ingests.
+        db_query("UPDATE `{$prefix}bridge_tokens`
+                     SET revoked_at = COALESCE(revoked_at, NOW())
+                   WHERE bridge_id = ?", [$bid]);
+        db_query("UPDATE `{$prefix}mesh_bridges`
+                     SET deleted_at = NOW(), deleted_by = ?,
+                         revoked_at = COALESCE(revoked_at, NOW())
+                   WHERE id = ?", [(int) ($_SESSION['user_id'] ?? 0), $bid]);
+
+        audit_log('mesh', 'delete_bridge', 'mesh_bridges', $bid,
+                  ['label' => $bridge['label']]);
+
+        json_response(['ok' => true, 'deleted' => $bid]);
+    } catch (Exception $e) {
+        json_error('delete failed: ' . $e->getMessage(), 500);
     }
 }
 

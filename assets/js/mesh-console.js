@@ -135,10 +135,69 @@
                 '      <div class="col-3"><span class="text-body-secondary">pkts:</span> ' + (b.packet_count || 0) + '</div>' +
                 '      <div class="col-3"><span class="text-body-secondary">tokens:</span> ' + (b.active_tokens || 0) + '</div>' +
                 '    </div>' +
+                // Revoke / Delete. The card has always RENDERED a "revoked"
+                // state while offering no control that could produce it, and
+                // there was no way at all to get rid of a bridge made by
+                // mistake — reported by a beta tester who had minted test
+                // tokens while setting Meshtastic up.
+                '    <div class="d-flex gap-2 mt-2">' +
+                (b.revoked_at ? '' :
+                '      <button type="button" class="btn btn-sm btn-outline-warning" data-revoke-bridge="' + b.id +
+                '" title="Stop this bridge\'s token working. The bridge stays listed with its history.">' +
+                '<i class="bi bi-slash-circle"></i> Revoke token</button>') +
+                '      <button type="button" class="btn btn-sm btn-outline-danger" data-delete-bridge="' + b.id +
+                '" title="Remove this bridge from the list. Received packets are kept.">' +
+                '<i class="bi bi-trash"></i> Delete</button>' +
+                '    </div>' +
                 '  </div>' +
                 '</div>';
         });
         grid.innerHTML = html;
+
+        grid.querySelectorAll('button[data-revoke-bridge]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                bridgeAction('revoke', parseInt(btn.getAttribute('data-revoke-bridge'), 10));
+            });
+        });
+        grid.querySelectorAll('button[data-delete-bridge]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                bridgeAction('delete_bridge', parseInt(btn.getAttribute('data-delete-bridge'), 10));
+            });
+        });
+    }
+
+    // Revoke or delete a bridge. Both are admin-only and CSRF-checked server
+    // side; the confirm here is so a mis-click cannot silently kill a live
+    // bridge's credential.
+    function bridgeAction(action, bridgeId) {
+        var bridge = null;
+        bridgesCache.forEach(function (b) { if (b.id === bridgeId) bridge = b; });
+        var name = bridge ? bridge.label : ('id=' + bridgeId);
+
+        var msg = action === 'revoke'
+            ? 'Revoke the token for "' + name + '"?\n\n'
+              + 'The bridge stops being able to connect until you mint a new token. '
+              + 'It stays in the list with its packet history.'
+            : 'Delete the bridge "' + name + '"?\n\n'
+              + 'It is removed from this list and its token stops working. '
+              + 'Packets it already received are kept.';
+        if (!window.confirm(msg)) return;
+
+        fetch('api/mesh.php?action=' + action, {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ csrf_token: TOKEN, bridge_id: bridgeId })
+        }).then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data && data.error) return showAlert(data.error, 'danger');
+            showAlert(action === 'revoke'
+                ? 'Token revoked for "' + name + '". Mint a new one to reconnect it.'
+                : 'Bridge "' + name + '" deleted.', 'success');
+            loadBridges();
+          })
+          .catch(function (e) {
+            showAlert('Request failed: ' + e.message, 'danger');
+          });
     }
 
     function populateBridgeSelects() {
