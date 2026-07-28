@@ -153,6 +153,21 @@ channel.
 
 This is the step that bites everyone. Read it carefully.
 
+> **If `developers.zello.com` will not let you sign in, reload and try again.**
+> The sign-in page intermittently fails with a reCAPTCHA error
+> (`ERROR for site owner: Invalid site key`, and `grecaptcha.render is not a
+> function` in the browser console). It is a load-order race in Zello's own
+> page, not a problem with your account or your TicketsCAD install, and it
+> clears on a later load — reported in
+> [issue #6](https://github.com/openises/TicketsCAD/issues/6), and the page
+> loaded normally when re-checked on 2026-07-27. Everything on this portal is
+> Zello's, so we can't fix it from here; retrying is the workaround.
+>
+> The steps below are written for the free Zello **Consumer** tier. If you find
+> that self-serve key generation now requires a Work subscription, please say so
+> on issue #6 — that is the open question there and we'd rather correct this
+> guide than have the next person rediscover it.
+
 TicketsCAD authenticates to Zello using a **Channels API key**: an **Issuer**
 (a short string) plus a **Private Key** (a block of text). On Zello **Consumer**,
 that key pair is generated **inside one specific channel's admin settings**, and
