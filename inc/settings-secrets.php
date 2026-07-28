@@ -28,7 +28,29 @@ if (!function_exists('is_secret_setting_key')) {
      * True if the given settings key holds a secret and must be masked before
      * being returned to a client.
      */
+    /**
+     * Names that LOOK like credentials to the suffix backstop but are not.
+     *
+     * `location_ingest_require_token` and `owntracks_require_token` are
+     * booleans — "require a token: yes/no" — and masking them is actively
+     * harmful, not merely wrong: the GET withholds the value, the checkbox
+     * renders unchecked whatever the real state, and the next save writes
+     * that back. A `require_token` switch that was ON silently turns OFF,
+     * disabling authentication on the ingest endpoint.
+     *
+     * Found while fixing openises/TicketsCAD#7 (@rjonesbsink), which reported
+     * the opposite failure — a genuine secret being blanked — and correctly
+     * predicted the suffix-based classifier deserved an audit.
+     */
+    function _non_secret_setting_keys(): array {
+        return [
+            'location_ingest_require_token',
+            'owntracks_require_token',
+        ];
+    }
+
     function is_secret_setting_key(string $name): bool {
+        if (in_array($name, _non_secret_setting_keys(), true)) return false;
         if (in_array($name, _secret_setting_keys(), true)) return true;
         // Suffix backstop: anything that looks like a credential is masked so a
         // newly-added secret setting is safe by default. Non-secret keys (e.g.

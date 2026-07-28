@@ -1727,7 +1727,7 @@ foreach ($personnelSections as $sec) {
             </form>
         </div>
 
-        <!-- ── Incident Lifecycle — Phase 104d (a beta tester GH #11) ────── -->
+        <!-- ── Incident Lifecycle — Phase 104d (Justin GH #11) ────── -->
         <div class="config-panel" id="panel-incident-lifecycle">
             <div class="config-panel-title">
                 <i class="bi bi-arrow-clockwise text-primary"></i> Incident Lifecycle
@@ -2413,7 +2413,7 @@ foreach ($personnelSections as $sec) {
                         <div class="col-md-6">
                             <label for="setOwmKey" class="form-label form-label-sm">OpenWeatherMap API Key</label>
                             <div class="input-group input-group-sm">
-                                <input type="password" class="form-control" id="setOwmKey" data-key="owm_api_key" maxlength="64" autocomplete="off">
+                                <input type="password" class="form-control" id="setOwmKey" data-key="owm_api_key" data-secret="1" maxlength="64" autocomplete="off">
                                 <button class="btn btn-outline-secondary secret-reveal" type="button" data-target="setOwmKey" title="Reveal / hide"><i class="bi bi-eye"></i></button>
                                 <button class="btn btn-outline-secondary secret-copy" type="button" data-target="setOwmKey" title="Copy to clipboard"><i class="bi bi-clipboard"></i></button>
                             </div>
@@ -2437,7 +2437,7 @@ foreach ($personnelSections as $sec) {
                         <div class="col-md-6">
                             <label for="setGeoKey" class="form-label form-label-sm">Geocoding API Key (if applicable)</label>
                             <div class="input-group input-group-sm">
-                                <input type="password" class="form-control" id="setGeoKey" data-key="geocoding_api_key" maxlength="128" autocomplete="off">
+                                <input type="password" class="form-control" id="setGeoKey" data-key="geocoding_api_key" data-secret="1" maxlength="128" autocomplete="off">
                                 <button class="btn btn-outline-secondary secret-reveal" type="button" data-target="setGeoKey" title="Reveal / hide"><i class="bi bi-eye"></i></button>
                                 <button class="btn btn-outline-secondary secret-copy" type="button" data-target="setGeoKey" title="Copy to clipboard"><i class="bi bi-clipboard"></i></button>
                             </div>
@@ -2470,7 +2470,7 @@ foreach ($personnelSections as $sec) {
                             <label for="setFeedApiKey" class="form-label form-label-sm">Feed API Key</label>
                             <div class="input-group input-group-sm">
                                 <input type="password" class="form-control font-monospace"
-                                       id="setFeedApiKey" data-key="feed_api_key" maxlength="64" autocomplete="off"
+                                       id="setFeedApiKey" data-key="feed_api_key" data-secret="1" maxlength="64" autocomplete="off"
                                        placeholder="(empty — feed disabled)">
                                 <button class="btn btn-outline-secondary secret-reveal" type="button"
                                         data-target="setFeedApiKey" title="Reveal / hide">
@@ -2640,7 +2640,7 @@ foreach ($personnelSections as $sec) {
                         </div>
                         <div class="col-md-5">
                             <label for="setTileApiKey" class="form-label form-label-sm">Map Tile API Key (if required)</label>
-                            <input type="text" class="form-control form-control-sm" id="setTileApiKey" data-key="tile_api_key" maxlength="128" autocomplete="off"
+                            <input type="text" class="form-control form-control-sm" id="setTileApiKey" data-key="tile_api_key" data-secret="1" maxlength="128" autocomplete="off"
                                    placeholder="Only needed for Google, Bing, Mapbox">
                         </div>
                     </div>
@@ -2704,7 +2704,7 @@ foreach ($personnelSections as $sec) {
             <div class="config-panel-title">
                 <i class="bi bi-building text-warning"></i> Facilities
             </div>
-            <!-- Issue #44 (a beta tester 2026-07-03): the previous inline
+            <!-- Issue #44 (Justin 2026-07-03): the previous inline
                  mini-form in this panel had ~7 fields but the real
                  facility-edit page has ~20 (address, contact fields,
                  bed capacity, status, map picker, etc.). Instead of
@@ -3198,7 +3198,7 @@ foreach ($personnelSections as $sec) {
                             <input type="text" class="form-control form-control-sm"
                                    data-key="trusted_proxies"
                                    value="127.0.0.1,::1"
-                                   placeholder="127.0.0.1,::1,10.0.0.0/24">
+                                   placeholder="127.0.0.1,::1,10.32.161.0/24">
                             <div class="form-text">
                                 <?php echo e(t('trusted_proxies.hint', 'Default: 127.0.0.1,::1 (covers single-host NPM / nginx). Add CIDR ranges (e.g., 10.0.0.0/8) for proxies on other hosts.')); ?>
                             </div>
@@ -5819,7 +5819,7 @@ foreach ($personnelSections as $sec) {
                 <button type="button" class="btn btn-sm btn-success" id="btnNewPlace"><i class="bi bi-plus-lg me-1"></i>New Place</button>
                 <!-- GH #36 follow-up (2026-07-08) — bulk export/import moved to
                      the unified Import/Export page with every other table,
-                     per a beta tester's consistency note + Eric's decision. -->
+                     per Justin's consistency note + Eric's decision. -->
                 <a class="btn btn-sm btn-outline-primary" href="import-export.php" title="Bulk import/export places with the unified tool">
                     <i class="bi bi-arrow-left-right me-1"></i>Import / Export…
                 </a>
@@ -6354,7 +6354,7 @@ foreach ($personnelSections as $sec) {
                                 </div>
                             </div>
 
-                            <!-- Phase 99v-4 (a beta tester/Eric beta 2026-06-30) — Recipients (collapsible) -->
+                            <!-- Phase 99v-4 (Justin/Eric beta 2026-06-30) — Recipients (collapsible) -->
                             <div class="mb-2">
                                 <button class="btn btn-sm btn-outline-secondary w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#routeRecipientsCollapse">
                                     <i class="bi bi-people me-1"></i>Recipients <span class="text-body-secondary small">(optional — leave on "Channel broadcast" for default behaviour)</span>
@@ -7486,7 +7486,7 @@ foreach ($personnelSections as $sec) {
                 <summary>Bring up a new bridge host</summary>
                 <ol class="mt-2 mb-0">
                     <li>Provision a Debian 13 VM per the playbook
-                        (current: <code>dvswitch-01</code> at 10.0.0.10).</li>
+                        (current: <code>dvswitch-01</code> at 10.32.161.137).</li>
                     <li>Install DVSwitch packages from the
                         <code>hamradio</code> component:
 <pre class="mt-1 mb-1 small bg-body-tertiary p-2"
@@ -7730,8 +7730,8 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                                     <label class="form-label form-label-sm">Bridge host *</label>
                                     <input type="text" class="form-control form-control-sm"
                                            id="dvsBridgeHost" required
-                                           placeholder="10.0.0.10"
-                                           value="10.0.0.10">
+                                           placeholder="10.32.161.137"
+                                           value="10.32.161.137">
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label form-label-sm">Bridge HTTP port</label>
@@ -7934,7 +7934,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                             </label>
                             <div class="input-group input-group-sm">
                                 <input type="text" class="form-control" id="setOtSecret"
-                                       data-key="owntracks_secret"
+                                       data-key="owntracks_secret" data-secret="1"
                                        placeholder="(blank = no shared-secret path)">
                                 <button class="btn btn-outline-secondary" type="button" id="btnGenOtSecret"
                                         title="Generate a strong random secret">
@@ -8205,7 +8205,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                                    title="APRS.fi API key"></i>
                             </label>
                             <input type="text" class="form-control form-control-sm" id="setAprsApiKey"
-                                   data-key="aprs_fi_api_key" placeholder="Enter aprs.fi API key" autocomplete="off">
+                                   data-key="aprs_fi_api_key" data-secret="1" placeholder="Enter aprs.fi API key" autocomplete="off">
                         </div>
                         <div class="col-md-3">
                             <label for="setAprsPollInterval" class="form-label form-label-sm">Poll Interval (min)</label>
@@ -8720,7 +8720,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                             </label>
                             <div class="input-group input-group-sm">
                                 <input type="text" class="form-control" id="setLocIngestSecret"
-                                       data-key="location_ingest_secret"
+                                       data-key="location_ingest_secret" data-secret="1"
                                        placeholder="openssl rand -hex 32">
                                 <button class="btn btn-outline-secondary" type="button" id="btnGenIngestSecret"
                                         title="Generate a strong random secret">
