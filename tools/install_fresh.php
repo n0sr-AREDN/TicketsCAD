@@ -160,7 +160,7 @@ $importSqlFile = function (string $path) {
     }
     $env = $_ENV; $env['MYSQL_PWD'] = $dbPass;
 
-    // Phase 102 (a beta tester beta 2026-07-01) — Windows/XAMPP support.
+    // Phase 102 (Russell beta 2026-07-01) — Windows/XAMPP support.
     // Original code hard-coded `sh -c` which doesn't exist on stock
     // Windows PowerShell + XAMPP → CreateProcess error code 2 → every
     // import failed with "Could not exec mariadb CLI". Now:
@@ -184,6 +184,7 @@ $importSqlFile = function (string $path) {
         $delim = ';';
         $buf = '';
         $errCount = 0;
+        $realErrors = 0;   // errors that are NOT the benign "already exists" kind
         foreach (preg_split('/\r?\n/', (string) file_get_contents($path)) as $line) {
             $trim = trim($line);
             if ($buf === '' && ($trim === '' || strpos($trim, '--') === 0 || $trim[0] === '#')) {
@@ -208,8 +209,38 @@ $importSqlFile = function (string $path) {
                     if ($res instanceof PDOStatement) $res->closeCursor();
                 } catch (Exception $e) {
                     $errCount++;   // mirror the CLI's --force tolerance
+
+                    // ...but do NOT swallow it silently. Re-running an
+                    // install over an existing database legitimately raises
+                    // "already exists" errors, which is what the tolerance is
+                    // for. Anything else is a real failure that leaves an
+                    // object missing, and reporting it only as a number in
+                    // "1 applied, 1 skipped" gives the operator nothing to act
+                    // on. That is exactly how a MySQL 8.0 rejection of
+                    // `TEXT DEFAULT '[]'` silently dropped the whole
+                    // dashboard_layouts table (openises/TicketsCAD#5) — the
+                    // count said "skipped" and the cause was invisible until
+                    // someone re-ran the file by hand.
+                    $benign = ['1007','1050','1060','1061','1062','1068','1091','1826'];
+                    $code   = (string) ($e->errorInfo[1] ?? '');
+                    if (!in_array($code, $benign, true)) {
+                        $first = trim(strtok(str_replace("\n", ' ', $stmt), "\n"));
+                        $where = basename($path) . ': ' . substr($first, 0, 70);
+                        echo "    [sql error {$code}] {$where}\n"
+                           . "        " . $e->getMessage() . "\n";
+                        error_log("install_fresh {$where} -> " . $e->getMessage());
+                        $realErrors++;
+                    }
                 }
             }
+        }
+        if ($realErrors > 0) {
+            echo "    ^ {$realErrors} statement(s) in " . basename($path)
+               . " failed for a reason other than 'already exists'.
+"
+               . "      Objects they create are MISSING. Run"
+               . " `php tools/check-schema.php` after the install.
+";
         }
         return [1, $errCount];
     }
@@ -330,7 +361,7 @@ $foundationalSql = [
     // not always idempotent" in fix #3, but they actually ARE idempotent:
     // each one uses SET @col_exists + IF() + PREPARE/EXECUTE/DEALLOCATE to
     // skip if the target column already exists. Adding them back so true
-    // fresh installs get the columns they define. Beta tester a beta tester
+    // fresh installs get the columns they define. Beta tester Justin
     // Gilbert 2026-06-26 reported the new-incident form's type dropdown
     // was empty because api/incident-types.php SELECTed in_types.match_pattern
     // and that column was missing — alter_match_pattern.sql adds it.
