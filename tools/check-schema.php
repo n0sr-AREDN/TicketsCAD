@@ -63,8 +63,12 @@ function report(array $v, bool $quiet): bool
     foreach ($v['missing_tables'] as $t) {
         say("  missing table   `{$t}`");
     }
+    // Pad the table names so the column lists line up in a column — with a
+    // handful of tables listed, ragged output is noticeably harder to scan.
+    $width = 0;
+    foreach (array_keys($v['missing_columns']) as $t) { $width = max($width, strlen($t)); }
     foreach ($v['missing_columns'] as $t => $cols) {
-        say("  missing on `{$t}`:  " . implode(', ', $cols));
+        say('  missing on ' . str_pad("`{$t}`:", $width + 3) . ' ' . implode(', ', $cols));
     }
     say();
     return false;
