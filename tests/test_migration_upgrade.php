@@ -36,7 +36,7 @@ if (file_exists($inc . 'broker.php'))  require_once $inc . 'broker.php';
 $prefix = $GLOBALS['db_prefix'] ?? '';
 
 echo "=== Legacy → NewUI Migration Verification Test Suite ===\n";
-echo "PHP: " . PHP_VERSION . " | DB: {$GLOBALS['db_name']} | NewUI: " . NEWUI_VERSION . "\n\n";
+echo "PHP: " . PHP_VERSION . " | DB: {$GLOBALS['db_name']} | NewUI: " . newui_version() . "\n\n";
 
 // Fresh-install guard (QA automation 2026-07-07): this suite verifies a
 // LEGACY v3.44 → v4.0 upgrade preserved data. A virgin install has no

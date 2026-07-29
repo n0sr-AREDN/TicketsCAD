@@ -4,8 +4,8 @@
 #
 # On container start:
 #   1. Generate config.php from env vars (unless a config.php was mounted).
-#   2. Ensure runtime dirs (uploads, cache) and the out-of-webroot keys dir
-#      exist and are writable — these are the paths compose mounts as volumes.
+#   2. Ensure runtime dirs (uploads, cache, backups) and the out-of-webroot keys
+#      dir exist and are writable — these are the paths compose mounts as volumes.
 #   3. Wait for the database to accept connections.
 #   4. If the database is empty, run the fresh install + create an admin user
 #      (+ optional demo seed). If it's already installed, run the idempotent
@@ -26,7 +26,10 @@ else
 fi
 
 # 2. Writable runtime dirs + persistent keys (keys live OUTSIDE the webroot) --
-for d in "$APP/uploads" "$APP/cache" "$APP/../keys"; do
+#    backups/ is here because compose mounts it as the app_backups volume: the
+#    directory must exist and be writable by www-data (Settings → Backup) AND by
+#    a `docker compose exec app php tools/backup_run.php` run.
+for d in "$APP/uploads" "$APP/cache" "$APP/backups" "$APP/../keys"; do
     mkdir -p "$d"
     chown -R www-data:www-data "$d" 2>/dev/null || true
     chmod -R 775 "$d" 2>/dev/null || true

@@ -45,10 +45,10 @@ $rid = (int) ($_GET['responder_id'] ?? 0);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
-    <title>Unit History &mdash; Tickets NewUI <?php echo NEWUI_VERSION; ?></title>
+    <title>Unit History &mdash; Tickets NewUI <?php echo newui_version(); ?></title>
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo NEWUI_VERSION; ?>">
+    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo newui_version(); ?>">
     <link rel="stylesheet" href="assets/css/mobile.css">
     <link rel="stylesheet" href="assets/css/print.css" media="print">
     <style>

@@ -3,6 +3,175 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.0] - 2026-07-29
+
+Automatic backups now actually run, the Software Bill of Materials is published
+signed so you can verify it yourself, and CSRF protection is enforced on six
+endpoints where the check silently never ran.
+
+A minor release rather than a patch: backup management is new functionality, not
+a bug fix. (4.1.3 was tagged in the development repository on 2026-07-28 and
+never published; its security content ships here.)
+
+> ### ⚠ Docker installs: rescue your backups BEFORE you update
+>
+> Backups were being written inside the container, to a path that was **not** a
+> volume. `docker compose up -d --build` — the documented update step — replaces
+> the container and discards that layer. Taking a backup and then updating
+> destroyed the backup in the same breath.
+>
+> This release moves backups into a named volume, but a volume is seeded from
+> the image, never from a running container, so **existing backups cannot be
+> migrated automatically.** Copy them out first:
+>
+> ```bash
+> # 1. Copy the backups out of the running container FIRST:
+> docker compose cp app:/var/www/html/backups ./backups-rescued
+>
+> # 2. Now pull and rebuild (this is the step that would have destroyed them):
+> git pull && docker compose up -d --build
+>
+> # 3. Put them back, into the volume this time:
+> docker compose cp ./backups-rescued/. app:/var/www/html/backups
+> docker compose exec app chown -R www-data:www-data /var/www/html/backups
+> ```
+>
+> If step 1 reports that the path does not exist, you had no on-container
+> backups and there is nothing to migrate — just rebuild. Full procedure in
+> [docs/DOCKER.md](docs/DOCKER.md) §4. `uploads/`, `cache/` and `keys/` were
+> already volumes and are unaffected.
+
+**Upgrading:** `git pull` then `php sql/run_migrations.php`. Docker: do the
+rescue above, then `git pull && docker compose up -d --build`.
+
+After upgrading, check **Settings → Backup / Maintenance**. Automatic backups
+may have been switched on for a long time without ever having produced a file.
+
+### Added
+- **Automatic backups that run.** The scheduler function had existed since 4.1.0
+  and was called from nowhere — an install without cron or Task Scheduler (the
+  common case, and the exact case the feature was written for) reported backups
+  as ON and produced nothing. Page loads now tick the scheduler, after the
+  response is sent, never on a save.
+- **Backup controls** in Settings → Backup / Maintenance: enable/disable,
+  interval, retention by count/age/size, backup directory, and a **Back up now**
+  button. A **Backups card** on Status → System Health goes amber when backups
+  are stale and red when one was refused or none has ever succeeded.
+- **Backups cannot fill the disk.** A free-space floor (default 1 GB, checked on
+  both the backup and temp filesystems, which are often different) and a folder
+  ceiling (default 5 GB). On this hardware a full disk is not degradation, it is
+  an outage, possibly mid-incident. The newest archive is never deleted, and the
+  first backup is never blocked. Retention now matches only files this
+  application wrote, so it can no longer delete unrelated archives that happen
+  to share the directory.
+- **A signed Software Bill of Materials.** `SBOM.cdx.json` (CycloneDX 1.6, 56
+  components) ships with a detached signature `SBOM.cdx.json.sig` (ECDSA P-256 /
+  SHA-256) and the public key needed to check it,
+  `SBOM-signing-key.pub.pem`. Verify it yourself, without contacting us:
+
+  ```bash
+  base64 -d SBOM.cdx.json.sig > sbom.sig
+  openssl dgst -sha256 -verify SBOM-signing-key.pub.pem -signature sbom.sig SBOM.cdx.json
+  # -> Verified OK
+  ```
+
+  or `php tools/generate-sbom.php --verify`. This closes the last of the 17 data
+  fields in CISA's 2026 SBOM Minimum Elements: TicketsCAD now meets **17 of 17
+  data fields and 6 of 6 practices**. `SBOM.txt` is the human-readable
+  rendering. See [SECURITY.md](SECURITY.md).
+- **A tracked `VERSION` file**, so the version you see is the code you are
+  running.
+
+### Security
+- **CSRF was not enforced on six code paths.** `api/messaging-send.php`,
+  `api/push-admin.php`, `api/talkgroups.php` (its POST branch and, separately,
+  its DELETE branch), `api/aprs-watchlist.php` and `api/aprs-license-accept.php`.
+  Five wrapped the gate in `if (function_exists('csrf_check'))` — naming a
+  function that does not exist, so the check was skipped rather than failed. The
+  talkgroups DELETE branch had no CSRF call at all. Verified against a live host:
+  every endpoint now rejects a missing and a wrong token with a JSON 403 and
+  leaves the row intact, confirmed by SQL rather than by the API's own reply.
+- **Marked and Bootstrap are served from this repository, not a CDN.** Groups
+  that operate disconnected should not lose page rendering with the uplink. The
+  `marked` reference was also unpinned, so the browser ran whatever the CDN
+  served that day; it is now 12.0.2, recorded in the SBOM with its hash.
+
+### Fixed
+- **Docker: backups were destroyed by the update that followed them.** See the
+  warning above. `docker-compose.yml` now mounts a volume for `backups/` and the
+  entrypoint creates it writable.
+- **The displayed version could never change.** `NEWUI_VERSION` was defined only
+  in `config.php`, which is gitignored, so a completely correct `git pull` left
+  the About page showing the install-day version — one install reported
+  `4.0.0-dev` against 4.1.3 code. The tracked `VERSION` file now wins, with
+  `config.php` as a fallback for odd deployments. Asset cache-busters finally
+  move on a pull, too.
+- **A fatal error in an API returned an empty body.** A PHP `Error` (TypeError,
+  ArgumentCountError, a failed `require`, memory exhaustion) escaped
+  `catch (Exception)` and, with `display_errors` off, killed the request *after*
+  its writes had committed — reported in the field as "Unexpected end of JSON
+  input" on an action that had actually worked. `inc/api_guard.php` now converts
+  any fatal into a JSON 500 with a log reference.
+- **SOP Markdown had never rendered for anyone.** `sop.php` loaded `marked` from
+  a CDN that the application's own Content-Security-Policy blocks, so it fell
+  back to plain text on every install, online or offline. Nobody reported it
+  because the fallback is readable.
+- **Five documents told administrators to `chown -R www-data:www-data .`** That
+  takes `.git` with it, so the reader's next `git pull` stops with "fatal:
+  detected dubious ownership" — and it was never necessary. Corrected: the tree
+  stays with whoever runs git; `uploads/` and `cache/` go to the web server;
+  `backups/` is shared (mode 2770) because both the CLI and the web server
+  write there.
+- **Soft-delete columns never reached upgraded installs.**
+- **MySQL 8.0 rejected `dashboard_layouts` at install time**, and hid the reason.
+- **The mesh bridge delete endpoint returned an empty JSON response.**
+- **Settings silently blanked stored secrets** when a masked field was saved
+  untouched, and masked boolean toggles as though they were secrets.
+- **The SBOM declared CycloneDX 1.6 and did not conform to it.** One component
+  (`mysql-connector-python`) carried the licence identifier
+  `GPL-2.0-with-FOSS-exception`, which SPDX does not define, so the document
+  failed the official schema outright and would have been rejected by
+  Dependency-Track, Trivy and anything else that validates. The licence is now
+  the SPDX expression `GPL-2.0-only WITH Universal-FOSS-exception-1.0`, taken
+  from Oracle's own `LICENSE.txt`. More to the point, **nothing had ever checked
+  the claim**: the generator now validates its output against the official
+  CycloneDX schema — vendored unmodified at `tools/schema/cyclonedx/` so you can
+  check it offline — and refuses to write a document that does not conform, with
+  `php tools/generate-sbom.php --validate` enforced in CI and in the release
+  script.
+- **The prior SBOM contained incorrect entries.** Everything published before
+  this release listed `qrcode 1.5.3` by soldair, which this application does not
+  use — it ships `qrcode-generator 1.4.4` by Kazuhiko Arase, a different project
+  by a different author. It also listed `pymysql` and `meshcore-cli`, neither of
+  which is imported anywhere; the real packages are `mysql-connector-python` and
+  `meshcore`. **Anyone who matched those entries against vulnerability data was
+  checking the wrong software, and would have missed advisories for the software
+  they are actually running.** It further listed 20 of 31 Composer packages, all
+  at stale versions, and gave every browser library the version string
+  `"bundled"`, which matches nothing. It had not been regenerated since
+  2026-06-13 and still described `4.0.0-dev`. Rebuilt from the shipped files
+  themselves, 32 components to 56. The release script now also verifies the SBOM
+  against the tree that is actually **published**, which caught two further
+  errors before this release shipped: a component listed that only a
+  development-notes file referenced, and a per-file hash that did not match the
+  file as shipped.
+
+### Known limitation
+The signature is **detached** (`SBOM.cdx.json.sig`). CycloneDX 1.6 also defines
+an in-document `signature` property, which this release does not use — so
+`cyclonedx-cli verify` reports no signature even though the detached one is
+valid. Use the `openssl` command above, or `--verify`. Native in-document
+signing is planned for a follow-up release.
+
+### Verified
+The signature was checked with the OpenSSL **command line** — a different
+implementation from the PHP extension that produced it — from a directory
+containing only the three files a recipient receives, and from a fresh clone of
+this repository. A one-byte change to `SBOM.cdx.json` is rejected. The SBOM is
+byte-reproducible across operating systems, so you can regenerate it with
+`php tools/generate-sbom.php` and compare instead of trusting us. Suite: 3880
+tests passing.
+
 ## [4.1.2] - 2026-07-26
 
 Fixes three things a **brand-new install** was missing. Found by doing something

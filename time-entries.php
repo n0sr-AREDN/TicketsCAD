@@ -47,7 +47,7 @@ $can_approve = rbac_can('time_entry.approve');
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
-    <title>My Time — <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo NEWUI_VERSION; ?></title>
+    <title>My Time — <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo newui_version(); ?></title>
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap-icons.min.css">
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo asset_v('assets/css/dashboard.css'); ?>">

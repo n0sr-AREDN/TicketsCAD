@@ -16,7 +16,14 @@ This is the "what to do regularly" companion to [INSTALLATION-CHECKLIST.md](INST
 | **Weekly** (30 minutes) | Apply OS security patches, verify backup restore on a test VM, review audit log for anomalies |
 | **Monthly** (1–2 hours) | Apply TicketsCAD updates, refresh TLS cert (if not auto), review user list for stale accounts, run SonarQube scan |
 | **Quarterly** (half day) | Full disaster-recovery drill, password policy review, RBAC role audit, dependency upgrade |
-| **Annually** | Encryption-key rotation, CJIS recert, full penetration test |
+| **Annually** | Encryption-key rotation, CJIS recert, full penetration test, cryptographic-currency review |
+| **Every 2 years** *(maintainer, not operators)* | Rotate the SBOM signing key |
+
+Two of these are the **project maintainer's** jobs rather than an operator's,
+because they concern what we publish rather than what you run: signing the SBOM
+at each release, and rotating the signing key. They are listed here so the
+schedule is complete and so nothing silently lapses. See the maintainer section
+at the end of this document.
 
 ---
 
@@ -314,6 +321,53 @@ Engage a third party to test the install. They should be given:
 - The OWASP TicketsCAD test plan (no such doc exists yet — see [SECURITY-POLICY.md](SECURITY-POLICY.md) for the closest thing)
 
 Address findings within agreed timeframe; document any accepted-risk items.
+
+### 4. Cryptographic-currency review
+
+Once a year, check that every algorithm and key size in the cryptographic
+inventory ([SECURITY-POLICY.md](SECURITY-POLICY.md) §5.1) is still considered
+current, against NIST SP 800-57 Part 1 and SP 800-131A. Today that is bcrypt
+(cost 12), AES-256-GCM, RSA-2048 with OAEP, and ECDSA P-256 with SHA-256 for the
+SBOM signature. Record the review date and outcome even when nothing changes —
+"we looked and it was fine" is the evidence an auditor asks for.
+
+Watch specifically for the post-quantum transition: NIST's timeline retires
+RSA-2048 and ECDSA P-256 for signatures around 2030-2035. That is not urgent
+now, but it is the reason this review exists rather than being a one-off.
+
+---
+
+## Maintainer tasks (not operator tasks)
+
+These belong to whoever publishes TicketsCAD, not to the people running it.
+They are here so the schedule is complete.
+
+### Every release — sign the SBOM
+
+A release cannot be cut against a stale SBOM; `tools/release-snapshot.sh` step 0
+enforces that. Signing is a separate step and is not enforced, so it is easy to
+forget:
+
+```bash
+php tools/generate-sbom.php --sign-key=<path to the private key>
+php tools/generate-sbom.php --verify        # must print [OK]
+```
+
+Commit `SBOM.cdx.json`, `SBOM.txt` and `SBOM.cdx.json.sig` together. The
+generator will not re-sign an unchanged SBOM whose signature still verifies, so
+running it when nothing changed is harmless.
+
+The private key lives outside the repository and never enters CI — see
+[SECURITY-POLICY.md](SECURITY-POLICY.md) §5.3 for its custody. CI verifies with
+the public key; it does not sign.
+
+### Every 2 years — rotate the SBOM signing key
+
+Full procedure, including what to do if the key is ever compromised, is in
+[SECURITY-POLICY.md](SECURITY-POLICY.md) §5.3. Rotate sooner on suspected
+compromise or when the maintainer role changes hands. Publish the new
+fingerprint in the release notes; keep the old public key in git history so
+previously published releases stay verifiable.
 
 ---
 

@@ -6,8 +6,14 @@
 #                                   docker compose logs app | grep -i password)
 #
 # The app auto-installs the schema on first run and auto-applies migrations on
-# every subsequent `docker compose up` (idempotent). Data, uploads and the
-# encryption keys live in named volumes so they survive container recreation.
+# every subsequent `docker compose up` (idempotent). Data, uploads, backups and
+# the encryption keys live in named volumes so they survive container recreation
+# — `up -d --build` replaces the container, and anything not on a volume dies
+# with it.
+#
+# UPGRADING FROM A COMPOSE FILE WITHOUT `app_backups`: any backup already sitting
+# in the old container is in its writable layer and will NOT migrate into the new
+# volume. Rescue it BEFORE the first rebuild — see docs/DOCKER.md §4.
 services:
   db:
     image: mariadb:11
@@ -53,9 +59,19 @@ services:
     volumes:
       - app_uploads:/var/www/html/uploads
       - app_cache:/var/www/html/cache
+      - app_backups:/var/www/html/backups   # database backups — MUST be a volume:
+                                            # `up -d --build` recreates the container
+                                            # and destroys its writable layer, so an
+                                            # unmounted backups/ takes your pre-update
+                                            # restore point with it.
       - app_keys:/var/www/keys          # 2FA + RSA field-encryption keys (out of webroot)
       # To supply your own config.php instead of the env-generated one, mount it:
       # - ./config.php:/var/www/html/config.php:ro
+      #
+      # Prefer backups on the HOST (easy to copy off-box, survives `down -v`)?
+      # Replace the app_backups line above with a bind mount and drop the named
+      # volume from the `volumes:` block at the bottom:
+      # - ./backups:/var/www/html/backups
 
   # ── Optional voice features: browser push-to-talk over Zello + DMR ──────────
   #   Start with:   docker compose --profile voice up -d
@@ -107,4 +123,5 @@ volumes:
   db_data:
   app_uploads:
   app_cache:
+  app_backups:
   app_keys:

@@ -51,15 +51,15 @@ $server_tz_offset  = date('P');
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
-    <title>Time Check &mdash; Tickets NewUI <?php echo NEWUI_VERSION; ?></title>
+    <title>Time Check &mdash; Tickets NewUI <?php echo newui_version(); ?></title>
 
     <!-- Vendor CSS -->
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap-icons.min.css">
 
     <!-- App CSS -->
-    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo NEWUI_VERSION; ?>">
-    <link rel="stylesheet" href="assets/css/config.css?v=<?php echo NEWUI_VERSION; ?>">
+    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo newui_version(); ?>">
+    <link rel="stylesheet" href="assets/css/config.css?v=<?php echo newui_version(); ?>">
     <style>
         .time-card {
             border-radius: 8px;

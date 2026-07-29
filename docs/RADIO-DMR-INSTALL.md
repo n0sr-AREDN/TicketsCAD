@@ -48,7 +48,7 @@ Three processes need to be running on top of the base TicketsCAD install:
 | `hbp_client.py` | bridge host | UDP 62032 (HBP) + TCP 18091 (HTTP control + SSE) |
 | `dmr-proxy.php` (Ratchet) | TicketsCAD web host | TCP 8092 — browser-facing WebSocket bridge |
 
-The **bridge host** and the **TicketsCAD web host** can be the same VM (Bloomington's setup) or separate (training has the bridge on `dvswitch-01`). Co-locating is simpler; separating is better if you'll run multiple TicketsCAD instances against one bridge.
+The **bridge host** and the **TicketsCAD web host** can be the same VM (Bloomington's setup) or separate (training has the bridge on `dvswitch-host`). Co-locating is simpler; separating is better if you'll run multiple TicketsCAD instances against one bridge.
 
 ---
 
@@ -66,7 +66,7 @@ You'll need:
 
 ## Step 1 — Run the bridge install script
 
-On the host you're putting the bridge on (Bloomington = same VM as the web; training = separate `dvswitch-01` VM):
+On the host you're putting the bridge on (Bloomington = same VM as the web; training = separate `dvswitch-host` VM):
 
 ```bash
 cd /var/www/newui      # or wherever the TicketsCAD repo lives
@@ -92,7 +92,7 @@ The MD-380 firmware emulator is not shipped in the TicketsCAD repo (not our code
 
 **(a) scp from an existing TicketsCAD bridge in your fleet** — fastest:
 ```bash
-sudo MD380_SOURCE_BRIDGE=dvswitch-01 bash services/dvswitch/install-bridge.sh
+sudo MD380_SOURCE_BRIDGE=dvswitch-host bash services/dvswitch/install-bridge.sh
 ```
 
 **(b) Build from upstream source** — canonical, slower (~5 minutes):

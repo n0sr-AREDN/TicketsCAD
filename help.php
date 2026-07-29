@@ -781,6 +781,63 @@ detail an internet lookup service is told about who is querying (the User-Agent)
 '
             ],
             [
+                'slug'  => 'automatic-backups',
+                'title' => 'Automatic Backups',
+                'body'  => '
+<p>TicketsCAD backs itself up. Automatic backups are <strong>on by default</strong> &mdash; the
+machines this software runs on lose power, and a backup nobody enabled is the backup nobody has.</p>
+
+<p>Configure it at <strong>Settings &gt; Backup / Maintenance &gt; Automatic Backups</strong>.</p>
+
+<table class="table table-sm table-bordered">
+    <thead><tr><th>Setting</th><th>Default</th><th>What it does</th></tr></thead>
+    <tbody>
+        <tr><td>Take automatic backups</td><td>On</td><td>Master switch. Off means nothing runs.</td></tr>
+        <tr><td>Run without a scheduler</td><td>On</td><td>Lets a due backup start after a page load, so backups happen even with no cron or Task Scheduler.</td></tr>
+        <tr><td>Back up every (hours)</td><td>24</td><td>How often a backup becomes due.</td></tr>
+        <tr><td>Keep this many</td><td>7</td><td>Older copies beyond this are deleted.</td></tr>
+        <tr><td>Delete older than (days)</td><td>0 (off)</td><td>Optional age limit, on top of the count.</td></tr>
+        <tr><td>Keep free disk (MB)</td><td>1024</td><td>Backups stop rather than eat into this reserve.</td></tr>
+        <tr><td>Backup folder limit (MB)</td><td>5120</td><td>Ceiling on the total size of stored backups.</td></tr>
+        <tr><td>Backup directory</td><td>app folder / backups</td><td>Where archives are written.</td></tr>
+    </tbody>
+</table>
+
+<h6 class="mt-3">Backups cannot fill your disk</h6>
+<p>Before writing anything, TicketsCAD checks free space on both the backup folder and the
+temporary folder. If the backup would drop free space below your reserve, or push the backup
+folder past its limit, <strong>the backup is refused</strong> and the reason is shown on the
+System Health page. A backup that fails loudly is better than one that fills the disk and takes
+your dispatch system down.</p>
+
+<p>Cleanup never leaves you with nothing: the newest backup is never deleted, whatever the age,
+count or size rules say. Only files TicketsCAD created (named <code>ticketscad-*</code>) are ever
+removed, so it is safe to point the backup folder at somewhere you keep your own archives.</p>
+
+<h6 class="mt-3">Checking that it is working</h6>
+<ul>
+    <li><strong>Settings &gt; Backup / Maintenance</strong> shows how many backups exist, how much
+        space they use, free disk remaining, when the last one succeeded, and what it said. There is
+        a <strong>Back up now</strong> button that honours the same disk guard.</li>
+    <li><strong>Status &gt; System Health</strong> has a <strong>Backups</strong> card. Amber means
+        the last verified backup is stale or storage is nearing a limit. Red means the last attempt
+        was refused, or nothing has ever succeeded.</li>
+    <li>The backup history table lists every archive, manual and automatic, and lets you download one.</li>
+</ul>
+
+<h6 class="mt-3">If a backup is refused</h6>
+<p>The message names the limit that stopped it. Either free up disk space, raise the limit, reduce
+how many copies are kept, or move old archives off the machine. Nothing is wrong with your
+database &mdash; only the backup copy was affected.</p>
+
+<div class="alert alert-warning small">
+<strong>Backups do not include your encryption keys.</strong> Copy the <code>keys</code> folder
+(next to the application folder) somewhere safe separately. Without <code>tfa.key</code>, every
+two-factor enrollment is permanently unrecoverable.
+</div>
+'
+            ],
+            [
                 'slug'  => 'incident-types-config',
                 'title' => 'Managing Incident Types',
                 'body'  => '
@@ -1496,7 +1553,7 @@ foreach ($help_categories as $catKey => $cat) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
-    <title><?php echo e(t('page.help', 'Help')); ?> &mdash; <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo NEWUI_VERSION; ?></title>
+    <title><?php echo e(t('page.help', 'Help')); ?> &mdash; <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo newui_version(); ?></title>
 
     <!-- Vendor CSS -->
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
@@ -1590,7 +1647,7 @@ var HELP_TOPICS = <?php echo json_encode($flat_topics, JSON_UNESCAPED_UNICODE); 
 <script src="assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>
 
 <!-- App JS -->
-<script src="assets/js/toolbar.js?v=<?php echo NEWUI_VERSION; ?>"></script>
+<script src="assets/js/toolbar.js?v=<?php echo newui_version(); ?>"></script>
 <script src="assets/js/theme-manager.js"></script>
 <script src="assets/js/help.js?v=<?php echo asset_v('assets/js/help.js'); ?>"></script>
 

@@ -96,8 +96,9 @@ ls sql/run_migrations.php
 > says *No such file or directory*:
 >
 > - You are either in the wrong folder, **or** you are running v3.44.
-> - Check which you have: open TicketsCAD and look at **Help → About**, or look
->   for a folder called `api` (v4 has one; v3 does not).
+> - Check which you have: open TicketsCAD, click your name at the top right and
+>   choose **About** (Help and About are siblings in that menu, not nested), or
+>   look for a folder called `api` (v4 has one; v3 does not).
 > - **If you are on v3.44, stop.** This page does not apply to you. Upgrading
 >   v3 to v4 is a separate, larger job — open an issue and we will point you at
 >   the right steps.
@@ -137,8 +138,31 @@ If either says **command not found**:
   ```bash
   /c/xampp/php/php.exe --version
   ```
-  (If XAMPP is somewhere else, adjust the path.) On a **Docker** install there
-  is usually no PHP on the host at all — that is expected; see the Docker notes.
+  (If XAMPP is somewhere else, adjust the path.)
+
+  Or tell Git Bash where PHP lives, **once**, so plain `php` works on this page
+  and every month afterwards. This is the line the Windows video shows and tells
+  you to paste rather than type — copy it from here:
+  ```bash
+  echo "alias php='/c/xampp/php/php.exe'" >> ~/.bashrc
+  ```
+  Then **close Git Bash and open it again.** Two things can happen on that first
+  reopen, and neither is a fault:
+  - A red `WARNING: Found ~/.bashrc but no ~/.bash_profile…  This looks like an
+    incorrect setup.` — that is Git Bash tidying up after itself, and it is the
+    sign the line took effect.
+  - `php: command not found` again — the path is wrong for your machine. Run
+    `ls /c/xampp` and use what is actually there; a versioned install keeps PHP
+    at `/c/xampp/8.2.4/php/php.exe`, and an install on another drive starts with
+    a different letter. Re-run the `echo` line with that path and reopen. (The
+    old line stays in the file, harmlessly — the newer one wins.)
+  - If the path was right and it *still* fails, your Git Bash already has its own
+    startup file (`~/.bash_profile`, `~/.bash_login` or `~/.profile`), so it
+    never reads `~/.bashrc` at all. Put the same line in `~/.bash_profile`
+    instead and reopen.
+
+  On a **Docker** install there is usually no PHP on the host at all — that is
+  expected; see the Docker notes.
 
 **This procedure needs shell access.** If your web host only gives you a file
 manager in a browser and no SSH, none of this will work — open an issue and
@@ -181,6 +205,17 @@ downloading it). Either way, get a backup before continuing.
 > `app` is the service name in the `docker-compose.yml` this project ships. If
 > you wrote your own compose file, use whatever you named the PHP service —
 > `docker compose ps` lists them.
+>
+> **Check that your compose file mounts a volume at `/var/www/html/backups`.**
+> `docker compose up -d --build` — the Docker update command — *replaces* the
+> container, and anything not on a volume goes with it. The shipped
+> `docker-compose.yml` has mounted `app_backups` there since 2026-07; if yours
+> is older, add it (or bind-mount `./backups`) before you rely on this backup.
+> Either way, copy the archive off the host afterwards:
+> ```bash
+> docker compose cp app:/var/www/html/backups ./ticketscad-backups
+> ```
+> See [docs/DOCKER.md](DOCKER.md) §4 for the one-time migration.
 
 ### 1b. The folder
 
@@ -309,14 +344,47 @@ update didn't work".
 > ```
 >
 > If you ran the git commands as a *different user* than the web server runs as
-> (`root` vs `www-data`, say), also fix ownership — otherwise new files can be
-> unreadable to the web server and simply 404 with no error:
+> (`root` vs `www-data`, say), new files can be unreadable to the web server and
+> simply 404 with no error. Fix that by making them **readable** — not by giving
+> the whole folder away:
 >
 > ```bash
-> sudo chown -R www-data:www-data .
+> sudo find . -path ./.git -prune -o -type d -exec chmod 755 {} \;
+> sudo find . -path ./.git -prune -o -type f -exec chmod 644 {} \;
 > ```
 >
-> **This ownership step does not apply on Windows.**
+> **Do NOT run `sudo chown -R www-data:www-data .`** — the dot takes `.git` with
+> it, and your next `git pull` stops with
+> `fatal: detected dubious ownership in repository at '/var/www/newui'`. Whoever
+> owns `.git` is who runs `git pull` from now on; keep it that way.
+>
+> The web server does need to **own** the two directories it writes to, plus a
+> share of `backups/`:
+>
+> ```bash
+> # www-data on Debian/Ubuntu; apache on RHEL/Rocky/Fedora; _www on macOS
+> sudo chown -R www-data:www-data uploads/ cache/
+>
+> mkdir -p backups                       # gitignored — absent on a fresh clone
+> sudo chown -R "$(id -un)":www-data backups/
+> sudo chmod 2770 backups/               # you AND the web server can write
+> ```
+>
+> `backups/` is deliberately *not* handed to the web server outright: you run
+> `php tools/backup_run.php` as yourself, and giving the folder away is exactly
+> what makes that print `FAILED — could not write archive`.
+>
+> The encryption keys are **not** in this list. They live one level *above* the
+> install folder (`/var/www/keys` for an app in `/var/www/newui`), so git never
+> touches them — see [docs/INSTALLATION-CHECKLIST.md](INSTALLATION-CHECKLIST.md)
+> Section 6.
+>
+> **If you already see `fatal: detected dubious ownership`** — your folder was
+> chowned to the web server by an earlier install guide. Either run git as that
+> user (`sudo -u www-data git pull --ff-only`) or take the tree back:
+> `sudo chown -R "$(id -un)":www-data /var/www/newui`.
+>
+> **None of this ownership section applies on Windows.**
 
 Both of these, and why they bite, are covered in
 [docs/UPDATE-CHECKLIST.md](UPDATE-CHECKLIST.md) — worth one read.
@@ -326,6 +394,14 @@ Both of these, and why they bite, are covered in
 Open TicketsCAD in your browser and log in. Your incidents, units, people and
 settings are all still there — none of that lives in the files that were
 replaced. This is the step that tells you it actually worked.
+
+To confirm *which* version you are now running, click your name at the top right
+and choose **About**. That number comes from the git-tracked `VERSION` file, so
+it moves on its own when you pull — nothing to edit.
+
+> Installs created before 2026-07 also have a `define('NEWUI_VERSION', …)` line
+> in their `config.php`. It is ignored now (the About page is still right), and
+> `php tools/check-health.php` will point at the dead line so you can delete it.
 
 ---
 

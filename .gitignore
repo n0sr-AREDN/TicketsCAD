@@ -16,6 +16,16 @@
 *.key
 !*.example.key
 
+# SBOM signing key (Phase 127). The PRIVATE key is held by the maintainer
+# OUTSIDE this repository (see docs/SECURITY-POLICY.md §5.3 for its location)
+# and must never be committed. These patterns are defence in depth: even a
+# stray copy dropped into the tree stays untracked.
+*.key.pem
+ticketscad-sbom-signing*
+# The PUBLIC key is deliberately published — publishing it is what lets anyone
+# verify the SBOM signature without contacting us. It must escape "*.pem".
+!SBOM-signing-key.pub.pem
+
 # Python build/cache artifacts (services/aprs-is, services/meshtastic, etc.)
 __pycache__/
 *.pyc

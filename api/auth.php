@@ -6,6 +6,15 @@
  * Returns 401 JSON if the user is not logged in.
  */
 
+// Fatal-to-JSON guard FIRST, before anything that can fail. Every
+// session-authenticated api/*.php endpoint requires this file, so installing
+// the guard here covers them all in one place. Anything that kills the request
+// from here on — including an Error/TypeError that `catch (Exception)` cannot
+// reach — still returns valid JSON instead of an empty body. See
+// inc/api_guard.php for the full rationale (mesh-bridge delete, 2026-07-28).
+require_once __DIR__ . '/../inc/api_guard.php';
+api_guard_install();
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/security-headers.php';
 require_once __DIR__ . '/../inc/session-manager.php';

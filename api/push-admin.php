@@ -111,13 +111,16 @@ if ($method === 'POST') {
     $body = json_decode($raw, true) ?: [];
 
     // CSRF check using the shared helper (auth.php loaded it).
-    if (function_exists('csrf_check')) {
-        $token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? ($body['_csrf'] ?? '');
-        if (!csrf_check($token)) {
-            http_response_code(403);
-            echo json_encode(['error' => 'CSRF token mismatch']);
-            exit;
-        }
+    // CSRF. Call csrf_verify() directly and unguarded: the previous
+    // `if (function_exists('csrf_check'))` named a function that exists NOWHERE
+    // in the codebase, so the guard was always false and this check never ran
+    // on any request. A missing CSRF helper must fail loudly, not disable the
+    // control silently. (Found 2026-07-28.)
+    $token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? ($body['_csrf'] ?? '');
+    if (!csrf_verify($token)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'CSRF token mismatch']);
+        exit;
     }
 
     if ($action === 'save') {

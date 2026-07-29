@@ -16,7 +16,7 @@ with **[Piper](https://github.com/rhasspy/piper)**, a fast local neural TTS:
 - **Free, no signup, no API key, no per-character billing.**
 - **Offline** — keeps working when your internet is down, which matters for a
   public-safety tool. Latency is milliseconds on any modern CPU (no GPU needed).
-- Runs on the same VM as the bridge (reference install: `dvswitch-01`,
+- Runs on the same VM as the bridge (reference install: `dvswitch-host`,
   10.0.0.10, systemd-managed).
 
 ### Installing Piper on a new bridge VM (Debian/Ubuntu)

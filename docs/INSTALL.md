@@ -28,7 +28,13 @@ composer install --no-dev --optimize-autoloader
 # Config
 cp config.example.php config.php
 sed -i "s/CHANGE_ME_DB_USER/newui/; s/CHANGE_ME_DB_PASS/CHANGE_ME/" config.php
-chown -R www-data:www-data /var/www/newui
+
+# Ownership: the web server writes to uploads/, cache/ and the out-of-tree keys
+# dir — NOT to the whole tree. Never `chown -R` the install directory: it takes
+# .git with it and the next `git pull` fails with "detected dubious ownership".
+chown www-data:www-data config.php && chmod 640 config.php
+chown -R www-data:www-data /var/www/newui/uploads /var/www/newui/cache
+mkdir -p /var/www/keys && chown www-data:www-data /var/www/keys && chmod 700 /var/www/keys
 
 # Apache vhost
 cp apache/newui.conf.example /etc/apache2/sites-available/newui.conf
@@ -143,14 +149,37 @@ If `composer install` complains about memory, give it more:
 sudo php -d memory_limit=512M /usr/bin/composer install --no-dev --optimize-autoloader
 ```
 
-Set ownership so Apache (`www-data`) can read and write where it needs to:
+Set permissions so Apache (`www-data`) can **read** the program files and
+**write** the few places it needs to.
+
+> **Never `sudo chown -R www-data:www-data /var/www/newui`.** A recursive chown
+> of the install directory takes `.git` with it, and your next `git pull` stops
+> with `fatal: detected dubious ownership in repository at '/var/www/newui'`
+> (git ≥ 2.35.2, CVE-2022-24765). Apache does not need to *own* the code to
+> serve it — mode `644`/`755` is enough. Whoever runs `git` keeps the tree.
 
 ```bash
-sudo chown -R www-data:www-data /var/www/newui
-sudo find /var/www/newui -type d -exec chmod 0755 {} \;
-sudo find /var/www/newui -type f -exec chmod 0644 {} \;
-sudo chmod -R u+rwX,g+rwX /var/www/newui/cache /var/www/newui/uploads /var/www/newui/backups 2>/dev/null || true
+cd /var/www/newui
+
+# Readable by everyone, writable by the owner (leave .git alone):
+sudo find . -path ./.git -prune -o -type d -exec chmod 0755 {} \;
+sudo find . -path ./.git -prune -o -type f -exec chmod 0644 {} \;
+
+# The two directories PHP writes to inside the tree:
+sudo chown -R www-data:www-data uploads/ cache/
+
+# backups/ is gitignored and created on first use. It is written BOTH by
+# `php tools/backup_run.php` on the CLI (as you) and by Settings → Backup /
+# the cron entry (as www-data) — so share it rather than handing it over:
+mkdir -p backups
+sudo chown -R "$(id -un)":www-data backups/
+sudo chmod 2770 backups/
 ```
+
+The encryption keys are **not** in the tree: `FE_KEYS_DIR` is
+`NEWUI_ROOT/../keys`, i.e. `/var/www/keys` for an install in `/var/www/newui`,
+so the RSA private key is not reachable over HTTP even if Apache config fails.
+It is created in Step 4 below and is never touched by git.
 
 ---
 
@@ -290,7 +319,7 @@ You should be able to do all of these on a clean install:
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| 403 on every page | Apache can't read `/var/www/newui/`, OR `Require all granted` not active | `sudo chown -R www-data:www-data /var/www/newui`; verify the `<Directory>` block in the vhost |
+| 403 on every page | Apache can't read `/var/www/newui/`, OR `Require all granted` not active | Make it readable — don't chown the tree: `sudo find /var/www/newui -path '*/.git' -prune -o -type d -exec chmod 755 {} \;` and the same with `-type f`/`644`; verify the `<Directory>` block in the vhost |
 | 500 on every page | PHP can't connect to DB, OR a required extension is missing | `sudo tail /var/log/apache2/newui-error.log`; check `php -m`; verify `config.php` |
 | Yellow banner: "Database migrations pending" | New code was deployed but `sql/run_migrations.php` wasn't run | Run the orchestrator; banner clears |
 | "No SMTP transport" when sending test email | SMTP settings empty OR `inc/channels/smtp.php` not loaded | Verify settings are in DB (`SELECT * FROM settings WHERE name LIKE 'smtp%'`); restart Apache |

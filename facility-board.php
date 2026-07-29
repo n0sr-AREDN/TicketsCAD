@@ -63,7 +63,7 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
     <meta http-equiv="refresh" content="120">
-    <title><?php echo e(t('page.facility_board', 'Facility Board')); ?> &mdash; <?php echo e(t('login.title', 'Tickets CAD')); ?> <?php echo NEWUI_VERSION; ?></title>
+    <title><?php echo e(t('page.facility_board', 'Facility Board')); ?> &mdash; <?php echo e(t('login.title', 'Tickets CAD')); ?> <?php echo newui_version(); ?></title>
 
     <!-- Vendor CSS -->
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">

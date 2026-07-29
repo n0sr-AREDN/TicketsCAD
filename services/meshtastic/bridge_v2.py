@@ -860,7 +860,7 @@ def dispatch_outbox(adapters: list, kind: str, target: str, payload: dict):
                 # MeshCore: DM if to_node is a destination pubkey (hex), otherwise
                 # broadcast on the channel slot.
                 #
-                # Verified against the INSTALLED lib on meshbridge-02
+                # Verified against the INSTALLED lib on meshbridge-host-2
                 # (meshcore 2.3.7, github.com/fdlamotte/meshcore_py) by
                 # importing meshcore.commands.CommandHandler and inspecting
                 # signatures (2026-06-25). The real methods are:
@@ -903,7 +903,7 @@ def dispatch_outbox(adapters: list, kind: str, target: str, payload: dict):
                 # send_res) and correlate it to this outbox id, then re-ack
                 # the CAD with the measured round-trip. That needs the adapter
                 # to track in-flight ack_codes → outbox ids and is deferred to
-                # a hardware-in-the-loop session on meshbridge-01/02. Until
+                # a hardware-in-the-loop session on meshbridge-host-1/2. Until
                 # then DM ack_ms is only populated for the blocking-result
                 # case; channel sends have no end-to-end ACK by design.
                 if to_node:

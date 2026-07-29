@@ -1,32 +1,314 @@
 {
+    "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
     "bomFormat": "CycloneDX",
-    "specVersion": "1.5",
-    "version": 1,
+    "specVersion": "1.6",
+    "serialNumber": "urn:uuid:47ea2c91-27b1-544c-98e4-923c72e08a18",
+    "version": 11,
     "metadata": {
-        "timestamp": "2026-06-13T05:58:26+02:00",
+        "timestamp": "2026-07-29T22:15:14Z",
+        "lifecycles": [
+            {
+                "phase": "pre-build"
+            }
+        ],
+        "tools": {
+            "components": [
+                {
+                    "type": "application",
+                    "name": "TicketsCAD SBOM generator (tools/generate-sbom.php)",
+                    "version": "2.1.0",
+                    "publisher": "OpenISES TicketsCAD Project"
+                }
+            ]
+        },
+        "authors": [
+            {
+                "name": "OpenISES TicketsCAD Project",
+                "email": "ejosterberg@gmail.com"
+            }
+        ],
         "component": {
             "type": "application",
+            "bom-ref": "pkg:generic/ticketscad-newui@4.2.0",
             "name": "TicketsCAD NewUI",
-            "version": "4.0.0-dev",
-            "bom-ref": "pkg:generic/ticketscad-newui"
+            "version": "4.2.0",
+            "publisher": "OpenISES TicketsCAD Project",
+            "description": "Computer-aided dispatch for volunteer emergency services, amateur-radio emergency communications groups, CERT teams and small public-safety agencies.",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "GPL-2.0-only"
+                    }
+                }
+            ],
+            "purl": "pkg:generic/ticketscad-newui@4.2.0",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/openises/TicketsCAD"
+                }
+            ]
         },
-        "tools": [
+        "properties": [
             {
-                "vendor": "Tickets CAD",
-                "name": "tools/generate-sbom.php",
-                "version": "1.0.0"
+                "name": "ticketscad:content-digest",
+                "value": "101ead642630c4979558f556e65289d66b7d869f736f96e2b926b18438b2f80d"
+            },
+            {
+                "name": "ticketscad:standard",
+                "value": "CISA 2026 Minimum Elements for a Software Bill of Materials (SBOM), published 2026-07-29"
+            },
+            {
+                "name": "ticketscad:standard-url",
+                "value": "https://www.cisa.gov/resources-tools/resources/2026-minimum-elements-software-bill-materials-sbom"
+            },
+            {
+                "name": "ticketscad:generation-context-detail",
+                "value": "Generated from the source tree before build: exact versions from composer.lock, and versions of vendored browser libraries detected from the shipped artifacts themselves at generation time."
+            },
+            {
+                "name": "ticketscad:unknown-convention",
+                "value": "Components carry a \"ticketscad:unknown\" property naming the CISA minimum elements the SBOM author could not determine, and a \"ticketscad:unknown-reason\" property explaining why. No information in this SBOM is withheld; withheld fields would be marked \"ticketscad:withheld\"."
+            },
+            {
+                "name": "ticketscad:coverage",
+                "value": "Covers PHP Composer dependencies (with transitive relationships), vendored browser libraries, browser libraries loaded from a CDN at runtime, optional Python service dependencies, derived GPL source, and optional container base images. Excludes non-code assets and the operator-supplied platform (PHP runtime, web server, database)."
+            },
+            {
+                "name": "ticketscad:regenerate",
+                "value": "php tools/generate-sbom.php"
+            },
+            {
+                "name": "ticketscad:signature-file",
+                "value": "SBOM.cdx.json.sig"
+            },
+            {
+                "name": "ticketscad:signature-algorithm",
+                "value": "ECDSA P-256 (prime256v1) with SHA-256, detached, base64-encoded. The signature covers the exact bytes of SBOM.cdx.json."
+            },
+            {
+                "name": "ticketscad:signature-public-key",
+                "value": "SBOM-signing-key.pub.pem"
+            },
+            {
+                "name": "ticketscad:signature-public-key-sha256",
+                "value": "XRcJ3AwAm0OzSzjmU8KWkknftutwY36a6z7st2YrU0g="
+            },
+            {
+                "name": "ticketscad:signature-verify",
+                "value": "base64 -d SBOM.cdx.json.sig > sbom.sig && openssl dgst -sha256 -verify SBOM-signing-key.pub.pem -signature sbom.sig SBOM.cdx.json"
             }
         ]
     },
     "components": [
         {
-            "type": "library",
-            "name": "cboden/ratchet",
-            "version": "0.4.4",
-            "purl": "pkg:composer/cboden/ratchet@0.4.4",
-            "bom-ref": "pkg:composer/cboden/ratchet@0.4.4",
+            "type": "container",
+            "bom-ref": "pkg:docker/composer@2#container-base",
+            "name": "composer",
+            "version": "2",
+            "description": "Base image referenced by Dockerfile. Optional: only used by operators who deploy with Docker.",
             "scope": "required",
-            "group": "cboden",
+            "purl": "pkg:docker/composer@2",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://hub.docker.com/_/composer"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:docker/composer@2"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "The image is referenced by a mutable tag rather than a digest, so the exact image contents are resolved at \"docker build\" time on the operator's host and cannot be hashed by the SBOM author. For the same reason the producer and licence cannot be stated: a base image is a whole distribution of many packages under many licences, and which ones it contains depends on when the tag is pulled. Operators who need this should generate an image SBOM from the built image (for example with \"syft\" or \"trivy\"). The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "container",
+            "bom-ref": "pkg:docker/debian@bookworm-slim#container-base",
+            "name": "debian",
+            "version": "bookworm-slim",
+            "description": "Base image referenced by services/dvswitch/docker/Dockerfile. Optional: only used by operators who deploy with Docker.",
+            "scope": "required",
+            "purl": "pkg:docker/debian@bookworm-slim",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://hub.docker.com/_/debian"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:docker/debian@bookworm-slim"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "The image is referenced by a mutable tag rather than a digest, so the exact image contents are resolved at \"docker build\" time on the operator's host and cannot be hashed by the SBOM author. For the same reason the producer and licence cannot be stated: a base image is a whole distribution of many packages under many licences, and which ones it contains depends on when the tag is pulled. Operators who need this should generate an image SBOM from the built image (for example with \"syft\" or \"trivy\"). The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "container",
+            "bom-ref": "pkg:docker/mariadb@11#container-base",
+            "name": "mariadb",
+            "version": "11",
+            "description": "Base image referenced by docker-compose.yml. Optional: only used by operators who deploy with Docker.",
+            "scope": "required",
+            "purl": "pkg:docker/mariadb@11",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://hub.docker.com/_/mariadb"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:docker/mariadb@11"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "The image is referenced by a mutable tag rather than a digest, so the exact image contents are resolved at \"docker build\" time on the operator's host and cannot be hashed by the SBOM author. For the same reason the producer and licence cannot be stated: a base image is a whole distribution of many packages under many licences, and which ones it contains depends on when the tag is pulled. Operators who need this should generate an image SBOM from the built image (for example with \"syft\" or \"trivy\"). The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "container",
+            "bom-ref": "pkg:docker/php@8.2-apache-bookworm#container-base",
+            "name": "php",
+            "version": "8.2-apache-bookworm",
+            "description": "Base image referenced by Dockerfile. Optional: only used by operators who deploy with Docker.",
+            "scope": "required",
+            "purl": "pkg:docker/php@8.2-apache-bookworm",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://hub.docker.com/_/php"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:docker/php@8.2-apache-bookworm"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "The image is referenced by a mutable tag rather than a digest, so the exact image contents are resolved at \"docker build\" time on the operator's host and cannot be hashed by the SBOM author. For the same reason the producer and licence cannot be stated: a base image is a whole distribution of many packages under many licences, and which ones it contains depends on when the tag is pulled. Operators who need this should generate an image SBOM from the built image (for example with \"syft\" or \"trivy\"). The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:github/g4klx/MMDVMHost#derived-source",
+            "name": "MMDVMHost",
+            "publisher": "Jonathan Naylor (G4KLX)",
+            "description": "DMR protocol logic in services/dvswitch/ is a derivative work of MMDVMHost. 11 file(s) are ports of, or direct extractions from, MMDVMHost sources (RS129, BPTC19696, Hamming, AMBEFEC, Golay, DMRSlotType, DMREmbeddedData, DMRNetwork). TicketsCAD is GPL-2.0, so the copyleft terms are satisfied; this entry records the provenance so downstream recipients can see it.",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "GPL-2.0-only"
+                    }
+                }
+            ],
+            "purl": "pkg:github/g4klx/MMDVMHost",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/g4klx/MMDVMHost"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:file",
+                    "value": "services/dvswitch/_prng_data.py sha256:03cf4094d7065c50815f490f9263c2967e202c5543e45a97818cd3ebb1594399"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "services/dvswitch/ambe_fec.py sha256:1f5108978dacb79a1e4627d1897f9314939aab0abad568ce5efa39fe782e9757"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "services/dvswitch/bptc_19696.py sha256:9adb63a8bca6443b5ed746c00d8c34dcf36cfcf148db8017f7ff284446906dc9"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "services/dvswitch/dmr_tx.py sha256:d142997574276d3a2ca9df88a34629ab4a196765537f94f6a0ed810c50078bee"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "services/dvswitch/echo_bot.py sha256:0a6c47463615665f69a653d26854282c4978a7f8805489fe2dbe3c31bf4c7d07"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "services/dvswitch/emb.py sha256:44ee059d2788613bbf4946bd867083d26af7862cde176f58787c076a6bf4ea38"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "services/dvswitch/embedded_lc.py sha256:4d59547c6f4821b466529309cae9a198441633de25580d4b42893e61da482a57"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "services/dvswitch/hbp_client.py sha256:7e5179f549ac259ee9a3f38eaa1a9c1d8d79a43ff98becfff49ecf8b277aa3b0"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "services/dvswitch/rs_129.py sha256:49ba842c8c8ea2620d54d2b95fc1c7890e10671b523315cf42746ea3e481494b"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "services/dvswitch/slot_type.py sha256:c81fdfe76aa7a04c566da7052d29fa41e50636a1c04841b94936fd074e867e08"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "services/dvswitch/voice_burst.py sha256:6a58ed870b1c91345ccc7bc1337a454ffc449dd784989b4607b075896d7bc982"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:github/g4klx/MMDVMHost"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Derived source, not a linked dependency — the code is compiled into the TicketsCAD tree rather than installed as a package."
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "The ported files cite MMDVMHost source filenames but no upstream release tag or commit, so the SBOM author cannot state which MMDVMHost revision the port was taken from. There is also no single artifact to hash: this component is source ported into several files rather than a distributed package. A SHA-256 for each individual ported file is given in the \"ticketscad:file\" properties on this component, which is the integrity evidence a recipient can actually check against this tree. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:composer/brick/math@0.17.2#php-composer",
+            "name": "brick/math",
+            "publisher": "brick",
+            "version": "0.17.2",
+            "description": "Arbitrary-precision arithmetic library",
+            "scope": "required",
             "licenses": [
                 {
                     "license": {
@@ -34,22 +316,89 @@
                     }
                 }
             ],
+            "purl": "pkg:composer/brick/math@0.17.2",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/brick/math.git"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/brick/math@0.17.2"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:8189e751995f9e15729c1aa2f89fa8f166ffe818"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 8189e751995f9e15729c1aa2f89fa8f166ffe818"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:composer/cboden/ratchet@0.4.4#php-composer",
+            "name": "cboden/ratchet",
+            "publisher": "cboden",
+            "version": "0.4.4",
             "description": "PHP WebSocket library",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:composer/cboden/ratchet@0.4.4",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/ratchetphp/Ratchet.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/cboden/ratchet@0.4.4"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:5012dc954541b40c5599d286fd40653f5716a38f"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 5012dc954541b40c5599d286fd40653f5716a38f"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
+            "bom-ref": "pkg:composer/evenement/evenement@3.0.2#php-composer",
             "name": "evenement/evenement",
+            "publisher": "evenement",
             "version": "3.0.2",
-            "purl": "pkg:composer/evenement/evenement@3.0.2",
-            "bom-ref": "pkg:composer/evenement/evenement@3.0.2",
+            "description": "Événement is a very simple event dispatching library for PHP",
             "scope": "required",
-            "group": "evenement",
             "licenses": [
                 {
                     "license": {
@@ -57,22 +406,44 @@
                     }
                 }
             ],
-            "description": "\u00c9v\u00e9nement is a very simple event dispatching library for PHP",
+            "purl": "pkg:composer/evenement/evenement@3.0.2",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/igorw/evenement.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/evenement/evenement@3.0.2"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:0a16b0d71ab13284339abb99d9d2bd813640efbc"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 0a16b0d71ab13284339abb99d9d2bd813640efbc"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
+            "bom-ref": "pkg:composer/firebase/php-jwt@7.0.3#php-composer",
             "name": "firebase/php-jwt",
+            "publisher": "firebase",
             "version": "7.0.3",
-            "purl": "pkg:composer/firebase/php-jwt@7.0.3",
-            "bom-ref": "pkg:composer/firebase/php-jwt@7.0.3",
+            "description": "A simple library to encode and decode JSON Web Tokens (JWT) in PHP. Should conform to the current spec.",
             "scope": "required",
-            "group": "firebase",
             "licenses": [
                 {
                     "license": {
@@ -80,22 +451,44 @@
                     }
                 }
             ],
-            "description": "A simple library to encode and decode JSON Web Tokens (JWT) in PHP. Should conform to the current spec.",
+            "purl": "pkg:composer/firebase/php-jwt@7.0.3",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/firebase/php-jwt.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/firebase/php-jwt@7.0.3"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:28aa0694bcfdfa5e2959c394d5a1ee7a5083629e"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 28aa0694bcfdfa5e2959c394d5a1ee7a5083629e"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
-            "name": "guzzlehttp/psr7",
-            "version": "2.9.0",
-            "purl": "pkg:composer/guzzlehttp/psr7@2.9.0",
-            "bom-ref": "pkg:composer/guzzlehttp/psr7@2.9.0",
+            "bom-ref": "pkg:composer/guzzlehttp/guzzle@7.12.3#php-composer",
+            "name": "guzzlehttp/guzzle",
+            "publisher": "guzzlehttp",
+            "version": "7.12.3",
+            "description": "Guzzle is a PHP HTTP client library",
             "scope": "required",
-            "group": "guzzlehttp",
             "licenses": [
                 {
                     "license": {
@@ -103,22 +496,134 @@
                     }
                 }
             ],
+            "purl": "pkg:composer/guzzlehttp/guzzle@7.12.3",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/guzzle/guzzle.git"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/guzzlehttp/guzzle@7.12.3"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:9aa17bcdd777ee31df9fc83c337ca4ca2340def3"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 9aa17bcdd777ee31df9fc83c337ca4ca2340def3"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:composer/guzzlehttp/promises@2.5.0#php-composer",
+            "name": "guzzlehttp/promises",
+            "publisher": "guzzlehttp",
+            "version": "2.5.0",
+            "description": "Guzzle promises library",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:composer/guzzlehttp/promises@2.5.0",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/guzzle/promises.git"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/guzzlehttp/promises@2.5.0"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:4360e982f87f5f258bf872d094647791db2f4c8e"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 4360e982f87f5f258bf872d094647791db2f4c8e"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:composer/guzzlehttp/psr7@2.12.3#php-composer",
+            "name": "guzzlehttp/psr7",
+            "publisher": "guzzlehttp",
+            "version": "2.12.3",
             "description": "PSR-7 message implementation that also provides common utility methods",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:composer/guzzlehttp/psr7@2.12.3",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/guzzle/psr7.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/guzzlehttp/psr7@2.12.3"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:7ec62dc3f44aa218487dbed81a9bf9bc647be55d"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 7ec62dc3f44aa218487dbed81a9bf9bc647be55d"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
-            "name": "psr/http-factory",
-            "version": "1.1.0",
-            "purl": "pkg:composer/psr/http-factory@1.1.0",
-            "bom-ref": "pkg:composer/psr/http-factory@1.1.0",
+            "bom-ref": "pkg:composer/minishlink/web-push@9.0.4#php-composer",
+            "name": "minishlink/web-push",
+            "publisher": "minishlink",
+            "version": "9.0.4",
+            "description": "Web Push library for PHP",
             "scope": "required",
-            "group": "psr",
             "licenses": [
                 {
                     "license": {
@@ -126,22 +631,179 @@
                     }
                 }
             ],
+            "purl": "pkg:composer/minishlink/web-push@9.0.4",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/web-push-libs/web-push-php.git"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/minishlink/web-push@9.0.4"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:f979f40b0017d2f86d82b9f21edbc515d031cc23"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: f979f40b0017d2f86d82b9f21edbc515d031cc23"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:composer/psr/clock@1.0.0#php-composer",
+            "name": "psr/clock",
+            "publisher": "psr",
+            "version": "1.0.0",
+            "description": "Common interface for reading the clock.",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:composer/psr/clock@1.0.0",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/php-fig/clock.git"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/psr/clock@1.0.0"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:e41a24703d4560fd0acb709162f73b8adfc3aa0d"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: e41a24703d4560fd0acb709162f73b8adfc3aa0d"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:composer/psr/http-client@1.0.3#php-composer",
+            "name": "psr/http-client",
+            "publisher": "psr",
+            "version": "1.0.3",
+            "description": "Common interface for HTTP clients",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:composer/psr/http-client@1.0.3",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/php-fig/http-client.git"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/psr/http-client@1.0.3"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:bb5906edc1c324c9a05aa0873d40117941e5fa90"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: bb5906edc1c324c9a05aa0873d40117941e5fa90"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:composer/psr/http-factory@1.1.0#php-composer",
+            "name": "psr/http-factory",
+            "publisher": "psr",
+            "version": "1.1.0",
             "description": "PSR-17: Common interfaces for PSR-7 HTTP message factories",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:composer/psr/http-factory@1.1.0",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/php-fig/http-factory.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/psr/http-factory@1.1.0"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:2b4765fddfe3b508ac62f829e852b1501d3f6e8a"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 2b4765fddfe3b508ac62f829e852b1501d3f6e8a"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
+            "bom-ref": "pkg:composer/psr/http-message@2.0#php-composer",
             "name": "psr/http-message",
+            "publisher": "psr",
             "version": "2.0",
-            "purl": "pkg:composer/psr/http-message@2.0",
-            "bom-ref": "pkg:composer/psr/http-message@2.0",
+            "description": "Common interface for HTTP messages",
             "scope": "required",
-            "group": "psr",
             "licenses": [
                 {
                     "license": {
@@ -149,22 +811,44 @@
                     }
                 }
             ],
-            "description": "Common interface for HTTP messages",
+            "purl": "pkg:composer/psr/http-message@2.0",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/php-fig/http-message.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/psr/http-message@2.0"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:402d35bcb92c70c026d1a6a9883f06b2ead23d71"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 402d35bcb92c70c026d1a6a9883f06b2ead23d71"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
+            "bom-ref": "pkg:composer/ralouphie/getallheaders@3.0.3#php-composer",
             "name": "ralouphie/getallheaders",
+            "publisher": "ralouphie",
             "version": "3.0.3",
-            "purl": "pkg:composer/ralouphie/getallheaders@3.0.3",
-            "bom-ref": "pkg:composer/ralouphie/getallheaders@3.0.3",
+            "description": "A polyfill for getallheaders.",
             "scope": "required",
-            "group": "ralouphie",
             "licenses": [
                 {
                     "license": {
@@ -172,22 +856,44 @@
                     }
                 }
             ],
-            "description": "A polyfill for getallheaders.",
+            "purl": "pkg:composer/ralouphie/getallheaders@3.0.3",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/ralouphie/getallheaders.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/ralouphie/getallheaders@3.0.3"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:120b605dfeb996808c31b6477290a714d356e822"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 120b605dfeb996808c31b6477290a714d356e822"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
+            "bom-ref": "pkg:composer/ratchet/pawl@0.3.5#php-composer",
             "name": "ratchet/pawl",
+            "publisher": "ratchet",
             "version": "0.3.5",
-            "purl": "pkg:composer/ratchet/pawl@0.3.5",
-            "bom-ref": "pkg:composer/ratchet/pawl@0.3.5",
+            "description": "Asynchronous WebSocket client",
             "scope": "required",
-            "group": "ratchet",
             "licenses": [
                 {
                     "license": {
@@ -195,22 +901,44 @@
                     }
                 }
             ],
-            "description": "Asynchronous WebSocket client",
+            "purl": "pkg:composer/ratchet/pawl@0.3.5",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/ratchetphp/Pawl.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/ratchet/pawl@0.3.5"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:89ec703c76dc893484a2a0ed44b48a37d445abd5"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 89ec703c76dc893484a2a0ed44b48a37d445abd5"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
+            "bom-ref": "pkg:composer/ratchet/rfc6455@0.3.1#php-composer",
             "name": "ratchet/rfc6455",
+            "publisher": "ratchet",
             "version": "0.3.1",
-            "purl": "pkg:composer/ratchet/rfc6455@0.3.1",
-            "bom-ref": "pkg:composer/ratchet/rfc6455@0.3.1",
+            "description": "RFC6455 WebSocket protocol handler",
             "scope": "required",
-            "group": "ratchet",
             "licenses": [
                 {
                     "license": {
@@ -218,22 +946,44 @@
                     }
                 }
             ],
-            "description": "RFC6455 WebSocket protocol handler",
+            "purl": "pkg:composer/ratchet/rfc6455@0.3.1",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/ratchetphp/RFC6455.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/ratchet/rfc6455@0.3.1"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:7c964514e93456a52a99a20fcfa0de242a43ccdb"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 7c964514e93456a52a99a20fcfa0de242a43ccdb"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
+            "bom-ref": "pkg:composer/react/cache@1.2.0#php-composer",
             "name": "react/cache",
+            "publisher": "react",
             "version": "1.2.0",
-            "purl": "pkg:composer/react/cache@1.2.0",
-            "bom-ref": "pkg:composer/react/cache@1.2.0",
+            "description": "Async, Promise-based cache interface for ReactPHP",
             "scope": "required",
-            "group": "react",
             "licenses": [
                 {
                     "license": {
@@ -241,22 +991,44 @@
                     }
                 }
             ],
-            "description": "Async, Promise-based cache interface for ReactPHP",
+            "purl": "pkg:composer/react/cache@1.2.0",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/reactphp/cache.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/react/cache@1.2.0"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:d47c472b64aa5608225f47965a484b75c7817d5b"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: d47c472b64aa5608225f47965a484b75c7817d5b"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
+            "bom-ref": "pkg:composer/react/dns@1.14.0#php-composer",
             "name": "react/dns",
+            "publisher": "react",
             "version": "1.14.0",
-            "purl": "pkg:composer/react/dns@1.14.0",
-            "bom-ref": "pkg:composer/react/dns@1.14.0",
+            "description": "Async DNS resolver for ReactPHP",
             "scope": "required",
-            "group": "react",
             "licenses": [
                 {
                     "license": {
@@ -264,22 +1036,44 @@
                     }
                 }
             ],
-            "description": "Async DNS resolver for ReactPHP",
+            "purl": "pkg:composer/react/dns@1.14.0",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/reactphp/dns.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/react/dns@1.14.0"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:7562c05391f42701c1fccf189c8225fece1cd7c3"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 7562c05391f42701c1fccf189c8225fece1cd7c3"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
+            "bom-ref": "pkg:composer/react/event-loop@1.6.0#php-composer",
             "name": "react/event-loop",
+            "publisher": "react",
             "version": "1.6.0",
-            "purl": "pkg:composer/react/event-loop@1.6.0",
-            "bom-ref": "pkg:composer/react/event-loop@1.6.0",
+            "description": "ReactPHP's core reactor event loop that libraries can use for evented I/O.",
             "scope": "required",
-            "group": "react",
             "licenses": [
                 {
                     "license": {
@@ -287,22 +1081,44 @@
                     }
                 }
             ],
-            "description": "ReactPHP's core reactor event loop that libraries can use for evented I/O.",
+            "purl": "pkg:composer/react/event-loop@1.6.0",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/reactphp/event-loop.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/react/event-loop@1.6.0"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:ba276bda6083df7e0050fd9b33f66ad7a4ac747a"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: ba276bda6083df7e0050fd9b33f66ad7a4ac747a"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
+            "bom-ref": "pkg:composer/react/promise@3.3.0#php-composer",
             "name": "react/promise",
+            "publisher": "react",
             "version": "3.3.0",
-            "purl": "pkg:composer/react/promise@3.3.0",
-            "bom-ref": "pkg:composer/react/promise@3.3.0",
+            "description": "A lightweight implementation of CommonJS Promises/A for PHP",
             "scope": "required",
-            "group": "react",
             "licenses": [
                 {
                     "license": {
@@ -310,22 +1126,44 @@
                     }
                 }
             ],
-            "description": "A lightweight implementation of CommonJS Promises/A for PHP",
+            "purl": "pkg:composer/react/promise@3.3.0",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/reactphp/promise.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/react/promise@3.3.0"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:23444f53a813a3296c1368bb104793ce8d88f04a"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 23444f53a813a3296c1368bb104793ce8d88f04a"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
+            "bom-ref": "pkg:composer/react/socket@1.17.0#php-composer",
             "name": "react/socket",
+            "publisher": "react",
             "version": "1.17.0",
-            "purl": "pkg:composer/react/socket@1.17.0",
-            "bom-ref": "pkg:composer/react/socket@1.17.0",
+            "description": "Async, streaming plaintext TCP/IP and secure TLS socket server and client connections for ReactPHP",
             "scope": "required",
-            "group": "react",
             "licenses": [
                 {
                     "license": {
@@ -333,22 +1171,44 @@
                     }
                 }
             ],
-            "description": "Async, streaming plaintext TCP/IP and secure TLS socket server and client connections for ReactPHP",
+            "purl": "pkg:composer/react/socket@1.17.0",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/reactphp/socket.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/react/socket@1.17.0"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:ef5b17b81f6f60504c539313f94f2d826c5faa08"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: ef5b17b81f6f60504c539313f94f2d826c5faa08"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
+            "bom-ref": "pkg:composer/react/stream@1.4.0#php-composer",
             "name": "react/stream",
+            "publisher": "react",
             "version": "1.4.0",
-            "purl": "pkg:composer/react/stream@1.4.0",
-            "bom-ref": "pkg:composer/react/stream@1.4.0",
+            "description": "Event-driven readable and writable streams for non-blocking I/O in ReactPHP",
             "scope": "required",
-            "group": "react",
             "licenses": [
                 {
                     "license": {
@@ -356,22 +1216,44 @@
                     }
                 }
             ],
-            "description": "Event-driven readable and writable streams for non-blocking I/O in ReactPHP",
+            "purl": "pkg:composer/react/stream@1.4.0",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/reactphp/stream.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/react/stream@1.4.0"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:1e5b0acb8fe55143b5b426817155190eb6f5b18d"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 1e5b0acb8fe55143b5b426817155190eb6f5b18d"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
-            "name": "symfony/deprecation-contracts",
-            "version": "3.6.0",
-            "purl": "pkg:composer/symfony/deprecation-contracts@3.6.0",
-            "bom-ref": "pkg:composer/symfony/deprecation-contracts@3.6.0",
+            "bom-ref": "pkg:composer/spomky-labs/base64url@2.0.4#php-composer",
+            "name": "spomky-labs/base64url",
+            "publisher": "spomky-labs",
+            "version": "2.0.4",
+            "description": "Base 64 URL Safe Encoding/Decoding PHP Library",
             "scope": "required",
-            "group": "symfony",
             "licenses": [
                 {
                     "license": {
@@ -379,22 +1261,134 @@
                     }
                 }
             ],
+            "purl": "pkg:composer/spomky-labs/base64url@2.0.4",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/Spomky-Labs/base64url.git"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/spomky-labs/base64url@2.0.4"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:7752ce931ec285da4ed1f4c5aa27e45e097be61d"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 7752ce931ec285da4ed1f4c5aa27e45e097be61d"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:composer/spomky-labs/pki-framework@1.4.2#php-composer",
+            "name": "spomky-labs/pki-framework",
+            "publisher": "spomky-labs",
+            "version": "1.4.2",
+            "description": "A PHP framework for managing Public Key Infrastructures. It comprises X.509 public key certificates, attribute certificates, certification requests and certification path validation.",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:composer/spomky-labs/pki-framework@1.4.2",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/Spomky-Labs/pki-framework.git"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/spomky-labs/pki-framework@1.4.2"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:aa576cbd07128075bef97ac2f8af9854e67513d8"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: aa576cbd07128075bef97ac2f8af9854e67513d8"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer",
+            "name": "symfony/deprecation-contracts",
+            "publisher": "symfony",
+            "version": "3.7.1",
             "description": "A generic function and convention to trigger deprecation notices",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:composer/symfony/deprecation-contracts@3.7.1",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/symfony/deprecation-contracts.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/symfony/deprecation-contracts@3.7.1"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:f3202fa1b5097b0af062dc978b32ecf63404e31d"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: f3202fa1b5097b0af062dc978b32ecf63404e31d"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
+            "bom-ref": "pkg:composer/symfony/http-foundation@6.4.42#php-composer",
             "name": "symfony/http-foundation",
-            "version": "6.4.35",
-            "purl": "pkg:composer/symfony/http-foundation@6.4.35",
-            "bom-ref": "pkg:composer/symfony/http-foundation@6.4.35",
+            "publisher": "symfony",
+            "version": "6.4.42",
+            "description": "Defines an object-oriented layer for the HTTP specification",
             "scope": "required",
-            "group": "symfony",
             "licenses": [
                 {
                     "license": {
@@ -402,22 +1396,44 @@
                     }
                 }
             ],
-            "description": "Defines an object-oriented layer for the HTTP specification",
+            "purl": "pkg:composer/symfony/http-foundation@6.4.42",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/symfony/http-foundation.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/symfony/http-foundation@6.4.42"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:23dcf8e0f59cbbfa9d2894f58fd8be6833794372"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 23dcf8e0f59cbbfa9d2894f58fd8be6833794372"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
+            "bom-ref": "pkg:composer/symfony/polyfill-mbstring@1.38.2#php-composer",
             "name": "symfony/polyfill-mbstring",
-            "version": "1.33.0",
-            "purl": "pkg:composer/symfony/polyfill-mbstring@1.33.0",
-            "bom-ref": "pkg:composer/symfony/polyfill-mbstring@1.33.0",
+            "publisher": "symfony",
+            "version": "1.38.2",
+            "description": "Symfony polyfill for the Mbstring extension",
             "scope": "required",
-            "group": "symfony",
             "licenses": [
                 {
                     "license": {
@@ -425,22 +1441,44 @@
                     }
                 }
             ],
-            "description": "Symfony polyfill for the Mbstring extension",
+            "purl": "pkg:composer/symfony/polyfill-mbstring@1.38.2",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/symfony/polyfill-mbstring.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/symfony/polyfill-mbstring@1.38.2"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:d3d318bad5e7a1bfbd026009c8bfb8d8f99ae6b6"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: d3d318bad5e7a1bfbd026009c8bfb8d8f99ae6b6"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
-            "name": "symfony/polyfill-php83",
-            "version": "1.33.0",
-            "purl": "pkg:composer/symfony/polyfill-php83@1.33.0",
-            "bom-ref": "pkg:composer/symfony/polyfill-php83@1.33.0",
+            "bom-ref": "pkg:composer/symfony/polyfill-php80@1.37.0#php-composer",
+            "name": "symfony/polyfill-php80",
+            "publisher": "symfony",
+            "version": "1.37.0",
+            "description": "Symfony polyfill backporting some PHP 8.0+ features to lower PHP versions",
             "scope": "required",
-            "group": "symfony",
             "licenses": [
                 {
                     "license": {
@@ -448,22 +1486,134 @@
                     }
                 }
             ],
+            "purl": "pkg:composer/symfony/polyfill-php80@1.37.0",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/symfony/polyfill-php80.git"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/symfony/polyfill-php80@1.37.0"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:dfb55726c3a76ea3b6459fcfda1ec2d80a682411"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: dfb55726c3a76ea3b6459fcfda1ec2d80a682411"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:composer/symfony/polyfill-php82@1.38.1#php-composer",
+            "name": "symfony/polyfill-php82",
+            "publisher": "symfony",
+            "version": "1.38.1",
+            "description": "Symfony polyfill backporting some PHP 8.2+ features to lower PHP versions",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:composer/symfony/polyfill-php82@1.38.1",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/symfony/polyfill-php82.git"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/symfony/polyfill-php82@1.38.1"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:002dc0cfe5fd4ed6033d48f27d4f19a486c4b04b"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 002dc0cfe5fd4ed6033d48f27d4f19a486c4b04b"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:composer/symfony/polyfill-php83@1.38.2#php-composer",
+            "name": "symfony/polyfill-php83",
+            "publisher": "symfony",
+            "version": "1.38.2",
             "description": "Symfony polyfill backporting some PHP 8.3+ features to lower PHP versions",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:composer/symfony/polyfill-php83@1.38.2",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/symfony/polyfill-php83.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/symfony/polyfill-php83@1.38.2"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:796a26abb75ce49f3a84433cd81bf1009d73d5f8"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: 796a26abb75ce49f3a84433cd81bf1009d73d5f8"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
+            "bom-ref": "pkg:composer/symfony/routing@6.4.41#php-composer",
             "name": "symfony/routing",
-            "version": "6.4.34",
-            "purl": "pkg:composer/symfony/routing@6.4.34",
-            "bom-ref": "pkg:composer/symfony/routing@6.4.34",
+            "publisher": "symfony",
+            "version": "6.4.41",
+            "description": "Maps an HTTP request to a set of configuration variables",
             "scope": "required",
-            "group": "symfony",
             "licenses": [
                 {
                     "license": {
@@ -471,22 +1621,44 @@
                     }
                 }
             ],
-            "description": "Maps an HTTP request to a set of configuration variables",
+            "purl": "pkg:composer/symfony/routing@6.4.41",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://github.com/symfony/routing.git"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/symfony/routing@6.4.41"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:af04c79671fd8df0805a44c83fa2b0ba56c8329e"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: af04c79671fd8df0805a44c83fa2b0ba56c8329e"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
+                }
             ]
         },
         {
             "type": "library",
-            "name": "bootstrap",
-            "version": "bundled",
-            "purl": "pkg:generic/bootstrap@bundled",
-            "bom-ref": "pkg:generic/bootstrap@bundled",
+            "bom-ref": "pkg:composer/web-token/jwt-library@4.1.7#php-composer",
+            "name": "web-token/jwt-library",
+            "publisher": "web-token",
+            "version": "4.1.7",
+            "description": "JWT library",
             "scope": "required",
-            "group": null,
             "licenses": [
                 {
                     "license": {
@@ -494,21 +1666,286 @@
                     }
                 }
             ],
+            "purl": "pkg:composer/web-token/jwt-library@4.1.7",
             "externalReferences": [
                 {
                     "type": "vcs",
-                    "url": "https://github.com/twbs/bootstrap"
+                    "url": "https://github.com/web-token/jwt-library.git"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:composer/web-token/jwt-library@4.1.7"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "git-commit:fbcbf2c276d04d8b056f5c2957815abd5dfb704d"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Pinned commit: fbcbf2c276d04d8b056f5c2957815abd5dfb704d"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Package is installed by Composer at deploy time from the pinned source commit; the executable artifact is not distributed with this repository, so the SBOM author has no artifact to hash. The pinned git commit reference is supplied as a Component Identifier instead."
                 }
             ]
         },
         {
             "type": "library",
-            "name": "leaflet",
-            "version": "bundled",
-            "purl": "pkg:generic/leaflet@bundled",
-            "bom-ref": "pkg:generic/leaflet@bundled",
+            "bom-ref": "pkg:pypi/aprslib#python-services",
+            "name": "aprslib",
+            "description": "Used by: services/aprs-is/listener.py, services/aprs/aprs_listener.py",
             "scope": "required",
-            "group": null,
+            "licenses": [
+                {
+                    "license": {
+                        "id": "Apache-2.0"
+                    }
+                }
+            ],
+            "purl": "pkg:pypi/aprslib",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/aprslib/"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:pypi/aprslib"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:pypi/faster-whisper#python-services",
+            "name": "faster-whisper",
+            "description": "Used by: services/dvswitch/bridge.py, services/dvswitch/echo_bot.py",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:pypi/faster-whisper",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/faster-whisper/"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:pypi/faster-whisper"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:pypi/meshcore#python-services",
+            "name": "meshcore",
+            "description": "Used by: services/meshcore/configure_node.py, services/meshcore/verify_node.py, services/meshtastic/bridge_v2.py",
+            "scope": "required",
+            "purl": "pkg:pypi/meshcore",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/meshcore/"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:pypi/meshcore"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component License, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:pypi/meshtastic#python-services",
+            "name": "meshtastic",
+            "description": "Used by: services/meshtastic/bridge.py, services/meshtastic/bridge_v2.py, services/meshtastic/requirements.txt",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "GPL-3.0-only"
+                    }
+                }
+            ],
+            "purl": "pkg:pypi/meshtastic",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/meshtastic/"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:pypi/meshtastic"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Declared constraint: >=2.7.11"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. The declared constraint is \">=2.7.11\", which bounds but does not determine the installed version. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:pypi/mysql-connector-python#python-services",
+            "name": "mysql-connector-python",
+            "description": "Used by: services/aprs/aprs_listener.py, services/audio-matrix/service.py",
+            "scope": "required",
+            "licenses": [
+                {
+                    "expression": "GPL-2.0-only WITH Universal-FOSS-exception-1.0"
+                }
+            ],
+            "purl": "pkg:pypi/mysql-connector-python",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/mysql-connector-python/"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:pypi/mysql-connector-python"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:pypi/numpy#python-services",
+            "name": "numpy",
+            "description": "Used by: services/dvswitch/bridge.py",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "BSD-3-Clause"
+                    }
+                }
+            ],
+            "purl": "pkg:pypi/numpy",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/numpy/"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:pypi/numpy"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:pypi/paho-mqtt#python-services",
+            "name": "paho-mqtt",
+            "description": "Used by: services/meshtastic/bridge.py, services/meshtastic/requirements.txt",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "EPL-2.0"
+                    }
+                }
+            ],
+            "purl": "pkg:pypi/paho-mqtt",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/paho-mqtt/"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:pypi/paho-mqtt"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Declared constraint: >=2.1.0"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. The declared constraint is \">=2.1.0\", which bounds but does not determine the installed version. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:pypi/pypubsub#python-services",
+            "name": "pypubsub",
+            "description": "Used by: services/meshtastic/bridge.py, services/meshtastic/bridge_v2.py",
+            "scope": "required",
             "licenses": [
                 {
                     "license": {
@@ -516,163 +1953,115 @@
                     }
                 }
             ],
-            "externalReferences": [
-                {
-                    "type": "vcs",
-                    "url": "https://github.com/Leaflet/Leaflet"
-                }
-            ]
-        },
-        {
-            "type": "library",
-            "name": "gridstack",
-            "version": "bundled",
-            "purl": "pkg:generic/gridstack@bundled",
-            "bom-ref": "pkg:generic/gridstack@bundled",
-            "scope": "required",
-            "group": null,
-            "licenses": [
-                {
-                    "license": {
-                        "id": "MIT"
-                    }
-                }
-            ],
-            "externalReferences": [
-                {
-                    "type": "vcs",
-                    "url": "https://github.com/gridstack/gridstack.js"
-                }
-            ]
-        },
-        {
-            "type": "library",
-            "name": "meshtastic",
-            "version": "unpinned",
-            "purl": "pkg:pypi/meshtastic",
-            "bom-ref": "pkg:pypi/meshtastic",
-            "scope": "required",
-            "group": null,
-            "externalReferences": [
-                {
-                    "type": "vcs",
-                    "url": "https://pypi.org/project/meshtastic/"
-                }
-            ]
-        },
-        {
-            "type": "library",
-            "name": "pypubsub",
-            "version": "unpinned",
             "purl": "pkg:pypi/pypubsub",
-            "bom-ref": "pkg:pypi/pypubsub",
-            "scope": "required",
-            "group": null,
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://pypi.org/project/pypubsub/"
                 }
-            ]
-        },
-        {
-            "type": "library",
-            "name": "pyserial",
-            "version": "unpinned",
-            "purl": "pkg:pypi/pyserial",
-            "bom-ref": "pkg:pypi/pyserial",
-            "scope": "required",
-            "group": null,
-            "externalReferences": [
+            ],
+            "properties": [
                 {
-                    "type": "vcs",
-                    "url": "https://pypi.org/project/pyserial/"
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:pypi/pypubsub"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
                 }
             ]
         },
         {
             "type": "library",
+            "bom-ref": "pkg:pypi/requests#python-services",
             "name": "requests",
-            "version": "unpinned",
-            "purl": "pkg:pypi/requests",
-            "bom-ref": "pkg:pypi/requests",
+            "description": "Used by: services/aprs-is/listener.py, services/meshtastic/bridge.py, services/meshtastic/bridge_v2.py, services/meshtastic/requirements.txt",
             "scope": "required",
-            "group": null,
+            "licenses": [
+                {
+                    "license": {
+                        "id": "Apache-2.0"
+                    }
+                }
+            ],
+            "purl": "pkg:pypi/requests",
             "externalReferences": [
                 {
                     "type": "vcs",
                     "url": "https://pypi.org/project/requests/"
                 }
-            ]
-        },
-        {
-            "type": "library",
-            "name": "meshcore-cli",
-            "version": "unpinned",
-            "purl": "pkg:pypi/meshcore-cli",
-            "bom-ref": "pkg:pypi/meshcore-cli",
-            "scope": "required",
-            "group": null,
-            "externalReferences": [
+            ],
+            "properties": [
                 {
-                    "type": "vcs",
-                    "url": "https://pypi.org/project/meshcore-cli/"
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:pypi/requests"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Declared constraint: >=2.34.2"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. The declared constraint is \">=2.34.2\", which bounds but does not determine the installed version. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
                 }
             ]
         },
         {
             "type": "library",
-            "name": "aprslib",
-            "version": "unpinned",
-            "purl": "pkg:pypi/aprslib",
-            "bom-ref": "pkg:pypi/aprslib",
+            "bom-ref": "pkg:pypi/vosk#python-services",
+            "name": "vosk",
+            "description": "Used by: services/dvswitch/bridge.py",
             "scope": "required",
-            "group": null,
+            "licenses": [
+                {
+                    "license": {
+                        "id": "Apache-2.0"
+                    }
+                }
+            ],
+            "purl": "pkg:pypi/vosk",
             "externalReferences": [
                 {
                     "type": "vcs",
-                    "url": "https://pypi.org/project/aprslib/"
+                    "url": "https://pypi.org/project/vosk/"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:pypi/vosk"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
                 }
             ]
         },
         {
             "type": "library",
-            "name": "requests",
-            "version": "unpinned",
-            "purl": "pkg:pypi/requests",
-            "bom-ref": "pkg:pypi/requests",
+            "bom-ref": "pkg:npm/bootstrap@5.3.3#vendored-frontend",
+            "name": "Bootstrap",
+            "publisher": "The Bootstrap Authors",
+            "version": "5.3.3",
             "scope": "required",
-            "group": null,
-            "externalReferences": [
+            "hashes": [
                 {
-                    "type": "vcs",
-                    "url": "https://pypi.org/project/requests/"
+                    "alg": "SHA-256",
+                    "content": "3c8f27e6009ccfd710a905e6dcf12d0ee3c6f2ac7da05b0572d3e0d12e736fc8"
                 }
-            ]
-        },
-        {
-            "type": "library",
-            "name": "pymysql",
-            "version": "unpinned",
-            "purl": "pkg:pypi/pymysql",
-            "bom-ref": "pkg:pypi/pymysql",
-            "scope": "required",
-            "group": null,
-            "externalReferences": [
-                {
-                    "type": "vcs",
-                    "url": "https://pypi.org/project/pymysql/"
-                }
-            ]
-        },
-        {
-            "type": "library",
-            "name": "qrcode",
-            "version": "1.5.3",
-            "purl": "pkg:npm/qrcode@1.5.3",
-            "bom-ref": "pkg:npm/qrcode@1.5.3",
-            "scope": "required",
-            "group": null,
+            ],
             "licenses": [
                 {
                     "license": {
@@ -680,12 +2069,883 @@
                     }
                 }
             ],
-            "description": "QR code generator (loaded from jsdelivr CDN by mesh-console.php)",
+            "cpe": "cpe:2.3:a:getbootstrap:bootstrap:5.3.3:*:*:*:*:*:*:*",
+            "purl": "pkg:npm/bootstrap@5.3.3",
             "externalReferences": [
                 {
                     "type": "vcs",
-                    "url": "https://github.com/soldair/node-qrcode"
+                    "url": "https://github.com/twbs/bootstrap"
                 }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/bootstrap/bootstrap.min.css sha256:3c8f27e6009ccfd710a905e6dcf12d0ee3c6f2ac7da05b0572d3e0d12e736fc8"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/bootstrap/bootstrap.bundle.min.js sha256:0833b2e9c3a26c258476c46266e6877fc75218625162e0460be9a3a098a61c6c"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:npm/bootstrap@5.3.3"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "cpe:2.3:a:getbootstrap:bootstrap:5.3.3:*:*:*:*:*:*:*"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:3c8f27e6009ccfd710a905e6dcf12d0ee3c6f2ac7da05b0572d3e0d12e736fc8 (assets/vendor/bootstrap/bootstrap.min.css)"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:0833b2e9c3a26c258476c46266e6877fc75218625162e0460be9a3a098a61c6c (assets/vendor/bootstrap/bootstrap.bundle.min.js)"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "bootstrap.bundle.min.js embeds Popper.js v2; upstream Bootstrap does not expose a separate Popper version string in the bundle, so Popper is not separately enumerable from the shipped artifact."
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:npm/bootstrap-icons@1.11.3#vendored-frontend",
+            "name": "Bootstrap Icons",
+            "publisher": "The Bootstrap Authors",
+            "version": "1.11.3",
+            "scope": "required",
+            "hashes": [
+                {
+                    "alg": "SHA-256",
+                    "content": "0390351c5be1faaab1cc4fc3e70c11acf65d822bae3aeac4775013fbb696ea15"
+                }
+            ],
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:npm/bootstrap-icons@1.11.3",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/twbs/icons"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/bootstrap/bootstrap-icons.min.css sha256:0390351c5be1faaab1cc4fc3e70c11acf65d822bae3aeac4775013fbb696ea15"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/bootstrap/fonts/bootstrap-icons.woff sha256:bb1de989b83970f6f4e54de1cd974c5cba55b73582da5e1b225a6d0edf029483"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/bootstrap/fonts/bootstrap-icons.woff2 sha256:476adf42b40325098fcfa8b36ab3e769186bb4f6ce6a249753e2e1a9c22bf99e"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/fonts/bootstrap-icons.woff sha256:bb1de989b83970f6f4e54de1cd974c5cba55b73582da5e1b225a6d0edf029483"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/fonts/bootstrap-icons.woff2 sha256:476adf42b40325098fcfa8b36ab3e769186bb4f6ce6a249753e2e1a9c22bf99e"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:npm/bootstrap-icons@1.11.3"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:0390351c5be1faaab1cc4fc3e70c11acf65d822bae3aeac4775013fbb696ea15 (assets/vendor/bootstrap/bootstrap-icons.min.css)"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:bb1de989b83970f6f4e54de1cd974c5cba55b73582da5e1b225a6d0edf029483 (assets/vendor/bootstrap/fonts/bootstrap-icons.woff)"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:476adf42b40325098fcfa8b36ab3e769186bb4f6ce6a249753e2e1a9c22bf99e (assets/vendor/bootstrap/fonts/bootstrap-icons.woff2)"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:bb1de989b83970f6f4e54de1cd974c5cba55b73582da5e1b225a6d0edf029483 (assets/vendor/fonts/bootstrap-icons.woff)"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:476adf42b40325098fcfa8b36ab3e769186bb4f6ce6a249753e2e1a9c22bf99e (assets/vendor/fonts/bootstrap-icons.woff2)"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "The webfont binaries carry no embedded version string; their version is that of the stylesheet that references them."
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:npm/gridstack@10.3.1#vendored-frontend",
+            "name": "GridStack.js",
+            "publisher": "Alain Dumesny",
+            "version": "10.3.1",
+            "scope": "required",
+            "hashes": [
+                {
+                    "alg": "SHA-256",
+                    "content": "52c37cdf838aa8ead6156f0c778cde9af24e87e38dc6a0c3ffef7c6cb7d879cb"
+                }
+            ],
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:npm/gridstack@10.3.1",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/gridstack/gridstack.js"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/gridstack/gridstack-all.js sha256:52c37cdf838aa8ead6156f0c778cde9af24e87e38dc6a0c3ffef7c6cb7d879cb"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/gridstack/gridstack.min.css sha256:1c232b47b98089dd61dd55d24ebd6e89f5be347d746a5e3d714d3aac385aca1f"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/gridstack/gridstack-extra.min.css sha256:2c4fbb95648502ecee4ba9b16a099563391a94c86632f555282ce2068dcba038"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:npm/gridstack@10.3.1"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:52c37cdf838aa8ead6156f0c778cde9af24e87e38dc6a0c3ffef7c6cb7d879cb (assets/vendor/gridstack/gridstack-all.js)"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:1c232b47b98089dd61dd55d24ebd6e89f5be347d746a5e3d714d3aac385aca1f (assets/vendor/gridstack/gridstack.min.css)"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:2c4fbb95648502ecee4ba9b16a099563391a94c86632f555282ce2068dcba038 (assets/vendor/gridstack/gridstack-extra.min.css)"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "gridstack-all.js references a LICENSE.txt and a source map that are not shipped. Version is read from the GDRev marker in the bundle."
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:npm/leaflet@1.9.4#vendored-frontend",
+            "name": "Leaflet",
+            "publisher": "Volodymyr Agafonkin",
+            "version": "1.9.4",
+            "scope": "required",
+            "hashes": [
+                {
+                    "alg": "SHA-256",
+                    "content": "db49d009c841f5ca34a888c96511ae936fd9f5533e90d8b2c4d57596f4e5641a"
+                }
+            ],
+            "licenses": [
+                {
+                    "license": {
+                        "id": "BSD-2-Clause"
+                    }
+                }
+            ],
+            "cpe": "cpe:2.3:a:leafletjs:leaflet:1.9.4:*:*:*:*:*:*:*",
+            "purl": "pkg:npm/leaflet@1.9.4",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/Leaflet/Leaflet"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/leaflet/leaflet.js sha256:db49d009c841f5ca34a888c96511ae936fd9f5533e90d8b2c4d57596f4e5641a"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/leaflet/leaflet.css sha256:337bfca5cabd03b39815b2700febe2b3b7edf55921c59cd49f88ecb328212303"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/leaflet/images/layers-2x.png sha256:066daca850d8ffbef007af00b06eac0015728dee279c51f3cb6c716df7c42edf"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/leaflet/images/layers.png sha256:1dbbe9d028e292f36fcba8f8b3a28d5e8932754fc2215b9ac69e4cdecf5107c6"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/leaflet/images/marker-icon-2x.png sha256:00179c4c1ee830d3a108412ae0d294f55776cfeb085c60129a39aa6fc4ae2528"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/leaflet/images/marker-icon.png sha256:574c3a5cca85f4114085b6841596d62f00d7c892c7b03f28cbfa301deb1dc437"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/leaflet/images/marker-shadow.png sha256:264f5c640339f042dd729062cfc04c17f8ea0f29882b538e3848ed8f10edb4da"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:npm/leaflet@1.9.4"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "cpe:2.3:a:leafletjs:leaflet:1.9.4:*:*:*:*:*:*:*"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:db49d009c841f5ca34a888c96511ae936fd9f5533e90d8b2c4d57596f4e5641a (assets/vendor/leaflet/leaflet.js)"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:337bfca5cabd03b39815b2700febe2b3b7edf55921c59cd49f88ecb328212303 (assets/vendor/leaflet/leaflet.css)"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:066daca850d8ffbef007af00b06eac0015728dee279c51f3cb6c716df7c42edf (assets/vendor/leaflet/images/layers-2x.png)"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:1dbbe9d028e292f36fcba8f8b3a28d5e8932754fc2215b9ac69e4cdecf5107c6 (assets/vendor/leaflet/images/layers.png)"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:00179c4c1ee830d3a108412ae0d294f55776cfeb085c60129a39aa6fc4ae2528 (assets/vendor/leaflet/images/marker-icon-2x.png)"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:574c3a5cca85f4114085b6841596d62f00d7c892c7b03f28cbfa301deb1dc437 (assets/vendor/leaflet/images/marker-icon.png)"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:264f5c640339f042dd729062cfc04c17f8ea0f29882b538e3848ed8f10edb4da (assets/vendor/leaflet/images/marker-shadow.png)"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "leaflet.css and the marker sprites carry no independent version banner; they ship as part of the same Leaflet distribution as leaflet.js."
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:npm/leaflet-openweathermap#vendored-frontend",
+            "name": "leaflet-openweathermap",
+            "publisher": "Stefan Bühler",
+            "scope": "required",
+            "hashes": [
+                {
+                    "alg": "SHA-256",
+                    "content": "e33c8ff9c34c64ba531cfb19d8a219522d275ee276804a2ebe33c2a3c15e0187"
+                }
+            ],
+            "licenses": [
+                {
+                    "license": {
+                        "id": "CC0-1.0"
+                    }
+                }
+            ],
+            "purl": "pkg:npm/leaflet-openweathermap",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/buche/leaflet-openweathermap"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/leaflet/plugins/leaflet-openweathermap.js sha256:e33c8ff9c34c64ba531cfb19d8a219522d275ee276804a2ebe33c2a3c15e0187"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/leaflet/plugins/leaflet-openweathermap.css sha256:8b9b38aa28bb15dd96bc19b3e2daeafd261b141db9fa99e236bb3fb2aa2514ae"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:npm/leaflet-openweathermap"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:e33c8ff9c34c64ba531cfb19d8a219522d275ee276804a2ebe33c2a3c15e0187 (assets/vendor/leaflet/plugins/leaflet-openweathermap.js)"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:8b9b38aa28bb15dd96bc19b3e2daeafd261b141db9fa99e236bb3fb2aa2514ae (assets/vendor/leaflet/plugins/leaflet-openweathermap.css)"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "The shipped files declare a license (CC0) and a project page but carry no version string, and no manifest records the version. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:npm/leaflet-graticule#vendored-frontend",
+            "name": "Leaflet.Graticule",
+            "publisher": "Bjorn Sandvik",
+            "scope": "required",
+            "hashes": [
+                {
+                    "alg": "SHA-256",
+                    "content": "bb97c359e5a908d04eede5b2fa99346a9edf6199e9b210d77473a229aa6cb20a"
+                }
+            ],
+            "purl": "pkg:npm/leaflet-graticule",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/turban/Leaflet.Graticule"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/leaflet/plugins/L.Graticule.js sha256:bb97c359e5a908d04eede5b2fa99346a9edf6199e9b210d77473a229aa6cb20a"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:npm/leaflet-graticule"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:bb97c359e5a908d04eede5b2fa99346a9edf6199e9b210d77473a229aa6cb20a (assets/vendor/leaflet/plugins/L.Graticule.js)"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component License, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "The shipped file has a three-line header with no version and no license declaration, and no manifest records it. The upstream project is MIT-licensed, but that is not evidenced by the artifact actually shipped, so the SBOM author does not assert it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:npm/marked@12.0.2#vendored-frontend",
+            "name": "marked",
+            "publisher": "Christopher Jeffrey",
+            "version": "12.0.2",
+            "scope": "required",
+            "hashes": [
+                {
+                    "alg": "SHA-256",
+                    "content": "15fabce5b65898b32b03f5ed25e9f891a729ad4c0d6d877110a7744aa847a894"
+                }
+            ],
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:npm/marked@12.0.2",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/markedjs/marked"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/marked/marked.min.js sha256:15fabce5b65898b32b03f5ed25e9f891a729ad4c0d6d877110a7744aa847a894"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:npm/marked@12.0.2"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:15fabce5b65898b32b03f5ed25e9f891a729ad4c0d6d877110a7744aa847a894 (assets/vendor/marked/marked.min.js)"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Markdown renderer for the SOP viewer and the documentation browser. Vendored at a pinned version; it was previously loaded from a CDN URL that pinned no version, so the browser executed whatever the CDN served as \"latest\"."
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:npm/qrcode-generator@1.4.4#vendored-frontend",
+            "name": "qrcode-generator",
+            "publisher": "Kazuhiko Arase",
+            "version": "1.4.4",
+            "scope": "required",
+            "hashes": [
+                {
+                    "alg": "SHA-256",
+                    "content": "bb2365e4902f4f84852cf4025e6f6a60325a682aeafa43fb63b7fc8f098d1ef2"
+                }
+            ],
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:npm/qrcode-generator@1.4.4",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/kazuhikoarase/qrcode-generator"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/qrcode/qrcode-generator.min.js sha256:bb2365e4902f4f84852cf4025e6f6a60325a682aeafa43fb63b7fc8f098d1ef2"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:npm/qrcode-generator@1.4.4"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:bb2365e4902f4f84852cf4025e6f6a60325a682aeafa43fb63b7fc8f098d1ef2 (assets/vendor/qrcode/qrcode-generator.min.js)"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Used by mesh-console.php. This is Kazuhiko Arase's qrcode-generator, NOT soldair/node-qrcode."
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:npm/qrcode-generator#vendored-frontend",
+            "name": "qrcode-generator (unminified copy)",
+            "publisher": "Kazuhiko Arase",
+            "scope": "required",
+            "hashes": [
+                {
+                    "alg": "SHA-256",
+                    "content": "79ec86f82856005b1c887905cfccfcfbec3821ca61c7fd5a952faa5f778f791c"
+                }
+            ],
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:npm/qrcode-generator",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "http://www.d-project.com/"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/js/qrcode.min.js sha256:79ec86f82856005b1c887905cfccfcfbec3821ca61c7fd5a952faa5f778f791c"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:npm/qrcode-generator"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:79ec86f82856005b1c887905cfccfcfbec3821ca61c7fd5a952faa5f778f791c (assets/js/qrcode.min.js)"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "This second, unminified copy of Kazuhiko Arase's QR generator carries a copyright header but no version string anywhere in the file, and it is not tracked by any package manifest. The SBOM author cannot determine which upstream release it corresponds to. It is retained as a distinct component because it is a separate shipped artifact loaded by profile.php, at a possibly different version from the copy above. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "data",
+            "bom-ref": "vendored-spec/CycloneDX specification schemas",
+            "name": "CycloneDX specification schemas",
+            "publisher": "OWASP Foundation",
+            "version": "1.6",
+            "description": "The official, unmodified CycloneDX JSON schemas, vendored so that validation of this SBOM is deterministic, offline and auditable. Used only by tools/generate-sbom.php and the release gate; not loaded by the application at runtime. Provenance and upstream commit are recorded in tools/schema/cyclonedx/README.md.",
+            "scope": "required",
+            "hashes": [
+                {
+                    "alg": "SHA-256",
+                    "content": "18f57f7482593bad9f21b4feed09084640cbeff419d62ad5090c5ceccca5b37d"
+                }
+            ],
+            "licenses": [
+                {
+                    "license": {
+                        "id": "Apache-2.0"
+                    }
+                }
+            ],
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/CycloneDX/specification"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:file",
+                    "value": "tools/schema/cyclonedx/bom-1.6.schema.json sha256:18f57f7482593bad9f21b4feed09084640cbeff419d62ad5090c5ceccca5b37d"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "tools/schema/cyclonedx/jsf-0.82.schema.json sha256:8bae002c25e723db7ee1f26afde680ae1a2b1a8f6b4b4b0fd65dc3becb090aae"
+                },
+                {
+                    "name": "ticketscad:file",
+                    "value": "tools/schema/cyclonedx/spdx.schema.json sha256:ea6e844ee6fba1e93473d94834d0ee0996970533497935f932f73d488ffdf4a3"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:18f57f7482593bad9f21b4feed09084640cbeff419d62ad5090c5ceccca5b37d (tools/schema/cyclonedx/bom-1.6.schema.json)"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:8bae002c25e723db7ee1f26afde680ae1a2b1a8f6b4b4b0fd65dc3becb090aae (tools/schema/cyclonedx/jsf-0.82.schema.json)"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:ea6e844ee6fba1e93473d94834d0ee0996970533497935f932f73d488ffdf4a3 (tools/schema/cyclonedx/spdx.schema.json)"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Specification data with no onward dependencies of its own to declare. Its relationship TO this application is recorded — the application ships it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        }
+    ],
+    "dependencies": [
+        {
+            "ref": "pkg:generic/ticketscad-newui@4.2.0",
+            "dependsOn": [
+                "pkg:docker/composer@2#container-base",
+                "pkg:docker/debian@bookworm-slim#container-base",
+                "pkg:docker/mariadb@11#container-base",
+                "pkg:docker/php@8.2-apache-bookworm#container-base",
+                "pkg:github/g4klx/MMDVMHost#derived-source",
+                "pkg:composer/brick/math@0.17.2#php-composer",
+                "pkg:composer/cboden/ratchet@0.4.4#php-composer",
+                "pkg:composer/evenement/evenement@3.0.2#php-composer",
+                "pkg:composer/firebase/php-jwt@7.0.3#php-composer",
+                "pkg:composer/guzzlehttp/guzzle@7.12.3#php-composer",
+                "pkg:composer/guzzlehttp/promises@2.5.0#php-composer",
+                "pkg:composer/guzzlehttp/psr7@2.12.3#php-composer",
+                "pkg:composer/minishlink/web-push@9.0.4#php-composer",
+                "pkg:composer/psr/clock@1.0.0#php-composer",
+                "pkg:composer/psr/http-client@1.0.3#php-composer",
+                "pkg:composer/psr/http-factory@1.1.0#php-composer",
+                "pkg:composer/psr/http-message@2.0#php-composer",
+                "pkg:composer/ralouphie/getallheaders@3.0.3#php-composer",
+                "pkg:composer/ratchet/pawl@0.3.5#php-composer",
+                "pkg:composer/ratchet/rfc6455@0.3.1#php-composer",
+                "pkg:composer/react/cache@1.2.0#php-composer",
+                "pkg:composer/react/dns@1.14.0#php-composer",
+                "pkg:composer/react/event-loop@1.6.0#php-composer",
+                "pkg:composer/react/promise@3.3.0#php-composer",
+                "pkg:composer/react/socket@1.17.0#php-composer",
+                "pkg:composer/react/stream@1.4.0#php-composer",
+                "pkg:composer/spomky-labs/base64url@2.0.4#php-composer",
+                "pkg:composer/spomky-labs/pki-framework@1.4.2#php-composer",
+                "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer",
+                "pkg:composer/symfony/http-foundation@6.4.42#php-composer",
+                "pkg:composer/symfony/polyfill-mbstring@1.38.2#php-composer",
+                "pkg:composer/symfony/polyfill-php80@1.37.0#php-composer",
+                "pkg:composer/symfony/polyfill-php82@1.38.1#php-composer",
+                "pkg:composer/symfony/polyfill-php83@1.38.2#php-composer",
+                "pkg:composer/symfony/routing@6.4.41#php-composer",
+                "pkg:composer/web-token/jwt-library@4.1.7#php-composer",
+                "pkg:pypi/aprslib#python-services",
+                "pkg:pypi/faster-whisper#python-services",
+                "pkg:pypi/meshcore#python-services",
+                "pkg:pypi/meshtastic#python-services",
+                "pkg:pypi/mysql-connector-python#python-services",
+                "pkg:pypi/numpy#python-services",
+                "pkg:pypi/paho-mqtt#python-services",
+                "pkg:pypi/pypubsub#python-services",
+                "pkg:pypi/requests#python-services",
+                "pkg:pypi/vosk#python-services",
+                "pkg:npm/bootstrap@5.3.3#vendored-frontend",
+                "pkg:npm/bootstrap-icons@1.11.3#vendored-frontend",
+                "pkg:npm/gridstack@10.3.1#vendored-frontend",
+                "pkg:npm/leaflet@1.9.4#vendored-frontend",
+                "pkg:npm/leaflet-openweathermap#vendored-frontend",
+                "pkg:npm/leaflet-graticule#vendored-frontend",
+                "pkg:npm/marked@12.0.2#vendored-frontend",
+                "pkg:npm/qrcode-generator@1.4.4#vendored-frontend",
+                "pkg:npm/qrcode-generator#vendored-frontend",
+                "vendored-spec/CycloneDX specification schemas"
+            ]
+        },
+        {
+            "ref": "pkg:composer/brick/math@0.17.2#php-composer",
+            "dependsOn": []
+        },
+        {
+            "ref": "pkg:composer/cboden/ratchet@0.4.4#php-composer",
+            "dependsOn": [
+                "pkg:composer/guzzlehttp/psr7@2.12.3#php-composer",
+                "pkg:composer/ratchet/rfc6455@0.3.1#php-composer",
+                "pkg:composer/react/event-loop@1.6.0#php-composer",
+                "pkg:composer/react/socket@1.17.0#php-composer",
+                "pkg:composer/symfony/http-foundation@6.4.42#php-composer",
+                "pkg:composer/symfony/routing@6.4.41#php-composer"
+            ]
+        },
+        {
+            "ref": "pkg:composer/evenement/evenement@3.0.2#php-composer",
+            "dependsOn": []
+        },
+        {
+            "ref": "pkg:composer/firebase/php-jwt@7.0.3#php-composer",
+            "dependsOn": []
+        },
+        {
+            "ref": "pkg:composer/guzzlehttp/guzzle@7.12.3#php-composer",
+            "dependsOn": [
+                "pkg:composer/guzzlehttp/promises@2.5.0#php-composer",
+                "pkg:composer/guzzlehttp/psr7@2.12.3#php-composer",
+                "pkg:composer/psr/http-client@1.0.3#php-composer",
+                "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer",
+                "pkg:composer/symfony/polyfill-php80@1.37.0#php-composer"
+            ]
+        },
+        {
+            "ref": "pkg:composer/guzzlehttp/promises@2.5.0#php-composer",
+            "dependsOn": [
+                "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer"
+            ]
+        },
+        {
+            "ref": "pkg:composer/guzzlehttp/psr7@2.12.3#php-composer",
+            "dependsOn": [
+                "pkg:composer/psr/http-factory@1.1.0#php-composer",
+                "pkg:composer/psr/http-message@2.0#php-composer",
+                "pkg:composer/ralouphie/getallheaders@3.0.3#php-composer",
+                "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer",
+                "pkg:composer/symfony/polyfill-php80@1.37.0#php-composer"
+            ]
+        },
+        {
+            "ref": "pkg:composer/minishlink/web-push@9.0.4#php-composer",
+            "dependsOn": [
+                "pkg:composer/guzzlehttp/guzzle@7.12.3#php-composer",
+                "pkg:composer/spomky-labs/base64url@2.0.4#php-composer",
+                "pkg:composer/symfony/polyfill-php82@1.38.1#php-composer",
+                "pkg:composer/web-token/jwt-library@4.1.7#php-composer"
+            ]
+        },
+        {
+            "ref": "pkg:composer/psr/clock@1.0.0#php-composer",
+            "dependsOn": []
+        },
+        {
+            "ref": "pkg:composer/psr/http-client@1.0.3#php-composer",
+            "dependsOn": [
+                "pkg:composer/psr/http-message@2.0#php-composer"
+            ]
+        },
+        {
+            "ref": "pkg:composer/psr/http-factory@1.1.0#php-composer",
+            "dependsOn": [
+                "pkg:composer/psr/http-message@2.0#php-composer"
+            ]
+        },
+        {
+            "ref": "pkg:composer/psr/http-message@2.0#php-composer",
+            "dependsOn": []
+        },
+        {
+            "ref": "pkg:composer/ralouphie/getallheaders@3.0.3#php-composer",
+            "dependsOn": []
+        },
+        {
+            "ref": "pkg:composer/ratchet/pawl@0.3.5#php-composer",
+            "dependsOn": [
+                "pkg:composer/evenement/evenement@3.0.2#php-composer",
+                "pkg:composer/ratchet/rfc6455@0.3.1#php-composer",
+                "pkg:composer/react/socket@1.17.0#php-composer"
+            ]
+        },
+        {
+            "ref": "pkg:composer/ratchet/rfc6455@0.3.1#php-composer",
+            "dependsOn": [
+                "pkg:composer/guzzlehttp/psr7@2.12.3#php-composer"
+            ]
+        },
+        {
+            "ref": "pkg:composer/react/cache@1.2.0#php-composer",
+            "dependsOn": [
+                "pkg:composer/react/promise@3.3.0#php-composer"
+            ]
+        },
+        {
+            "ref": "pkg:composer/react/dns@1.14.0#php-composer",
+            "dependsOn": [
+                "pkg:composer/react/cache@1.2.0#php-composer",
+                "pkg:composer/react/event-loop@1.6.0#php-composer",
+                "pkg:composer/react/promise@3.3.0#php-composer"
+            ]
+        },
+        {
+            "ref": "pkg:composer/react/event-loop@1.6.0#php-composer",
+            "dependsOn": []
+        },
+        {
+            "ref": "pkg:composer/react/promise@3.3.0#php-composer",
+            "dependsOn": []
+        },
+        {
+            "ref": "pkg:composer/react/socket@1.17.0#php-composer",
+            "dependsOn": [
+                "pkg:composer/evenement/evenement@3.0.2#php-composer",
+                "pkg:composer/react/dns@1.14.0#php-composer",
+                "pkg:composer/react/event-loop@1.6.0#php-composer",
+                "pkg:composer/react/promise@3.3.0#php-composer",
+                "pkg:composer/react/stream@1.4.0#php-composer"
+            ]
+        },
+        {
+            "ref": "pkg:composer/react/stream@1.4.0#php-composer",
+            "dependsOn": [
+                "pkg:composer/evenement/evenement@3.0.2#php-composer",
+                "pkg:composer/react/event-loop@1.6.0#php-composer"
+            ]
+        },
+        {
+            "ref": "pkg:composer/spomky-labs/base64url@2.0.4#php-composer",
+            "dependsOn": []
+        },
+        {
+            "ref": "pkg:composer/spomky-labs/pki-framework@1.4.2#php-composer",
+            "dependsOn": [
+                "pkg:composer/brick/math@0.17.2#php-composer",
+                "pkg:composer/psr/clock@1.0.0#php-composer"
+            ]
+        },
+        {
+            "ref": "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer",
+            "dependsOn": []
+        },
+        {
+            "ref": "pkg:composer/symfony/http-foundation@6.4.42#php-composer",
+            "dependsOn": [
+                "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer",
+                "pkg:composer/symfony/polyfill-mbstring@1.38.2#php-composer",
+                "pkg:composer/symfony/polyfill-php83@1.38.2#php-composer"
+            ]
+        },
+        {
+            "ref": "pkg:composer/symfony/polyfill-mbstring@1.38.2#php-composer",
+            "dependsOn": []
+        },
+        {
+            "ref": "pkg:composer/symfony/polyfill-php80@1.37.0#php-composer",
+            "dependsOn": []
+        },
+        {
+            "ref": "pkg:composer/symfony/polyfill-php82@1.38.1#php-composer",
+            "dependsOn": []
+        },
+        {
+            "ref": "pkg:composer/symfony/polyfill-php83@1.38.2#php-composer",
+            "dependsOn": []
+        },
+        {
+            "ref": "pkg:composer/symfony/routing@6.4.41#php-composer",
+            "dependsOn": [
+                "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer"
+            ]
+        },
+        {
+            "ref": "pkg:composer/web-token/jwt-library@4.1.7#php-composer",
+            "dependsOn": [
+                "pkg:composer/brick/math@0.17.2#php-composer",
+                "pkg:composer/psr/clock@1.0.0#php-composer",
+                "pkg:composer/spomky-labs/pki-framework@1.4.2#php-composer"
             ]
         }
     ]

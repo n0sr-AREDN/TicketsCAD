@@ -1759,7 +1759,7 @@ The expire-grants cron sweeps physically-expired rows nightly. Schedule it once:
 
 ```
 # Linux cron (nightly at 3am)
-0 3 * * *  ejosterberg  /usr/bin/php /var/www/newui/tools/expire_grants.php
+0 3 * * *  www-data  /usr/bin/php /var/www/newui/tools/expire_grants.php
 
 # Windows Task Scheduler (XAMPP)
 schtasks /create /tn "TicketsCAD expire grants" /tr ^

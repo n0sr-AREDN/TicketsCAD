@@ -222,6 +222,6 @@ json_response([
     'location'     => $locationInfo,
     'comms'        => $commInfo,
     'hints'        => $hints,
-    'version'      => defined('NEWUI_VERSION') ? NEWUI_VERSION : 'unknown',
+    'version'      => newui_version(),
     'php_version'  => PHP_VERSION,
 ]);

@@ -44,15 +44,15 @@ $active_page = 'config';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
-    <title>Import / Export — Tickets NewUI <?php echo NEWUI_VERSION; ?></title>
+    <title>Import / Export — Tickets NewUI <?php echo newui_version(); ?></title>
 
     <!-- Vendor CSS -->
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap-icons.min.css">
 
     <!-- App CSS -->
-    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo NEWUI_VERSION; ?>">
-    <link rel="stylesheet" href="assets/css/config.css?v=<?php echo NEWUI_VERSION; ?>">
+    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo newui_version(); ?>">
+    <link rel="stylesheet" href="assets/css/config.css?v=<?php echo newui_version(); ?>">
     <style>
         .imex-step { display: none; }
         .imex-step.active { display: block; }
@@ -358,7 +358,7 @@ $active_page = 'config';
 
 <!-- Vendor JS -->
 <script src="assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-<script src="assets/js/toolbar.js?v=<?php echo NEWUI_VERSION; ?>"></script>
+<script src="assets/js/toolbar.js?v=<?php echo newui_version(); ?>"></script>
 <script src="assets/js/import-export.js?v=<?php echo asset_v('assets/js/import-export.js'); ?>"></script>
 
 <!-- Sidebar section expand/collapse -->

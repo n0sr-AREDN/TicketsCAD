@@ -18,6 +18,12 @@
  *   - A logged-in browser session is still accepted as a fallback (admin testing).
  */
 
+// Fatal-to-JSON guard — API-key endpoint, never requires api/auth.php.
+// Note: this endpoint can emit XML/Atom. The guard checks whether a body has
+// already started and stays silent if so, so a fatal mid-feed appends nothing.
+require_once __DIR__ . '/../inc/api_guard.php';
+api_guard_install();
+
 require_once __DIR__ . '/../config.php';
 
 $prevDisplay = ini_get('display_errors');
@@ -198,7 +204,7 @@ if ($format === 'atom') {
     echo '  <link href="' . xmlEscape($baseUrl) . '" rel="alternate" type="text/html"/>' . "\n";
     echo '  <id>' . xmlEscape($feedUrl) . '</id>' . "\n";
     echo '  <updated>' . $now . '</updated>' . "\n";
-    echo '  <generator>Tickets CAD NewUI v' . NEWUI_VERSION . '</generator>' . "\n";
+    echo '  <generator>Tickets CAD NewUI v' . newui_version() . '</generator>' . "\n";
 
     foreach ($incidents as $inc) {
         $entryUrl = $baseUrl . 'incident-detail.php?id=' . $inc['id'];
@@ -236,7 +242,7 @@ echo '  <link>' . xmlEscape($baseUrl) . '</link>' . "\n";
 echo '  <description>' . xmlEscape($feedDescription) . '</description>' . "\n";
 echo '  <language>en-us</language>' . "\n";
 echo '  <lastBuildDate>' . gmdate('r') . '</lastBuildDate>' . "\n";
-echo '  <generator>Tickets CAD NewUI v' . NEWUI_VERSION . '</generator>' . "\n";
+echo '  <generator>Tickets CAD NewUI v' . newui_version() . '</generator>' . "\n";
 echo '  <atom:link href="' . xmlEscape($feedUrl) . '" rel="self" type="application/rss+xml"/>' . "\n";
 
 foreach ($incidents as $inc) {

@@ -6,6 +6,13 @@
  * Only what NewUI actually needs — no legacy baggage.
  */
 
+// newui_version(): the deployed code version, read from the git-tracked
+// VERSION file. Required HERE (not from config.php) on purpose — every
+// config.php ever shipped requires inc/functions.php at its bottom, so an
+// install created years ago gets the function without editing config.php.
+// See inc/version.php for why the tracked file outranks config.php.
+require_once __DIR__ . '/version.php';
+
 /**
  * Get a setting value from the `settings` table.
  * Results are cached for the duration of the request.
@@ -121,6 +128,11 @@ function json_response($data, int $status = 200): void
     }
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
+    // Tell inc/api_guard.php the response body has been written. headers_sent()
+    // alone is not enough: with output_buffering on (common in php.ini) this
+    // echo sits in a buffer and headers_sent() is still false, so a shutdown
+    // fatal would append a second JSON document to a complete one.
+    $GLOBALS['__api_guard_body_sent'] = true;
     echo json_encode($data, JSON_UNESCAPED_UNICODE);
     exit;
 }

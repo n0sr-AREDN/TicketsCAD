@@ -31,6 +31,14 @@
 // then header('Content-Type: text/event-stream') fails with 'headers
 // already sent', and the browser EventSource hammers reconnect (the
 // yellow status dot). Load config/RBAC FIRST, then start the session.
+// Fatal-to-JSON guard. This endpoint does its own session check instead of
+// requiring api/auth.php, so it installs the guard itself. Once the SSE body
+// has started the guard stays silent (it checks headers_sent()/output buffers),
+// so a fatal mid-stream appends nothing — it only replaces the EMPTY body a
+// fatal during setup used to produce. See inc/api_guard.php.
+require_once __DIR__ . '/../inc/api_guard.php';
+api_guard_install();
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/rbac.php';
 // Phase 104e (a beta tester GH #6) — mobile PWA clients send the TCADMOBILE

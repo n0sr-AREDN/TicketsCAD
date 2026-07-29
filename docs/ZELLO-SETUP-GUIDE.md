@@ -163,10 +163,12 @@ This is the step that bites everyone. Read it carefully.
 > loaded normally when re-checked on 2026-07-27. Everything on this portal is
 > Zello's, so we can't fix it from here; retrying is the workaround.
 >
-> The steps below are written for the free Zello **Consumer** tier. If you find
-> that self-serve key generation now requires a Work subscription, please say so
-> on issue #6 — that is the open question there and we'd rather correct this
-> guide than have the next person rediscover it.
+> **Verified working on 2026-07-28 with a free Zello Consumer account.**
+> `developers.zello.com/keys` loads, **Add Key** generates a key pair, and the
+> result shows the four fields described below. Self-serve key generation does
+> **not** require a Work subscription. (This was the open question on issue #6;
+> `zello.com/developers` reads as an enterprise sales page these days, which is
+> misleading — the Consumer path is still the `developers.zello.com` console.)
 
 TicketsCAD authenticates to Zello using a **Channels API key**: an **Issuer**
 (a short string) plus a **Private Key** (a block of text). On Zello **Consumer**,
@@ -186,22 +188,38 @@ Consequences you must internalize:
 
 ### Steps (Zello Consumer)
 
-1. In the Zello developer console / channel admin for the channel you created
-   in step 3, open the channel's **Channels API** (sometimes shown as
-   **Developer** or **API keys**) section. You must be the channel's
-   administrator to see it.
+1. Sign in at <https://developers.zello.com/> and go to **Keys** (the direct
+   link is <https://developers.zello.com/keys>). You'll see a table of existing
+   keys — **Key ID**, **Created**, and a trash icon to delete each one — with an
+   **Add Key** button at the bottom right.
 
-2. The page shows the credentials **inline** — typically **Issuer**, a
-   **Developer Token**, a **Private Key**, and a **Public Key**. (Newer consoles
-   display these to copy directly; there's no longer a "Generate" button or a
-   downloadable `.pem` file.)
+2. Click **Add Key**. A **New Key Details** panel appears with four fields:
+   **Issuer**, **Sample Developer Token**, **Private Key**, and **Public Key**.
+   There is no downloadable `.pem` file — you copy the values from this panel.
+
+> ### ⚠ Copy the Private Key NOW — you only get one chance
+>
+> The panel says so itself: *"This is the only time you will have access to your
+> private key here, please copy and save it securely!"* Close the dialog without
+> copying it and the key is **unrecoverable** — the Keys table will still list
+> the Key ID, but there is no way to view or re-download the private key.
+>
+> If that happens, it is not a disaster and you have not broken anything: delete
+> that key with the trash icon and click **Add Key** again. Nothing else in
+> TicketsCAD depends on a key you never managed to paste in.
+>
+> Paste it straight into TicketsCAD's *Private Key* field, or into your password
+> manager. Don't leave it in a scratch file or a chat message.
 
 3. **Copy two of them:**
-   - **Issuer** — a short string (looks like `WkM6…`). You'll paste this into
+   - **Issuer** — a long string starting `WkM6…`. You'll paste this into
      TicketsCAD's *Issuer* field.
-   - **Private Key** — copy the whole key block, including the
-     `-----BEGIN …-----` / `-----END …-----` lines if they're shown. You'll
+   - **Private Key** — copy the whole block, including the
+     `-----BEGIN PRIVATE KEY-----` / `-----END PRIVATE KEY-----` lines. You'll
      paste this into TicketsCAD's *Private Key* field.
+
+   You do **not** need the Sample Developer Token or the Public Key —
+   TicketsCAD signs its own tokens from the Issuer and Private Key.
 
 4. While you're here, write down (you'll need these in step 5):
    - The **console account username** (`dispatch-console`) and its **password**.
@@ -213,8 +231,14 @@ Consequences you must internalize:
 > Channel* field. A mismatch authenticates fine but then reports the channel
 > offline (see [Troubleshooting](#8-troubleshooting)).
 
-> **[Screenshot: channel admin → Channels API panel showing Issuer + Private Key
-> inline]**
+> **[Screenshot: developers.zello.com/keys — the Keys table (Key ID, Created,
+> trash icon) with the Add Key button]**
+>
+> **[Screenshot: the New Key Details panel — Issuer, Sample Developer Token,
+> Private Key, Public Key, and the "only time you will have access to your
+> private key" warning. BLUR the Private Key and Issuer values: readers copy
+> what they see, and a guide that displays a full private key teaches the
+> wrong habit even when the key itself is long dead.]**
 
 ---
 

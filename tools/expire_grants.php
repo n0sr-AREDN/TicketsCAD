@@ -16,7 +16,7 @@
  * Suggested schedule: nightly. Hourly is fine; sub-minute is overkill.
  *
  * Linux cron example (systemd-timer or /etc/cron.d):
- *   0 3 * * *  ejosterberg  /usr/bin/php /var/www/newui/tools/expire_grants.php
+ *   0 3 * * *  www-data  /usr/bin/php /var/www/newui/tools/expire_grants.php
  *
  * Windows Task Scheduler example (XAMPP path):
  *   schtasks /create /tn "TicketsCAD expire grants" /tr ^

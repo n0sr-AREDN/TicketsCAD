@@ -25,6 +25,12 @@
  */
 
 ini_set('display_errors', '0');
+// Fatal-to-JSON guard. Installed directly (not via auth.php) because the
+// bridge/bearer-token paths through this endpoint never reach auth.php — and
+// this is the endpoint whose delete action returned an empty body on
+// 2026-07-28. See inc/api_guard.php.
+require_once __DIR__ . '/../inc/api_guard.php';
+api_guard_install();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/functions.php';
 
@@ -771,12 +777,25 @@ if ($action === 'delete_bridge' && $method === 'POST') {
                          revoked_at = COALESCE(revoked_at, NOW())
                    WHERE id = ?", [(int) ($_SESSION['user_id'] ?? 0), $bid]);
 
+        /* audit_log() is (category, activity, targetType, targetId, SUMMARY, details).
+           The details array was passed in the 5th slot, where `string $summary`
+           lives. An array is never coercible to string, so this raised a
+           TypeError — which extends Error, NOT Exception, so the catch below
+           did not see it. With display_errors off (as every API endpoint sets
+           it) the script died AFTER the deletes had committed and returned an
+           empty body, which the browser reports as "Unexpected end of JSON
+           input". Reported by Chris Byrd, 2026-07-28: the delete worked, the
+           error appeared anyway. */
         audit_log('mesh', 'delete_bridge', 'mesh_bridges', $bid,
+                  'Deleted mesh bridge "' . $bridge['label'] . '"',
                   ['label' => $bridge['label']]);
 
         json_response(['ok' => true, 'deleted' => $bid]);
-    } catch (Exception $e) {
-        json_error('delete failed: ' . $e->getMessage(), 500);
+    } catch (Throwable $e) {
+        /* Throwable, not Exception: a TypeError/ArgumentCountError here would
+           otherwise escape as a fatal and hand the browser an empty body. */
+        error_log('mesh delete_bridge failed: ' . $e->getMessage());
+        json_error('delete failed', 500);
     }
 }
 

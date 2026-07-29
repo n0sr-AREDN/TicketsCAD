@@ -59,8 +59,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=ejosterberg
-ExecStart=/home/ejosterberg/aprs-listener-venv/bin/python /opt/aprs-listener.py --config /etc/ticketscad/aprs-listener.ini
+User=youruser
+ExecStart=/home/youruser/aprs-listener-venv/bin/python /opt/aprs-listener.py --config /etc/ticketscad/aprs-listener.ini
 Restart=on-failure
 RestartSec=30
 StandardOutput=journal

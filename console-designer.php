@@ -47,14 +47,14 @@ $active_page = 'console';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
-    <title><?php echo e(t('page.console_designer', 'Console Designer')); ?> &mdash; <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo NEWUI_VERSION; ?></title>
+    <title><?php echo e(t('page.console_designer', 'Console Designer')); ?> &mdash; <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo newui_version(); ?></title>
 
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap-icons.min.css">
     <link rel="stylesheet" href="assets/vendor/gridstack/gridstack.min.css">
     <link rel="stylesheet" href="assets/vendor/gridstack/gridstack-extra.min.css">
 
-    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo NEWUI_VERSION; ?>">
+    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo newui_version(); ?>">
     <link rel="stylesheet" href="assets/css/console.css?v=<?php echo asset_v('assets/css/console.css'); ?>">
     <link rel="stylesheet" href="assets/css/console-designer.css?v=<?php echo asset_v('assets/css/console-designer.css'); ?>">
     <link rel="stylesheet" href="assets/css/mobile.css">

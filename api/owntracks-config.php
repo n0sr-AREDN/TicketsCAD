@@ -43,6 +43,9 @@ require_once __DIR__ . '/../inc/functions.php';
 // declare the helper functions but skip auth.php (which can short-
 // circuit the calling request) and the action dispatch at the bottom.
 if (!defined('OT_CONFIG_LIBRARY_ONLY')) {
+    // auth.php installs the fatal-to-JSON guard (inc/api_guard.php). In
+    // library-only mode we deliberately install nothing: the including
+    // endpoint owns the request and has already installed it.
     require_once __DIR__ . '/auth.php';
 }
 require_once __DIR__ . '/../inc/rbac.php';

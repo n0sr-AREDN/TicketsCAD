@@ -9,7 +9,7 @@
  * Same model as zello-token.php / zello_ws_tokens.
  *
  * Response:
- *   { "token": "...", "user": "ejosterberg", "user_id": 132,
+ *   { "token": "...", "user": "admin", "user_id": 132,
  *     "channel_id": 3, "proxy_path": "/dmr-ws" }
  *
  * RBAC: action.dmr_receive OR action.dmr_transmit (you can listen

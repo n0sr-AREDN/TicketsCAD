@@ -39,7 +39,7 @@ $csrf     = csrf_token();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
-    <title>Vehicles — Tickets NewUI <?php echo NEWUI_VERSION; ?></title>
+    <title>Vehicles — Tickets NewUI <?php echo newui_version(); ?></title>
 
     <!-- Vendor CSS -->
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">

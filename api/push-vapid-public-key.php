@@ -16,6 +16,10 @@
 
 declare(strict_types=1);
 
+// Fatal-to-JSON guard — public endpoint, never requires api/auth.php.
+require_once __DIR__ . '/../inc/api_guard.php';
+api_guard_install();
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/db.php';
 

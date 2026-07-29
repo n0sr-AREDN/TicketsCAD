@@ -39,7 +39,7 @@ $csrf     = csrf_token();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><?php echo e(t('page.constituents', 'Contacts')); ?> — <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo NEWUI_VERSION; ?></title>
+    <title><?php echo e(t('page.constituents', 'Contacts')); ?> — <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo newui_version(); ?></title>
     <meta name="csrf-token" content="<?php echo $csrf; ?>">
 
     <!-- Vendor CSS -->
@@ -47,8 +47,8 @@ $csrf     = csrf_token();
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap-icons.min.css">
 
     <!-- App CSS -->
-    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo NEWUI_VERSION; ?>">
-    <link rel="stylesheet" href="assets/css/constituents.css?v=<?php echo NEWUI_VERSION; ?>">
+    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo newui_version(); ?>">
+    <link rel="stylesheet" href="assets/css/constituents.css?v=<?php echo newui_version(); ?>">
 </head>
 <body>
 
@@ -550,11 +550,11 @@ $csrf     = csrf_token();
 
 <!-- Vendor JS -->
 <script src="assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-<script src="assets/js/toolbar.js?v=<?php echo NEWUI_VERSION; ?>"></script>
+<script src="assets/js/toolbar.js?v=<?php echo newui_version(); ?>"></script>
 
 <!-- App JS -->
-<script src="assets/js/states-select.js?v=<?php echo function_exists('asset_v') ? asset_v('assets/js/states-select.js') : NEWUI_VERSION; ?>"></script>
-<script src="assets/js/constituents.js?v=<?php echo NEWUI_VERSION; ?>"></script>
-<script src="assets/js/constituents-import.js?v=<?php echo NEWUI_VERSION; ?>"></script>
+<script src="assets/js/states-select.js?v=<?php echo function_exists('asset_v') ? asset_v('assets/js/states-select.js') : newui_version(); ?>"></script>
+<script src="assets/js/constituents.js?v=<?php echo newui_version(); ?>"></script>
+<script src="assets/js/constituents-import.js?v=<?php echo newui_version(); ?>"></script>
 </body>
 </html>

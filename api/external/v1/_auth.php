@@ -15,6 +15,12 @@
 
 declare(strict_types=1);
 
+// Fatal-to-JSON guard, installed before anything that can fail. Every
+// api/external/v1/*.php endpoint requires this file, so this is the single
+// shared place for the external API. See inc/api_guard.php.
+require_once __DIR__ . '/../../../inc/api_guard.php';
+api_guard_install();
+
 require_once __DIR__ . '/../../../config.php';
 require_once __DIR__ . '/../../../inc/db.php';
 require_once __DIR__ . '/../../../inc/client-ip.php';

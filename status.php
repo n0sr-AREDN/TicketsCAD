@@ -43,15 +43,15 @@ $csrf     = csrf_token();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
-    <title>System Status — Tickets NewUI <?php echo NEWUI_VERSION; ?></title>
+    <title>System Status — Tickets NewUI <?php echo newui_version(); ?></title>
 
     <!-- Vendor CSS -->
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap-icons.min.css">
 
     <!-- App CSS -->
-    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo NEWUI_VERSION; ?>">
-    <link rel="stylesheet" href="assets/css/config.css?v=<?php echo NEWUI_VERSION; ?>">
+    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo newui_version(); ?>">
+    <link rel="stylesheet" href="assets/css/config.css?v=<?php echo newui_version(); ?>">
     <style>
         .status-card {
             border-radius: 6px;
@@ -277,6 +277,7 @@ $csrf     = csrf_token();
                     <option value="disk">Disk</option>
                     <option value="sessions">Sessions</option>
                     <option value="cache">Cache</option>
+                    <option value="backups">Backups</option>
                 </select>
             </div>
         </div>
@@ -332,7 +333,7 @@ $csrf     = csrf_token();
 
 <!-- Vendor JS -->
 <script src="assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-<script src="assets/js/toolbar.js?v=<?php echo NEWUI_VERSION; ?>"></script>
+<script src="assets/js/toolbar.js?v=<?php echo newui_version(); ?>"></script>
 
 <!-- Sidebar section expand/collapse (shared with settings.php) -->
 <script>
@@ -390,7 +391,10 @@ $csrf     = csrf_token();
         sessions:           { icon: 'bi-key',            label: 'Sessions',          color: 'primary' },
         cache:              { icon: 'bi-archive',        label: 'Cache',             color: 'info' },
         // Phase 26C (2026-06-11) — single card with expandable provider sub-rows.
-        location_providers: { icon: 'bi-geo-alt-fill',   label: 'Location Providers', color: 'primary' }
+        location_providers: { icon: 'bi-geo-alt-fill',   label: 'Location Providers', color: 'primary' },
+        // Phase 126 (2026-07-29) — "do I have a recent backup, and is it
+        // about to fill this disk?" answered at a glance.
+        backups:            { icon: 'bi-shield-fill-check', label: 'Backups',        color: 'success' }
     };
 
     // Detail labels
@@ -428,7 +432,19 @@ $csrf     = csrf_token();
         count: 'Active Sessions',
         writable: 'Writable',
         file_count: 'Files',
-        size_text: 'Size'
+        size_text: 'Size',
+        // Backups (Phase 126)
+        enabled: 'Automatic',
+        interval_hours: 'Every (hours)',
+        backup_count: 'Stored Backups',
+        backup_size: 'Space Used',
+        max_dir_size: 'Folder Limit',
+        cap_pct: 'Limit Used',
+        free_size: 'Disk Free',
+        min_free_size: 'Reserve',
+        last_status: 'Last Result',
+        directory: 'Folder',
+        space_warning: 'Warning'
     };
 
     // Skip these detail keys (shown elsewhere or not useful)
@@ -475,7 +491,7 @@ $csrf     = csrf_token();
         // Render component cards
         var components = data.components || {};
         var html = '';
-        var order = ['database', 'php', 'os', 'webserver', 'zello_proxy', 'location_providers', 'disk', 'sessions', 'cache'];
+        var order = ['database', 'php', 'os', 'webserver', 'zello_proxy', 'location_providers', 'backups', 'disk', 'sessions', 'cache'];
 
         for (var i = 0; i < order.length; i++) {
             var key = order[i];
@@ -664,7 +680,8 @@ $csrf     = csrf_token();
 
     var SVC_LABELS = {
         database: 'Database', php: 'PHP', os: 'Host OS', webserver: 'Web Server',
-        zello_proxy: 'Zello Proxy', disk: 'Disk', sessions: 'Sessions', cache: 'Cache'
+        zello_proxy: 'Zello Proxy', disk: 'Disk', sessions: 'Sessions', cache: 'Cache',
+        backups: 'Backups'
     };
 
     function fetchEvents() {
@@ -833,6 +850,16 @@ $csrf     = csrf_token();
                     '. Reload: <code>sudo systemctl reload apache2</code> (or php-fpm)';
         } else {
             html += 'v' + esc(v.running) + ' matches ' + esc(v.version_file || 'disk') + ' ' + sevBadge('ok');
+        }
+        if (v.reported) {
+            html += '<br><span class="text-muted">Reported version: <code>' + esc(v.reported) +
+                    '</code> (from the tracked <code>VERSION</code> file)</span>';
+        }
+        if (v.config_pin) {
+            html += '<br><span class="text-muted">Your <code>config.php</code> still pins ' +
+                    '<code>NEWUI_VERSION = ' + esc(v.config_pin) + '</code> from install time. ' +
+                    'Harmless — the version above is what TicketsCAD reports — but that line is ' +
+                    'dead and can be deleted.</span>';
         }
         html += '</span></div>';
 

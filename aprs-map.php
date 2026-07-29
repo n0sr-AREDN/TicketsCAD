@@ -45,14 +45,14 @@ $active_page = 'aprs-map';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo $csrf; ?>">
-    <title>APRS-IS Map — <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo NEWUI_VERSION; ?></title>
+    <title>APRS-IS Map — <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo newui_version(); ?></title>
 
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap-icons.min.css">
     <link rel="stylesheet" href="assets/vendor/leaflet/leaflet.css">
     <link rel="stylesheet" href="assets/vendor/gridstack/gridstack.min.css">
     <link rel="stylesheet" href="assets/vendor/gridstack/gridstack-extra.min.css">
-    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo NEWUI_VERSION; ?>">
+    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo newui_version(); ?>">
     <style>
         /* Phase 99h-v5 (2026-06-29) — GridStack widget layout.
            Eric beta: "full widget style layout, like the situation

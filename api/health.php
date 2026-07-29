@@ -60,6 +60,12 @@ $components['cache'] = checkCache();
 // render an expandable card.
 $components['location_providers'] = checkLocationProviders($prefix);
 
+// ── 10. Backups ──────────────────────────────────────────────────
+// Phase 126 (2026-07-29) — "do I have a recent backup, and is it about to
+// fill this disk?" is a question the operator of a dispatch system should be
+// able to answer at a glance, not by reading a log.
+$components['backups'] = checkBackups();
+
 // Compute overall status
 $overall = 'ok';
 foreach ($components as $c) {
@@ -410,6 +416,82 @@ function checkDisk(): array
             'path'        => $root,
         ],
     ];
+}
+
+/**
+ * Backup health: is one recent, and are backups near the limits that would
+ * make them stop?
+ *
+ * Deliberately cheap — backup_status() reads cached settings, stats the backup
+ * directory and asks for free space. No database size estimate, no dump; this
+ * runs on a 30-second auto-refresh.
+ *
+ * Severity model:
+ *   error — automatic backups are ON but the last attempt was REFUSED (the
+ *           disk guard tripped), or nothing has ever succeeded. Both mean
+ *           "you currently have no working backup", which for a CAD system
+ *           mid-incident is the loudest thing on this page.
+ *   warn  — verified backup exists but is stale, or storage is near a limit,
+ *           or automatic backups are switched off entirely.
+ */
+function checkBackups(): array
+{
+    try {
+        require_once __DIR__ . '/../inc/backup_schedule.php';
+        $st = backup_status();
+
+        $lastStatus = (string) $st['last_status'];
+        $refused    = strpos($lastStatus, 'skipped:') === 0;
+        $failed     = strpos($lastStatus, 'failed') === 0;
+
+        if (!$st['enabled']) {
+            $status  = 'warn';
+            $message = 'Automatic backups are turned off';
+        } elseif ($refused || $failed) {
+            $status  = 'error';
+            $message = $refused ? 'Last backup was refused — not enough room' : 'Last backup failed';
+        } elseif ($st['last_ok_at'] === null) {
+            $status  = 'error';
+            $message = 'No backup has ever completed';
+        } elseif ($st['stale']) {
+            $status  = 'warn';
+            $message = 'Last verified backup was ' . (int) $st['last_ok_age_hours'] . 'h ago';
+        } elseif ($st['space_warning'] !== '') {
+            $status  = 'warn';
+            $message = 'Backup storage is near its limit';
+        } else {
+            $status  = 'ok';
+            $message = $st['backup_count'] . ' backup(s), ' . $st['backup_size']
+                     . ', newest ' . (int) $st['last_ok_age_hours'] . 'h ago';
+        }
+
+        // NOTE: no 'uptime_sec' key — logServiceTransitions() uses it for a
+        // process-restart heuristic that makes no sense for a scheduled job.
+        return [
+            'status'  => $status,
+            'message' => $message,
+            'details' => [
+                'enabled'        => (bool) $st['enabled'],
+                'interval_hours' => (int) $st['interval_hours'],
+                'backup_count'   => (int) $st['backup_count'],
+                'backup_size'    => (string) $st['backup_size'],
+                'max_dir_size'   => (string) $st['max_dir_size'],
+                'cap_pct'        => (int) $st['cap_pct'],
+                'free_size'      => (string) $st['free_size'],
+                'min_free_size'  => (string) $st['min_free_size'],
+                'last_status'    => $lastStatus,
+                'directory'      => (string) $st['directory'],
+                'space_warning'  => (string) $st['space_warning'],
+            ],
+        ];
+    } catch (Throwable $e) {
+        error_log('[health] backup check failed: ' . $e->getMessage());
+        return [
+            'status'  => 'unknown',
+            'message' => 'Cannot determine backup status',
+            'details' => [],
+        ];
+    }
 }
 
 function checkSessions(): array

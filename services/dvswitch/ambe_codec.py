@@ -12,7 +12,7 @@ the qemu-arm-static wrapper that DVSwitch ships):
 
 There is no framing, no mode byte, no session — every UDP datagram
 is one frame in / one frame out. Encoding is synchronous; the
-emulator replies in <2 ms on dvswitch-01.
+emulator replies in <2 ms on dvswitch-host.
 
 Decode flips the same: 7-byte AMBE in, 320-byte PCM out.
 
@@ -35,7 +35,7 @@ PCM_FRAME_MS     = 20
 SAMPLE_RATE_HZ   = 8000
 
 # md380-emu's UDP socket — defaults match DVSwitch's qemu-arm-static
-# unit on dvswitch-01.
+# unit on dvswitch-host.
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 2470
 

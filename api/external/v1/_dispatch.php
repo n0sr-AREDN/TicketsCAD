@@ -39,6 +39,12 @@
 
 declare(strict_types=1);
 
+// Fatal-to-JSON guard. This file is a routing entry point that runs BEFORE
+// the handler (and therefore before _auth.php) loads, so it installs the
+// guard itself rather than inheriting it. See inc/api_guard.php.
+require_once __DIR__ . '/../../../inc/api_guard.php';
+api_guard_install();
+
 // Compute the path AFTER /api/external/v1/. Apache passes it via
 // REDIRECT_URL or REQUEST_URI; we tolerate both shapes.
 $requestUri = $_SERVER['REQUEST_URI'] ?? '';

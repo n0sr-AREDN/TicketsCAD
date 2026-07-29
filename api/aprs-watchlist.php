@@ -34,9 +34,13 @@ function _wl_write_gate() {
 }
 
 function _wl_csrf_gate(array $body) {
-    if (!function_exists('csrf_check')) return;
+    // CSRF. Call csrf_verify() directly and unguarded: the previous
+    // `if (function_exists('csrf_check'))` named a function that exists NOWHERE
+    // in the codebase, so the guard was always false and this check never ran
+    // on any request. A missing CSRF helper must fail loudly, not disable the
+    // control silently. (Found 2026-07-28.)
     $token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? ($body['_csrf'] ?? ($body['csrf_token'] ?? ''));
-    if (!csrf_check($token)) {
+    if (!csrf_verify($token)) {
         http_response_code(403);
         echo json_encode(['error' => 'CSRF token mismatch']);
         exit;

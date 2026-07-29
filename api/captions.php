@@ -183,7 +183,7 @@ if ($method === 'POST') {
             json_response([
                 'export'  => $rows,
                 'count'   => count($rows),
-                'version' => NEWUI_VERSION
+                'version' => newui_version()
             ]);
         } catch (Exception $e) {
             json_error('Export failed: ' . $e->getMessage(), 500);

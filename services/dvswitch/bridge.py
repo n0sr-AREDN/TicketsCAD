@@ -2,7 +2,7 @@
 """
 DVSwitch bridge — TicketsCAD NewUI
 
-Lives on dvswitch-01 (or any host with Analog_Bridge + MMDVM_Bridge +
+Lives on dvswitch-host (or any host with Analog_Bridge + MMDVM_Bridge +
 md380-emu installed). One process per linked talkgroup. Talks USRP-PCM
 to Analog_Bridge on the audio side and JSON-over-HTTP to TicketsCAD
 NewUI on the control side.
@@ -265,8 +265,8 @@ class WhisperSTT:
         self.ffmpeg_bin = ffmpeg_bin
         self.compute_type = compute_type
         # int8 keeps the memory footprint reasonable on the 4 GB
-        # dvswitch-01 VM; float16 / int8_float16 are options on bigger
-        # boxes. CPU device is correct for the dvswitch-01 spec; no GPU.
+        # dvswitch-host VM; float16 / int8_float16 are options on bigger
+        # boxes. CPU device is correct for the dvswitch-host spec; no GPU.
         self.model = WhisperModel(model_name, device="cpu",
                                   compute_type=compute_type)
 
@@ -502,7 +502,7 @@ class DVSwitchBridge:
         # Phase 73n — transcribe before publishing the call record so
         # the JSONL audit + ingest POST carry the transcript in one
         # shot. STT runs synchronously inline; with the vosk-small
-        # model on dvswitch-01 a 10 s call transcribes in ~200 ms,
+        # model on dvswitch-host a 10 s call transcribes in ~200 ms,
         # well under the keyup gap between back-to-back transmissions.
         pcm = bytes(rx.get("pcm") or b"")
         # Phase 77b — save raw audio as WAV for DVR-style playback. The
@@ -544,7 +544,7 @@ class DVSwitchBridge:
                 LOG.warning("STT (vosk) failed on call tg=%d: %s", rx["talkgroup"], e)
                 call_record["error"] = "stt_failed:" + str(e)[:120]
         # Phase 80a — secondary high-accuracy transcript via faster-whisper.
-        # Runs synchronously after Vosk; on dvswitch-01 with the 'base'
+        # Runs synchronously after Vosk; on dvswitch-host with the 'base'
         # model + int8 a 10-second call adds ~1-2 seconds of latency.
         # That's still well inside the keyup gap on most channels and
         # the dispatcher's view only needs the BEST transcript to be on

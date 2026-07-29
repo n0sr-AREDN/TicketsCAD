@@ -43,11 +43,11 @@ $csrf     = csrf_token();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
-    <title>Mesh Console — Tickets NewUI <?php echo NEWUI_VERSION; ?></title>
+    <title>Mesh Console — Tickets NewUI <?php echo newui_version(); ?></title>
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo NEWUI_VERSION; ?>">
-    <link rel="stylesheet" href="assets/css/config.css?v=<?php echo NEWUI_VERSION; ?>">
+    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo newui_version(); ?>">
+    <link rel="stylesheet" href="assets/css/config.css?v=<?php echo newui_version(); ?>">
     <!-- Phase 39E: Leaflet for the node map tab -->
     <link rel="stylesheet" href="assets/vendor/leaflet/leaflet.css">
     <style>
@@ -791,7 +791,7 @@ CAD_TOKEN=&lt;the-token-above&gt;</pre>
 <script src="assets/vendor/qrcode/qrcode-generator.min.js"></script>
 <!-- Phase 39E: Leaflet for node map -->
 <script src="assets/vendor/leaflet/leaflet.js"></script>
-<script src="assets/js/leaflet-mobile-fit.js?v=<?php echo function_exists("asset_v")?asset_v("assets/js/leaflet-mobile-fit.js"):NEWUI_VERSION; ?>"></script>
-<script src="assets/js/mesh-console.js?v=<?php echo NEWUI_VERSION . '-' . @filemtime(__DIR__ . '/assets/js/mesh-console.js'); ?>"></script>
+<script src="assets/js/leaflet-mobile-fit.js?v=<?php echo function_exists("asset_v")?asset_v("assets/js/leaflet-mobile-fit.js"):newui_version(); ?>"></script>
+<script src="assets/js/mesh-console.js?v=<?php echo newui_version() . '-' . @filemtime(__DIR__ . '/assets/js/mesh-console.js'); ?>"></script>
 </body>
 </html>

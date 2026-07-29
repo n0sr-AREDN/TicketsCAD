@@ -20,6 +20,19 @@
 
 require_once __DIR__ . '/i18n.php';
 
+// Phase 126 (2026-07-29) — the automatic-backup scheduler's only trigger on
+// installs without cron / Task Scheduler, which is most of them.
+//
+// This is a TICK, not a backup: it reads a cached setting, compares two
+// integers, and returns. Only when a backup is genuinely due does it register a
+// shutdown handler, and even then the dump runs AFTER the response has been
+// flushed and the session lock released — never while a dispatcher waits. See
+// the long note on backup_schedule_tick(). It is wired here, in the one include
+// every authenticated page pulls in, for the same reason EventBus and
+// audio-alerts are: it must be on all pages, and per-page wiring rots.
+require_once __DIR__ . '/backup_schedule.php';
+backup_schedule_tick();
+
 // Defensive defaults: pages are supposed to set $user/$level before including
 // (see the header comment). Default them from the session so a page that
 // forgets (e.g. time-approvals.php) doesn't emit an "undefined variable"
@@ -105,7 +118,7 @@ function nav_btn($href, $icon, $label, $key, $active_page, $attrs = '') {
             <span class="navbar-brand d-flex align-items-center gap-2">
                 <img src="assets/logo-light.png" alt="Tickets" height="36" class="d-block">
                 <span class="fw-semibold">Tickets</span>
-                <small class="text-body-secondary d-none d-sm-inline">v<?php echo NEWUI_VERSION; ?></small>
+                <small class="text-body-secondary d-none d-sm-inline">v<?php echo newui_version(); ?></small>
             </span>
 
             <!-- 2026-06-14 (Phase 47): hamburger toggler for <xl viewports.
@@ -493,22 +506,22 @@ if (count($_navbar_langs) >= 2):
             // Phase 44 — a11y shim: makes every Bootstrap-collapse trigger
             // (data-bs-toggle) keyboard-focusable and Enter/Space-actionable
             // sitewide. One script, fixes ~62 Sonar findings at once.
-            loadGlobal('assets/js/a11y.js?v=<?php echo NEWUI_VERSION; ?>', '_navbar_a11y');
-            loadGlobal('assets/js/event-bus.js?v=<?php echo NEWUI_VERSION; ?>', '_navbar_eventbus');
+            loadGlobal('assets/js/a11y.js?v=<?php echo newui_version(); ?>', '_navbar_a11y');
+            loadGlobal('assets/js/event-bus.js?v=<?php echo newui_version(); ?>', '_navbar_eventbus');
             // GH #82/#76 — type-icon map markers + name labels. type-icons.js
             // defines window.TypeIcons.markerDivIcon (used by every map's marker
             // code); the CSS styles the badge + label. loadGlobal's dedupe means
             // settings.php's own type-icons.js include is not loaded twice.
-            loadGlobal('assets/js/type-icons.js?v=<?php echo NEWUI_VERSION; ?>', '_navbar_typeicons');
+            loadGlobal('assets/js/type-icons.js?v=<?php echo newui_version(); ?>', '_navbar_typeicons');
             if (!document.querySelector('link[href*="type-markers.css"]')) {
                 var _tmcss = document.createElement('link');
                 _tmcss.rel = 'stylesheet';
-                _tmcss.href = 'assets/css/type-markers.css?v=<?php echo NEWUI_VERSION; ?>';
+                _tmcss.href = 'assets/css/type-markers.css?v=<?php echo newui_version(); ?>';
                 document.head.appendChild(_tmcss);
             }
             // Audio alerts needs EventBus, so load after a brief delay
             setTimeout(function() {
-                loadGlobal('assets/js/audio-alerts.js?v=<?php echo NEWUI_VERSION; ?>', '_navbar_audio');
+                loadGlobal('assets/js/audio-alerts.js?v=<?php echo newui_version(); ?>', '_navbar_audio');
             }, 300);
             // Phase 29B (2026-06-12) — PAR-overdue check fires through
             // the existing internal-messaging broadcast pattern (see
@@ -644,7 +657,7 @@ if (count($_navbar_langs) >= 2):
         function loadMsgBadge() {
             if (document.getElementById('navMsgBadge')) {
                 var s = document.createElement('script');
-                s.src = 'assets/js/messaging-badge.js?v=<?php echo NEWUI_VERSION; ?>';
+                s.src = 'assets/js/messaging-badge.js?v=<?php echo newui_version(); ?>';
                 s.defer = true;
                 document.body.appendChild(s);
             }
@@ -662,7 +675,7 @@ if (count($_navbar_langs) >= 2):
         function loadNotifyTray() {
             if (document.getElementById('notifyList')) {
                 var s = document.createElement('script');
-                s.src = 'assets/js/notification-tray.js?v=<?php echo NEWUI_VERSION; ?>';
+                s.src = 'assets/js/notification-tray.js?v=<?php echo newui_version(); ?>';
                 s.defer = true;
                 document.body.appendChild(s);
             }
@@ -944,7 +957,7 @@ if (!preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', $__pttC
 <!-- Radio Widget — moved from index.php so it's reachable from every
      page (Eric's 2026-06-16 request: widget should survive page
      navigation). The JS handles permission-gating on toggle. -->
-<link rel="stylesheet" href="assets/css/radio-widget.css?v=<?php echo file_exists(__DIR__ . '/../assets/css/radio-widget.css') ? filemtime(__DIR__ . '/../assets/css/radio-widget.css') : NEWUI_VERSION; ?>">
+<link rel="stylesheet" href="assets/css/radio-widget.css?v=<?php echo file_exists(__DIR__ . '/../assets/css/radio-widget.css') ? filemtime(__DIR__ . '/../assets/css/radio-widget.css') : newui_version(); ?>">
 <template id="tpl-radio-widget">
     <div class="radio-widget radio-hidden">
         <div class="radio-header">
@@ -1026,9 +1039,9 @@ if (!preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', $__pttC
         <div class="radio-resize-handle"></div>
     </div>
 </template>
-<script src="assets/js/radio-widget.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/radio-widget.js') ? filemtime(__DIR__ . '/../assets/js/radio-widget.js') : NEWUI_VERSION; ?>"></script>
+<script src="assets/js/radio-widget.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/radio-widget.js') ? filemtime(__DIR__ . '/../assets/js/radio-widget.js') : newui_version(); ?>"></script>
 <!-- Shared map-defaults loader (one canonical source for all Leaflet map initializers) -->
-<script src="assets/js/map-defaults.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/map-defaults.js') ? filemtime(__DIR__ . '/../assets/js/map-defaults.js') : NEWUI_VERSION; ?>"></script>
+<script src="assets/js/map-defaults.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/map-defaults.js') ? filemtime(__DIR__ . '/../assets/js/map-defaults.js') : newui_version(); ?>"></script>
 
 <!-- Command Bar (hidden, shown on "/" keypress) — available on all pages -->
 <div class="command-bar d-none" id="commandBar">
@@ -1039,7 +1052,7 @@ if (!preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', $__pttC
         <kbd class="ms-2 text-body-tertiary">Esc</kbd>
     </div>
 </div>
-<script src="assets/js/command-bar.js?v=<?php echo NEWUI_VERSION; ?>"></script>
+<script src="assets/js/command-bar.js?v=<?php echo newui_version(); ?>"></script>
 
 <!-- Language Switcher bootstrap data + module (Phase 8 i18n) -->
 <?php if (count($_navbar_langs) >= 2): ?>
@@ -1051,7 +1064,7 @@ window.CSRF_TOKEN         = window.CSRF_TOKEN || <?php echo json_encode($_SESSIO
 // display + native names instead of the JS LANG_NAMES fallback map.
 window.LANGUAGE_REGISTRY  = <?php echo json_encode(i18n_language_registry(), JSON_UNESCAPED_UNICODE); ?>;
 </script>
-<script src="assets/js/language-switcher.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/language-switcher.js') ? filemtime(__DIR__ . '/../assets/js/language-switcher.js') : NEWUI_VERSION; ?>"></script>
+<script src="assets/js/language-switcher.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/language-switcher.js') ? filemtime(__DIR__ . '/../assets/js/language-switcher.js') : newui_version(); ?>"></script>
 <?php endif; ?>
 
 <?php
@@ -1214,7 +1227,7 @@ window.formatDistanceKm = function (km) {
        (b) push_enabled=1 + VAPID configured on the server, AND
        (c) Notification.permission === 'default' (never asked yet)
      Once granted (or denied), the pill goes away. -->
-<script src="assets/js/push-client.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/push-client.js') ? filemtime(__DIR__ . '/../assets/js/push-client.js') : NEWUI_VERSION; ?>"></script>
+<script src="assets/js/push-client.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/push-client.js') ? filemtime(__DIR__ . '/../assets/js/push-client.js') : newui_version(); ?>"></script>
 <script>
 (function () {
     if (!window.TCADPush || !TCADPush.isSupported()) return;

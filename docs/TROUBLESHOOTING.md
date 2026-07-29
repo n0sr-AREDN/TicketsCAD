@@ -766,7 +766,7 @@ sudo nano /etc/ticketscad/dvswitch-<instance>.env
 sudo systemctl restart ticketscad-dvswitch@<instance>
 ```
 
-Verify on dvswitch-01:
+Verify on dvswitch-host:
 
 ```bash
 journalctl -u ticketscad-dvswitch@<instance> -n 30

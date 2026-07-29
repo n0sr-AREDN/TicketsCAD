@@ -85,9 +85,12 @@ if (empty($unList)) {
     if (!empty($un['truncated'])) {
         echo "[CRIT] ...list truncated at 50 — there are more.\n";
     }
-    $suggestions[] = "sudo chown -R $webUser:$webUser $root   # adjust '$webUser' to YOUR web server user";
-    $suggestions[] = "sudo find $root -type d -exec chmod 755 {} \\;   # EXAMPLE — adapt to your policy";
-    $suggestions[] = "sudo find $root -type f -exec chmod 644 {} \\;   # EXAMPLE — adapt to your policy";
+    // Fix READABILITY, not ownership. A recursive chown of the install dir
+    // takes .git with it and the next `git pull` dies with "detected dubious
+    // ownership" (git >= 2.35.2, CVE-2022-24765) — see docs/UPDATE-CHECKLIST.md.
+    $suggestions[] = "sudo find $root -path '*/.git' -prune -o -type d -exec chmod 755 {} \\;   # EXAMPLE — adapt to your policy";
+    $suggestions[] = "sudo find $root -path '*/.git' -prune -o -type f -exec chmod 644 {} \\;   # EXAMPLE — adapt to your policy";
+    $suggestions[] = "# do NOT 'chown -R $webUser:$webUser $root' — that takes .git and breaks your next git pull";
 }
 
 // ── Opcache ──────────────────────────────────────────────────────────
@@ -113,7 +116,7 @@ if (!empty($oc['enabled'])) {
 echo "\n-- Running code vs disk (opcache staleness) --\n";
 $v = $all['version'] ?? [];
 if (($v['severity'] ?? 'ok') === 'critical') {
-    echo "[CRIT] STALE CODE: running NEWUI_VERSION=" . var_export($v['running'] ?? null, true)
+    echo "[CRIT] STALE CODE: running version=" . var_export($v['running'] ?? null, true)
         . " but " . ($v['version_file'] ?? 'disk') . " says " . var_export($v['on_disk'] ?? null, true) . "\n";
     if (($v['probe_match'] ?? null) === false) {
         echo "[CRIT] STALE CODE: inc/health-check.php compiled build=" . ($v['probe_running'] ?? '?')
@@ -127,6 +130,14 @@ if (($v['severity'] ?? 'ok') === 'critical') {
         . " (" . var_export($v['on_disk'] ?? null, true) . ").\n";
     echo "       (On a fresh CLI process this always matches — the web check is\n";
     echo "       the one that catches a stale apache/php-fpm.)\n";
+}
+echo "       Reported version: " . var_export($v['reported'] ?? null, true)
+    . " (source: " . (function_exists('newui_version_source') ? newui_version_source() : '?') . ")\n";
+if (!empty($v['config_pin'])) {
+    echo "[INFO] config.php still pins define('NEWUI_VERSION', '" . $v['config_pin'] . "') from install time.\n";
+    echo "       Harmless — the app reports the tracked VERSION file — but the line is dead.\n";
+    $suggestions[] = "# optional: delete the define('NEWUI_VERSION', …) line from config.php"
+        . " (or replace it with: require_once __DIR__ . '/inc/version.php';)";
 }
 
 // ── Summary + suggestions ────────────────────────────────────────────

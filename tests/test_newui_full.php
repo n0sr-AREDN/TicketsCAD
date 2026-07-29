@@ -43,7 +43,7 @@ if (file_exists($inc . 'broker.php'))  require_once $inc . 'broker.php';
 $prefix = $GLOBALS['db_prefix'] ?? '';
 
 echo "=== NewUI v4.0 Comprehensive Functional Test Suite ===\n";
-echo "PHP: " . PHP_VERSION . " | NewUI: " . NEWUI_VERSION . "\n\n";
+echo "PHP: " . PHP_VERSION . " | NewUI: " . newui_version() . "\n\n";
 
 $passed = 0;
 $failed = 0;

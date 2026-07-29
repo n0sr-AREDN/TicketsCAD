@@ -12,6 +12,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/backup.php';
+require_once __DIR__ . '/../inc/backup_schedule.php';
 require_once __DIR__ . '/../inc/audit.php';
 
 ini_set('display_errors', '0');
@@ -101,9 +102,11 @@ if ($action === 'download' && $method === 'GET') {
         exit;
 
     } catch (Exception $e) {
-        // Cleanup on error
+        // Cleanup on error. ($zipFile was an undefined variable here — the
+        // partially-written archive was left behind in the temp directory on
+        // every failed download, which is its own slow disk leak.)
         @unlink($sqlFile);
-        @unlink($zipFile);
+        @unlink($outFile);
         json_error('Backup failed: ' . $e->getMessage(), 500);
     }
 }
@@ -135,6 +138,14 @@ if ($action === 'filesystem' && $method === 'POST') {
 
     if (!is_writable($destDir)) {
         json_error('Backup directory is not writable: ' . $destDir);
+    }
+
+    // Same disk guard as the scheduler. Writing to the server's own filesystem
+    // is exactly the path that can fill the disk, so it may not skip the check
+    // the automatic path honours. 507 Insufficient Storage is the honest code.
+    $guard = backup_guard($destDir);
+    if (!$guard['ok']) {
+        json_error('Backup refused — ' . $guard['reason'], 507);
     }
 
     $timestamp = date('Y-m-d_His');
@@ -178,13 +189,27 @@ if ($action === 'filesystem' && $method === 'POST') {
 // ═══════════════════════════════════════════════════════════════
 if ($action === 'download_file' && $method === 'GET') {
     $filename = basename($_GET['file'] ?? ''); // basename prevents path traversal
-    $dir = $_GET['path'] ?? BACKUP_DIR;
+    $dir = $_GET['path'] ?? backup_dir();
 
-    if (empty($filename) || !preg_match('/^ticketscad-backup-[\d_-]+\.(zip|sql\.gz)$/', $filename)) {
+    // Accepts both naming schemes: 'ticketscad-backup-<date>' (manual) and
+    // 'ticketscad-<stamp>' (scheduler). Scheduled archives previously could not
+    // be downloaded at all because the pattern demanded the '-backup-' segment.
+    // The character class stays deliberately narrow — digits, dashes and
+    // underscores only, so no dots can be smuggled in to build a traversal.
+    if (empty($filename) || !preg_match('/^ticketscad-(backup-)?[\d_-]+\.(zip|sql\.gz|gz)$/', $filename)) {
         json_error('Invalid filename', 400);
     }
 
     $filePath = rtrim($dir, '/\\') . DIRECTORY_SEPARATOR . $filename;
+
+    // Defence in depth: prove the resolved file really sits in the directory we
+    // were asked to read from before streaming it.
+    $realFile = realpath($filePath);
+    $realDir  = realpath(rtrim($dir, '/\\'));
+    if ($realFile === false || $realDir === false || strpos($realFile, $realDir . DIRECTORY_SEPARATOR) !== 0) {
+        json_error('File not found', 404);
+    }
+
     if (!file_exists($filePath) || !is_readable($filePath)) {
         json_error('File not found', 404);
     }
@@ -204,9 +229,62 @@ if ($action === 'download_file' && $method === 'GET') {
 //  List backup history
 // ═══════════════════════════════════════════════════════════════
 if ($action === 'history' && $method === 'GET') {
-    $dir = $_GET['path'] ?? BACKUP_DIR;
+    // Default to the CONFIGURED directory, not the compiled-in one. An operator
+    // who moved backups elsewhere was previously shown an empty history.
+    $dir = $_GET['path'] ?? backup_dir();
     $history = backup_get_history($dir);
     json_response(['backups' => $history, 'directory' => $dir]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Automatic-backup status — schedule, storage and free space
+// ═══════════════════════════════════════════════════════════════
+if ($action === 'status' && $method === 'GET') {
+    try {
+        json_response(['status' => backup_status()]);
+    } catch (Throwable $e) {
+        error_log('[backup] status failed: ' . $e->getMessage());
+        json_error('Could not read backup status', 500);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Run a scheduled-style backup now (honours the disk guard)
+// ═══════════════════════════════════════════════════════════════
+if ($action === 'run_now' && $method === 'POST') {
+    $input = $postInput ?: [];
+    if (!csrf_verify($input['csrf_token'] ?? '')) {
+        json_error('Invalid CSRF token', 403);
+    }
+
+    set_time_limit(1800);
+    ignore_user_abort(true);
+
+    try {
+        // NOTE: the guard is deliberately NOT bypassed for a manual run. The
+        // whole point is that the disk cannot be filled by backups; a button
+        // that ignores the reserve would be a hole straight through it. The
+        // response tells the operator exactly which limit stopped them and how
+        // to change it, which is more useful than an override.
+        $r = backup_run_now();
+    } catch (Throwable $e) {
+        error_log('[backup] manual run failed: ' . $e->getMessage());
+        json_error('Backup failed: ' . $e->getMessage(), 500);
+    }
+
+    audit_log('system', 'export', 'backup', null,
+        $r['ok'] ? 'Manual backup completed: ' . $r['detail']
+                 : 'Manual backup did not complete: ' . $r['detail'],
+        ['ok' => $r['ok'], 'skipped' => !empty($r['skipped'])],
+        defined('AUDIT_MEDIUM') ? AUDIT_MEDIUM : 3);
+
+    json_response([
+        'success' => (bool) $r['ok'],
+        'skipped' => !empty($r['skipped']),
+        'detail'  => $r['detail'],
+        'file'    => !empty($r['path']) ? basename((string) $r['path']) : null,
+        'status'  => backup_status(),
+    ]);
 }
 
 json_error('Unknown action', 400);

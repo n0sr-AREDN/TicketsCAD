@@ -30,11 +30,54 @@ your actual install path.
 
 ### 1. Fix ownership and permissions (example — adapt to your policy)
 
+> **Do not `chown -R` the whole install directory.** Earlier versions of this
+> checklist said to. It is wrong twice over: it hands `.git` to the web server,
+> so your next `git pull` stops with
+> `fatal: detected dubious ownership in repository at '/var/www/newui'`
+> (git ≥ 2.35.2, CVE-2022-24765); and it is unnecessary, because the web server
+> only needs to **read** the program files — ownership has nothing to do with
+> that, mode `644`/`755` does.
+
+**Who needs to own what**
+
+| Path | Owner | Why |
+|---|---|---|
+| the install directory itself | **the user who runs `git`** | whoever owns `.git` is who can `git pull`. Pick that user once and keep it. |
+| `uploads/` | web server user | attachments + map overlays (`api/upload.php`) |
+| `cache/` | web server user | weather tiles, Zello audio |
+| `backups/` | **you**, group = web server user, mode `2770` | written by BOTH `php tools/backup_run.php` on the CLI (as you) and Settings → Backup / the cron entry (as the web user). Give it away entirely and the CLI backup fails with `could not write archive`. |
+| `../keys/` — e.g. `/var/www/keys` | web server user, mode `700` | 2FA + RSA field-encryption keys. **One level ABOVE the install directory, on purpose** (`inc/field-encrypt.php`: `FE_KEYS_DIR = NEWUI_ROOT . '/../keys'`) so the private key is not HTTP-reachable. git never touches it, so it is not part of a post-pull fix-up — see INSTALLATION-CHECKLIST.md Section 6. |
+
 ```bash
-# EXAMPLES ONLY — adapt user/group/path to your server:
-sudo chown -R www-data:www-data /var/www/newui
-sudo find /var/www/newui -type d -exec chmod 755 {} \;
-sudo find /var/www/newui -type f -exec chmod 644 {} \;
+# EXAMPLES ONLY — substitute YOUR web server user: www-data (Debian/Ubuntu),
+# apache (RHEL/Rocky/Fedora), _www (macOS), or your php-fpm pool user.
+cd /var/www/newui
+
+# The two directories PHP writes to inside the tree:
+sudo chown -R www-data:www-data uploads/ cache/
+
+# backups/ is gitignored and does NOT exist on a fresh clone — it is created on
+# first use. Create it and share it, so both you and the web server can write:
+mkdir -p backups
+sudo chown -R "$(id -un)":www-data backups/
+sudo chmod 2770 backups/          # setgid: new archives inherit the group
+
+# Program files only need to be READABLE (this needs no chown at all):
+sudo find . -path ./.git -prune -o -type d -exec chmod 755 {} \;
+sudo find . -path ./.git -prune -o -type f -exec chmod 644 {} \;
+```
+
+If your tree is *already* owned by the web server (older installs followed the
+whole-tree advice), you have two consistent options — pick one:
+
+```bash
+# a) keep the web server as the owner, and run git as it:
+sudo -u www-data git -C /var/www/newui pull --ff-only
+
+# b) take the tree back, and give the web server only what it writes:
+sudo chown -R "$(id -un)":www-data /var/www/newui
+sudo chmod -R g+rX /var/www/newui
+sudo chown -R www-data:www-data /var/www/newui/uploads /var/www/newui/cache
 ```
 
 If you manage permissions your own way (ACLs, a deploy user in the
@@ -93,7 +136,8 @@ The CLI's unreadable-files scan is still valid — it catches root-owned
 | Required-writable dirs (`uploads/`, `uploads/overlays/`, `cache/`, `cache/weather/`, `cache/zello-audio/`) | Uploads, map overlays, weather tiles, and Zello voice recordings failing to write | Missing-but-creatable = warn; exists-but-unwritable = **critical** |
 | Unreadable files in `assets/js/` and `api/`, plus the 20 most-recently-modified `.php`/`.js` files | New files from a root `git pull` that the web server cannot read (silent 404s) | **critical** |
 | opcache `validate_timestamps=0` | Code changes on disk not taking effect until reload | warn |
-| Running `NEWUI_VERSION` (compiled) vs the version string on disk | The server executing stale opcache'd code right now | **critical** — reload apache2/php-fpm |
+| `inc/health-check.php`'s compiled build stamp vs the same file on disk | The server executing stale opcache'd code right now | **critical** — reload apache2/php-fpm |
+| A `define('NEWUI_VERSION', …)` left in `config.php` | A dead line from before the version moved to the tracked `VERSION` file — the reported version is correct either way | informational |
 
 When any **critical** issue exists, admins see a red banner on every page
 linking to `status.php#health`.
@@ -108,3 +152,17 @@ sudo systemctl reload apache2   # or: sudo systemctl reload php8.2-fpm
 ```
 
 Nothing is ever executed for you. Review, adapt, run, then re-check.
+
+## 5. Confirm the version actually moved
+
+Open the user menu (top right) → **About**. The version there is read from the
+git-tracked `VERSION` file, so after a successful `git pull` **it changes on its
+own** — no config edit needed. If it did not change, the pull did not land or
+the web server is still serving stale code (step 2).
+
+> Installs created before 2026-07 have a `define('NEWUI_VERSION', …)` in their
+> `config.php`. It is ignored now and the About page is still correct; the health
+> check mentions the line so you can delete it. (Before that change the version
+> lived *only* in `config.php` — which git never touches — so About showed the
+> install-day version forever, and "check About to prove the update worked" was
+> advice that could never work.)

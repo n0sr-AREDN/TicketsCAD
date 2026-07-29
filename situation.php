@@ -65,7 +65,7 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
-    <title>EOC Display &mdash; Tickets CAD <?php echo NEWUI_VERSION; ?></title>
+    <title>EOC Display &mdash; Tickets CAD <?php echo newui_version(); ?></title>
 
     <!-- Vendor CSS -->
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
@@ -422,14 +422,14 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
 <!-- Vendor JS -->
 <script src="assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>
 <script src="assets/vendor/leaflet/leaflet.js"></script>
-<script src="assets/js/leaflet-mobile-fit.js?v=<?php echo function_exists("asset_v")?asset_v("assets/js/leaflet-mobile-fit.js"):NEWUI_VERSION; ?>"></script>
+<script src="assets/js/leaflet-mobile-fit.js?v=<?php echo function_exists("asset_v")?asset_v("assets/js/leaflet-mobile-fit.js"):newui_version(); ?>"></script>
 <script src="assets/js/leaflet-quadkey.js"></script>
 <script src="assets/js/map-prefs.js"></script>
-<script src="assets/js/map-image-overlays.js?v=<?php echo function_exists('asset_v') ? asset_v('assets/js/map-image-overlays.js') : NEWUI_VERSION; ?>"></script>
-<script src="assets/js/screen-prefs.js?v=<?php echo NEWUI_VERSION; ?>"></script>
+<script src="assets/js/map-image-overlays.js?v=<?php echo function_exists('asset_v') ? asset_v('assets/js/map-image-overlays.js') : newui_version(); ?>"></script>
+<script src="assets/js/screen-prefs.js?v=<?php echo newui_version(); ?>"></script>
 <script src="assets/js/unit-tracking.js"></script>
 <script src="assets/js/event-bus.js"></script>
-<script src="assets/js/facility-status.js?v=<?php echo function_exists('asset_v') ? asset_v('assets/js/facility-status.js') : NEWUI_VERSION; ?>"></script>
+<script src="assets/js/facility-status.js?v=<?php echo function_exists('asset_v') ? asset_v('assets/js/facility-status.js') : newui_version(); ?>"></script>
 
 <script>
 (function () {

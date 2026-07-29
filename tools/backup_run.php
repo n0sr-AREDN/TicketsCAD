@@ -16,6 +16,19 @@
  * Windows Task Scheduler: run C:\xampp\php\php.exe with the argument
  *   C:\xampp\htdocs\ticketscad\tools\backup_run.php
  *
+ * OWNERSHIP OF backups/ — it has TWO writers, so it must be shared:
+ *   - you, when you run this by hand (`php tools/backup_run.php --force`)
+ *   - the web server user, via that cron line and Settings → Backup
+ * Hand the directory entirely to www-data and the manual run fails with
+ * "could not write archive"; keep it entirely yours and the scheduled/web
+ * backup fails instead. The working shape (see docs/UPDATE-CHECKLIST.md §1):
+ *   mkdir -p backups
+ *   sudo chown -R "$(id -un)":www-data backups/ && sudo chmod 2770 backups/
+ *
+ * DOCKER: backups/ must be on a volume, or `docker compose up -d --build`
+ * destroys it with the container. The shipped docker-compose.yml mounts
+ * app_backups at /var/www/html/backups — see docs/DOCKER.md §4.
+ *
  * Exit codes: 0 = success or nothing due, 1 = the backup failed.
  */
 

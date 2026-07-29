@@ -89,7 +89,7 @@ Cloudflare Tunnel — WebSocket upgrades pass through transparently.
    [radio] DMR WS open
    [radio] DMR auth_ok
    ```
-   Hold PTT 3 seconds. The bridge log on dvswitch-01 should show
+   Hold PTT 3 seconds. The bridge log on dvswitch-host should show
    the matching `streaming TX started / done` lines with
    `packets_sent ≈ 50` (3 sec ≈ 50 voice bursts + headers + terminator).
 

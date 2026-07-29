@@ -40,14 +40,14 @@ $active_page = 'links';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
-    <title><?php echo e(t('page.links', 'Links')); ?> &mdash; <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo NEWUI_VERSION; ?></title>
+    <title><?php echo e(t('page.links', 'Links')); ?> &mdash; <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo newui_version(); ?></title>
 
     <!-- Vendor CSS -->
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap-icons.min.css">
 
     <!-- App CSS -->
-    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo NEWUI_VERSION; ?>">
+    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo newui_version(); ?>">
     <link rel="stylesheet" href="assets/css/links.css?v=<?php echo asset_v('assets/css/links.css'); ?>">
     <link rel="stylesheet" href="assets/css/mobile.css">
     <link rel="stylesheet" href="assets/css/print.css" media="print">
@@ -208,7 +208,7 @@ $active_page = 'links';
 
 <!-- Vendor JS -->
 <script src="assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-<script src="assets/js/toolbar.js?v=<?php echo NEWUI_VERSION; ?>"></script>
+<script src="assets/js/toolbar.js?v=<?php echo newui_version(); ?>"></script>
 
 <!-- App JS -->
 <script src="assets/js/theme-manager.js"></script>

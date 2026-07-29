@@ -102,11 +102,53 @@ and image rebuilds:
 | `db_data`     | `/var/lib/mysql`          | The entire database.                                     |
 | `app_uploads` | `/var/www/html/uploads`   | Attachments, photos, uploaded files.                    |
 | `app_cache`   | `/var/www/html/cache`     | Map-tile cache.                                          |
+| `app_backups` | `/var/www/html/backups`   | Archives written by `tools/backup_run.php` and Settings → Backup. |
 | `app_keys`    | `/var/www/keys`           | 2FA + RSA field-encryption keys (kept out of the webroot).|
+
+**Anything NOT on this list lives in the container's writable layer and is
+destroyed by `docker compose up -d --build`,** which replaces the container.
+That is why `app_backups` exists: without it, a backup taken with
+`docker compose exec app php tools/backup_run.php --force` was deleted by the
+very next command of the documented upgrade — in the one scenario the backup
+exists for.
 
 > **Back up `db_data` and `app_keys` together.** The keys decrypt data stored in
 > the database; a database restored without its matching keys cannot read
 > encrypted fields (2FA secrets, encrypted form fields).
+
+### One-time step if your compose file predates `app_backups`
+
+Adding the volume does **not** import what was already in the old container —
+Docker only seeds a new named volume from the *image*, never from a running
+container's writable layer. If you have backups inside the container, rescue
+them **before** the first rebuild with the new compose file:
+
+```bash
+# 1. With the OLD container still running:
+docker compose cp app:/var/www/html/backups ./backups-rescued
+
+# 2. Now pull the new code + rebuild (this is what would have destroyed them):
+git pull && docker compose up -d --build
+
+# 3. Put them back on the new volume:
+docker compose cp ./backups-rescued/. app:/var/www/html/backups
+docker compose exec app chown -R www-data:www-data /var/www/html/backups
+```
+
+If `docker compose cp` reports the path does not exist, you had no on-container
+backups and there is nothing to migrate — just rebuild.
+
+### Getting a backup off the box
+
+A volume survives rebuilds, but it still lives on this host. Copy the archive
+somewhere else (the 3-2-1 rule — see `docs/BACKUP-RECOVERY-RUNBOOK.md`):
+
+```bash
+docker compose cp app:/var/www/html/backups ./ticketscad-backups
+```
+
+…or use **Settings → Backup / Maintenance → Download Full Backup**, which streams
+the archive straight to the browser's machine.
 
 Back up the database at any time:
 ```bash
@@ -122,8 +164,14 @@ Schema migrations run **automatically** on container start — so an upgrade is 
 (a migration changes the schema in place):
 
 ```bash
-# 1. Back up first (see §4).
+# 0. If your compose file predates the app_backups volume, do the one-time
+#    rescue in §4 FIRST — step 3 below destroys anything not on a volume.
+
+# 1. Back up first (see §4). This writes to the host, so it is safe either way.
 docker compose exec db sh -c 'exec mariadb-dump -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE"' > backup-$(date +%F).sql
+
+#    (Or use TicketsCAD's own backup, which now lands on the app_backups volume
+#     and survives the rebuild:  docker compose exec app php tools/backup_run.php --force)
 
 # 2. Get the new version. For production, pin to a released tag (a known-good
 #    version) rather than bleeding-edge main:

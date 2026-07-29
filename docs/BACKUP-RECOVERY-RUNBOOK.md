@@ -58,9 +58,44 @@ The principle: TicketsCAD-the-software is reproducible from git. Only YOUR data 
 
 ## Backup methods
 
-Three supported paths. Pick one (or combine).
+Four supported paths. Method 0 is on by default and needs nothing from you; the rest
+are for coverage it deliberately does not provide (keys and uploads).
 
-> **Note on tooling:** TicketsCAD does not currently ship a packaged backup CLI — there is no `tools/backup.php` you can run. Until one lands, the patterns below use standard `mysqldump` + `tar`. They produce the same artefact a packaged tool would.
+> **Tooling note (corrected 2026-07-29):** TicketsCAD *does* ship backup CLIs —
+> `tools/backup_run.php` (take/inspect a backup) and `tools/restore.php` (restore, with a
+> `--drill` mode that restores into a throwaway database to prove the archive works).
+> An earlier revision of this runbook said no packaged CLI existed; that has not been
+> true since Phase 122.
+
+### Method 0 — Built-in automatic backups (default, no setup)
+
+TicketsCAD backs its own database up on a schedule, verifies each archive by reading it
+back, and prunes old copies. **On by default**, every 24 h, keeping 7 copies in
+`<app>/backups`.
+
+Configure at **Settings → Backup / Maintenance → Automatic Backups**; monitor at
+**Status → System Health → Backups**. Full setting reference:
+[INSTALL-ADMIN-GUIDE.md](../../../docs/INSTALL-ADMIN-GUIDE.md) → Part 8 → Automatic Backups.
+
+**It will not fill the disk.** Before writing, it checks free space on both the backup
+directory and the temp directory and **refuses** if the write would drop free space below
+a configurable reserve (default 1 GB) or push the backup folder past its limit (default
+5 GB). Refusals are logged, audited, and surfaced in the UI. Retention never deletes the
+newest archive, and never touches files TicketsCAD did not write.
+
+With no cron/Task Scheduler, a due backup starts after an ordinary page load — the dump
+runs after the response is flushed, so no user waits on it. If you configure Method C,
+turn *Run without a scheduler* off so timing is driven solely by cron.
+
+```bash
+php tools/backup_run.php --status   # report only
+php tools/backup_run.php            # back up if one is due
+php tools/backup_run.php --force    # back up now regardless
+php tools/restore.php --drill <archive>   # prove it restores, into a scratch DB
+```
+
+**Caveat, same as Method A:** database only. Encryption keys and uploads still need
+Method B.
 
 ### Method A — In-app database backup (admin UI)
 
@@ -153,7 +188,7 @@ find "${BACKUP_DIR}" -name 'tcad-auto-*.tar.gz' -mtime +30 -delete
 # rsync -avz "${DEST}" backup-host:/backups/tcad/
 
 # Option 4: scp to a NAS
-# scp "${DEST}" nas.local:/volume1/backups/tcad/
+# scp "${DEST}" nas-host:/volume1/backups/tcad/
 
 # Verify the mirror succeeded — fail loudly if not
 # (your script here)
@@ -397,12 +432,12 @@ See [SECURITY-POLICY.md](SECURITY-POLICY.md) for full details.
 
 ### DMR call audio archives
 
-If you enabled `DMR_AUDIO_RECORD=1` for the DVSwitch bridge, audio files accumulate in `/var/log/ticketscad-dvswitch/audio/` on `dvswitch-01`. These are NOT included in the standard TicketsCAD backup script — they're on a different VM.
+If you enabled `DMR_AUDIO_RECORD=1` for the DVSwitch bridge, audio files accumulate in `/var/log/ticketscad-dvswitch/audio/` on `dvswitch-host`. These are NOT included in the standard TicketsCAD backup script — they're on a different VM.
 
 Cover them with their own backup:
 
 ```bash
-# On dvswitch-01:
+# On dvswitch-host:
 0 3 * * * rsync -az /var/log/ticketscad-dvswitch/audio/ backup-host:/backups/tcad-dmr-audio/
 ```
 

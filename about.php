@@ -57,7 +57,7 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
-    <title><?php echo e(t('page.about', 'About')); ?> &mdash; <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo NEWUI_VERSION; ?></title>
+    <title><?php echo e(t('page.about', 'About')); ?> &mdash; <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo newui_version(); ?></title>
 
     <!-- Vendor CSS -->
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
@@ -94,7 +94,7 @@ try {
                     <h3 class="mb-1">TicketsCAD</h3>
                     <p class="text-body-secondary mb-1">Computer-Aided Dispatch System</p>
                     <p class="mb-0">
-                        <span class="badge bg-primary fs-6">NewUI v<?php echo NEWUI_VERSION; ?></span>
+                        <span class="badge bg-primary fs-6">NewUI v<?php echo newui_version(); ?></span>
                     </p>
                 </div>
             </div>
@@ -215,7 +215,7 @@ try {
                 <div class="card-body">
                     <dl class="mb-0">
                         <dt class="text-body-secondary small">Application Version</dt>
-                        <dd class="font-monospace"><?php echo NEWUI_VERSION; ?></dd>
+                        <dd class="font-monospace"><?php echo newui_version(); ?></dd>
 
                         <dt class="text-body-secondary small">PHP Version</dt>
                         <dd class="font-monospace"><?php echo e($php_version); ?></dd>
@@ -246,7 +246,7 @@ try {
 <script src="assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>
 
 <!-- App JS -->
-<script src="assets/js/toolbar.js?v=<?php echo NEWUI_VERSION; ?>"></script>
+<script src="assets/js/toolbar.js?v=<?php echo newui_version(); ?>"></script>
 <script src="assets/js/theme-manager.js"></script>
 
 </body>

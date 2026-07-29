@@ -165,10 +165,12 @@ p46_assert(
 
 // ── Phase 46c: cache invalidation must use asset_v() (mtime-based) so
 // shipping a new roster.js actually reaches the browser on the next page
-// load. NEWUI_VERSION is pinned at 4.0.0-dev across installs — using it
-// alone bakes the cached file in until someone manually bumps the
-// constant. That's the bug Eric hit: Phase 46 shipped but his browser
-// kept serving the pre-Phase-46 roster.js.
+// load. The version alone only changes on a release, so it bakes the cached
+// file in between releases. (Historically it was WORSE: NEWUI_VERSION came
+// from the per-install config.php and was pinned at 4.0.0-dev forever —
+// fixed 2026-07 by moving the version into the tracked VERSION file, see
+// inc/version.php.) That's the bug Eric hit: Phase 46 shipped but his
+// browser kept serving the pre-Phase-46 roster.js.
 $rosterPhp = file_get_contents(__DIR__ . '/../roster.php');
 p46_assert(
     "roster.php — roster.js cache-buster uses asset_v() not NEWUI_VERSION",

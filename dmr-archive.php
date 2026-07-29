@@ -63,8 +63,8 @@ $active_page = 'dmr-archive';
 <!-- dashboard.css owns the .nav-main / .nav-menu-btn styles the
      shared navbar template relies on; without it the menu lays out
      as bare inline links instead of the proper toolbar. -->
-<link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo file_exists(__DIR__ . '/assets/css/dashboard.css') ? filemtime(__DIR__ . '/assets/css/dashboard.css') : NEWUI_VERSION; ?>">
-<link rel="stylesheet" href="assets/css/radio-widget.css?v=<?php echo file_exists(__DIR__ . '/assets/css/radio-widget.css') ? filemtime(__DIR__ . '/assets/css/radio-widget.css') : NEWUI_VERSION; ?>">
+<link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo file_exists(__DIR__ . '/assets/css/dashboard.css') ? filemtime(__DIR__ . '/assets/css/dashboard.css') : newui_version(); ?>">
+<link rel="stylesheet" href="assets/css/radio-widget.css?v=<?php echo file_exists(__DIR__ . '/assets/css/radio-widget.css') ? filemtime(__DIR__ . '/assets/css/radio-widget.css') : newui_version(); ?>">
 <style>
 .dmr-archive-toolbar {
     position: sticky; top: 0; z-index: 10;
@@ -154,8 +154,8 @@ $active_page = 'dmr-archive';
 <!-- Same toolbar wiring + day/night theme manager every other page
      uses; without them the navbar's buttons (theme toggle, language
      switcher, notification tray) are inert on this page. -->
-<script src="assets/js/toolbar.js?v=<?php echo file_exists(__DIR__ . '/assets/js/toolbar.js') ? filemtime(__DIR__ . '/assets/js/toolbar.js') : NEWUI_VERSION; ?>"></script>
-<script src="assets/js/theme-manager.js?v=<?php echo file_exists(__DIR__ . '/assets/js/theme-manager.js') ? filemtime(__DIR__ . '/assets/js/theme-manager.js') : NEWUI_VERSION; ?>"></script>
+<script src="assets/js/toolbar.js?v=<?php echo file_exists(__DIR__ . '/assets/js/toolbar.js') ? filemtime(__DIR__ . '/assets/js/toolbar.js') : newui_version(); ?>"></script>
+<script src="assets/js/theme-manager.js?v=<?php echo file_exists(__DIR__ . '/assets/js/theme-manager.js') ? filemtime(__DIR__ . '/assets/js/theme-manager.js') : newui_version(); ?>"></script>
 <script src="assets/js/dmr-archive.js?v=<?php echo filemtime(__DIR__ . '/assets/js/dmr-archive.js'); ?>"></script>
 </body>
 </html>

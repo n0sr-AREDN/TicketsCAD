@@ -514,7 +514,7 @@ the BrandMeister network looks like this:
                                   └─────────────────────┘
 ```
 
-Two long-running processes live on the bridge VM (`dvswitch-01`,
+Two long-running processes live on the bridge VM (`dvswitch-host`,
 `10.0.0.10`):
 
 - **`hbp_client.py`** — the HBP master client. Authenticates to
@@ -536,7 +536,7 @@ on the bridge filesystem (PYTHONPATH=`/opt/ticketscad-dvswitch`).
 
 ## 11. Build environment + dependencies
 
-### 11.1 The bridge VM (`dvswitch-01`)
+### 11.1 The bridge VM (`dvswitch-host`)
 
 ```
 Debian 13 (trixie), Python 3.13.5

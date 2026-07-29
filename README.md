@@ -61,10 +61,17 @@ sudo mariadb -e "CREATE DATABASE newui CHARACTER SET utf8mb4 COLLATE utf8mb4_uni
 sudo cp config.example.php config.php
 sudo $EDITOR config.php    # set $db_pass to the password you used above
 
-# 3. Hand ownership to the web-server user, then bootstrap the schema.
-#    install_fresh.php auto-imports base_schema.sql + all foundational .sql
-#    files + runs every per-feature migration. Idempotent, safe to re-run.
-sudo chown -R www-data:www-data /var/www/newui
+# 3. Give the web server the directories it WRITES to — not the whole tree.
+#    (chown -R on the whole folder takes .git with it and your next `git pull`
+#    fails with "detected dubious ownership". The program files only need to be
+#    readable, which they already are.)
+sudo chown -R www-data:www-data uploads/ cache/
+sudo mkdir -p /var/www/keys && sudo chown www-data:www-data /var/www/keys && sudo chmod 700 /var/www/keys
+sudo chown www-data:www-data config.php && sudo chmod 640 config.php
+
+#    Then bootstrap the schema. install_fresh.php auto-imports base_schema.sql +
+#    all foundational .sql files + runs every per-feature migration. Idempotent,
+#    safe to re-run. Run it AS the web user so anything it creates is owned by it.
 sudo -u www-data php tools/install_fresh.php
 
 # 4. Create the first admin user. Save the printed temp password —
@@ -102,13 +109,14 @@ tables and skips straight to migrations. Safe to re-run.
 
 For a production deployment with TLS, vhost, encryption keys, and
 hardening, follow [`docs/INSTALLATION-CHECKLIST.md`](docs/INSTALLATION-CHECKLIST.md)
-end-to-end — it covers Apache + certbot + the encryption-key directory
-that the Quick start above omits.
+end-to-end — it covers Apache + certbot + the file-ownership policy and
+hardening steps the Quick start above only sketches.
 
 ## What's in here
 
 | Path | Purpose |
 |------|---------|
+| `VERSION` | The single source of truth for the release number. Tracked in git, so `git pull` moves what Help → About reports — **bump this file when cutting a release** (nothing else carries the version). `inc/version.php` reads it; `newui_version()` is what the app calls. |
 | `api/` | 60+ JSON endpoints (incidents, members, facilities, SSE stream, file upload, TFA, etc.). Every state-changing endpoint enforces CSRF + RBAC + per-resource access via `inc/access.php`. |
 | `assets/` | ES5 JS, Bootstrap 5, Leaflet, GridStack — no build step. |
 | `inc/` | Server-side helpers: `db.php`, `functions.php`, `rbac.php`, `auth.php`, `audit.php`, `access.php` (per-resource ACL), `encrypt.php`, `tfa.php`, `sse.php`, channel adapters under `channels/`. |

@@ -34,6 +34,11 @@
 
 declare(strict_types=1);
 
+// Fatal-to-JSON guard — this endpoint authenticates by bearer token and
+// never requires api/auth.php, so it installs the guard itself.
+require_once __DIR__ . '/../inc/api_guard.php';
+api_guard_install();
+
 require_once __DIR__ . '/../config.php';
 
 ini_set('display_errors', '0');

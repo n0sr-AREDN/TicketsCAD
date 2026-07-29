@@ -28,7 +28,13 @@ $db_prefix = '';               // Table prefix (empty = legacy default)
 $base_url  = 'https://cad.example.org';
 
 // ── Application metadata ────────────────────────────────────────
-define('NEWUI_VERSION', '4.1.2');
+// The version is NOT set here. It lives in the git-tracked `VERSION` file next
+// to this one, so `git pull` actually changes what Help → About reports.
+// (Before 2026-07 it was a define() in this file; because config.php is
+// gitignored, every existing install stayed pinned to its install-time version
+// forever.) inc/version.php defines NEWUI_VERSION from that file for anything
+// that still reads the constant; app code calls newui_version().
+require_once __DIR__ . '/inc/version.php';
 define('NEWUI_ROOT',    __DIR__);
 define('NEWUI_DEBUG',   false);   // true = dev-only verbose errors
 

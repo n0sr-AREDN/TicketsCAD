@@ -1,7 +1,8 @@
 # Tickets CAD NewUI — Security Policy
 
-**Document version:** 1.0
-**Effective date:** 2026-06-08 (Phase 10 ship)
+**Document version:** 1.2
+**Effective date:** 2026-07-29 (Phase 127b — SBOM Author Signature; signing key added to the cryptographic inventory, §5.1 and §5.3)
+**Previous versions:** 1.1, 2026-07-29 (Phase 127 ship — software supply chain / SBOM); 1.0, 2026-06-08 (Phase 10 ship)
 **Audience:** System administrators, CJIS auditors, internal security review
 **Scope:** Tickets CAD NewUI v4 only. Does NOT cover the legacy v3.44 install (separate codebase).
 
@@ -216,14 +217,25 @@ A future phase (Phase 11+) will add an "emergency lockout" button on the complia
 
 ### 5.1 Algorithms used
 
-| Use | Algorithm | Key length | At-rest |
+| Use | Algorithm | Key length | Key custody / at-rest |
 |---|---|---|---|
 | Password hashing | bcrypt | cost = 12 | column `user.passwd` |
 | TOTP secret encryption | AES-256-GCM | 256-bit | column `user_tfa.tfa_secret`, key at `../keys/tfa.key` |
 | Field encryption (RSA hybrid) | RSA-OAEP + AES-256-GCM | 2048-bit RSA / 256-bit AES | columns marked encrypted, key at `../keys/private.pem` |
+| **SBOM Author Signature** | **ECDSA P-256 (prime256v1) with SHA-256** | **256-bit (≈128-bit security)** | **Per-project, maintainer-held. Private key OUTSIDE this repository — see §5.3. Public key published in-repo as `SBOM-signing-key.pub.pem`.** |
 | TLS | per-deployment | per-deployment | n/a |
 
-### 5.2 Key lifecycle
+All four are current under NIST SP 800-131A Rev. 2. ECDSA P-256 with SHA-256 is
+approved under FIPS 186-5, the Digital Signature Standard the CISA 2026 SBOM
+guidance names as an acceptable authority for signature algorithm choice.
+
+Ed25519 would otherwise be preferred for the SBOM signature and was rejected on
+evidence, not taste: PHP's `openssl_sign()` uses the streaming `EVP_Sign*` API,
+which cannot sign with Ed25519 (`operation not supported for this keytype`), and
+`ext-sodium` is not enabled in the maintainer's PHP runtime. Choosing it would
+mean a future maintainer could not re-sign a release on a default install.
+
+### 5.2 Key lifecycle (per-install encryption keys)
 
 Documented in `docs/ENCRYPTION-KEY-LIFECYCLE.md`. Key features:
 
@@ -231,9 +243,183 @@ Documented in `docs/ENCRYPTION-KEY-LIFECYCLE.md`. Key features:
 - Re-key via Settings → Field Encryption → "Regenerate Keys" archives the old keypair
 - TFA key is separated from DB password (own file, `../keys/tfa.key`) so DB password rotation doesn't break enrollments
 
+### 5.3 SBOM signing key lifecycle (project-level, not per-install)
+
+This key is different in kind from the ones above. Those are generated on each
+operator's server and protect that operator's data. This one belongs to the
+project, exists once, and its only job is to let a stranger confirm that the
+SBOM they are holding is the one we published.
+
+| | |
+|---|---|
+| **Algorithm** | ECDSA on NIST P-256 (`prime256v1`), SHA-256 digest — "ECDSA-P256-SHA256" |
+| **Format** | PKCS#8 PEM, unencrypted at rest, protected by filesystem permissions |
+| **Held by** | Eric Osterberg, the project maintainer, personally |
+| **Private key location** | A user-only file in the maintainer's private secrets directory (`~/.secrets/`), on the maintainer's workstation. **Outside this repository.** The path is deliberately not repeated in published documentation, and the key value appears nowhere — not in git, not in CI, not in any document, not in chat. |
+| **Access control** | Filesystem ACL restricted to the maintainer's account only (inherited permissions removed; SYSTEM and Administrators entries removed) |
+| **Public key** | `SBOM-signing-key.pub.pem` at the application root, committed and shipped in the release snapshot |
+| **Public key SHA-256 fingerprint** | `XRcJ3AwAm0OzSzjmU8KWkknftutwY36a6z7st2YrU0g=` (SHA-256 over the DER SubjectPublicKeyInfo, base64) |
+| **Backup** | The maintainer's responsibility, offline. Losing it is recoverable (see rotation); disclosing it is not. |
+| **In CI** | Never. CI verifies signatures with the public key; it does not sign. Releases are signed on the maintainer's workstation. |
+
+`.gitignore` blocks `*.pem`, `*.key` and `*.key.pem` and carries an explicit
+exception for `SBOM-signing-key.pub.pem` only, so a stray private key dropped
+into the tree stays untracked. `tests/test_sbom.php` additionally fails if any
+private key becomes tracked, or if the published key file contains private
+material.
+
+#### Signing a release
+
+```bash
+php tools/generate-sbom.php --sign-key=<path to the private key>
+```
+
+The generator refuses to sign with a key that does not match the published
+public key, refuses any key that is not EC P-256, and verifies its own output
+against the published public key before reporting success. It will not
+re-sign an unchanged SBOM whose existing signature still verifies, so signed
+regeneration is byte-identical.
+
+#### How a third party verifies a signature
+
+Needs only the three files that ship with every release, and OpenSSL:
+
+```bash
+base64 -d SBOM.cdx.json.sig > sbom.sig
+openssl dgst -sha256 -verify SBOM-signing-key.pub.pem -signature sbom.sig SBOM.cdx.json
+# -> Verified OK
+```
+
+Or, with no OpenSSL command line: `php tools/generate-sbom.php --verify`.
+
+The signature covers the exact bytes of `SBOM.cdx.json`. Any modification —
+including reformatting the JSON — invalidates it, which is the point.
+
+A recipient who wants assurance that `SBOM-signing-key.pub.pem` is really ours,
+and not a substitute shipped alongside a substituted SBOM, should compare its
+fingerprint against the value recorded above and in the SBOM's own
+`ticketscad:signature-public-key-sha256` metadata property, obtained through a
+channel they trust independently of the download.
+
+#### Rotation
+
+Rotate every **2 years**, or immediately on suspected compromise, or when the
+maintainer role changes hands.
+
+1. Generate a new keypair:
+   `openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -pkeyopt ec_param_enc:named_curve -out <new private key path>`
+2. Restrict it to the maintainer's account only. On Windows:
+   `icacls <path> /inheritance:r /grant:r "%USERNAME%":F`, then remove the
+   SYSTEM and Administrators entries.
+3. Export the public half over the committed one:
+   `openssl pkey -in <new private key> -pubout -out SBOM-signing-key.pub.pem`
+4. Re-sign: `php tools/generate-sbom.php --sign-key=<new private key>`
+5. Commit the new public key, the SBOM and the signature together, and note the
+   new fingerprint in this section and in the release notes.
+6. Destroy the old private key. Keep the old *public* key in git history so
+   previously published releases remain verifiable.
+
+There is no revocation infrastructure and none is claimed. Trust in this key
+comes from it being published in the repository, not from a certificate
+authority or a transparency log.
+
+#### If the private key is compromised
+
+Treat it as a supply-chain incident, not a routine rotation.
+
+1. Rotate immediately, per the steps above.
+2. Announce it: state the date of compromise if known, the old fingerprint, and
+   the new one. Say plainly that signatures made with the old key can no longer
+   be trusted to prove authorship, and that recipients should re-fetch and
+   re-verify.
+3. Re-sign and re-publish the SBOM for every supported release.
+4. Record the incident in `specs/security/` as a dated entry.
+
+The blast radius is bounded and worth stating honestly: this key signs an
+inventory document. It does not sign code, releases, or updates, and it grants
+no access to anything. Someone holding it could publish a convincing but false
+ingredients list for TicketsCAD. They could not modify the software, and
+`git` remains the authority on what the code actually is.
+
 ---
 
-## 6. Recovery
+## 6. Software supply chain (SA-family, SR-family)
+
+### 6.1 Software Bill of Materials
+
+TicketsCAD NewUI publishes an SBOM with every release, built to the **2026
+Minimum Elements for a Software Bill of Materials (SBOM)** — joint guidance
+from CISA, NSA, FBI and international partners, published 2026-07-29, which
+updates and replaces the 2021 NTIA minimum elements.
+
+| Artifact | Format | Path |
+|---|---|---|
+| Machine-readable SBOM | CycloneDX 1.6 (ECMA-424) | `SBOM.cdx.json` |
+| Human-readable SBOM | plain text | `SBOM.txt` |
+| SBOM Author Signature | detached, ECDSA P-256 / SHA-256, base64 | `SBOM.cdx.json.sig` |
+| Signature verification key | public key, PEM | `SBOM-signing-key.pub.pem` (see §5.3) |
+| Generator | PHP, no external dependencies | `tools/generate-sbom.php` |
+| Conformance tests | 60 assertions | `tests/test_sbom.php` |
+
+**Status against the guidance: 17 of 17 data fields, 6 of 6 practices**, over 56
+components. Every field that is not stated for a component is explicitly
+declared unknown with a reason; nothing is withheld. The generator refuses to
+emit an SBOM in which any component data field is silently absent, so this
+cannot quietly regress.
+
+**Why CycloneDX.** The guidance names SPDX and CycloneDX as the two widely
+used formats and expresses no preference between them. CycloneDX 1.6 was
+chosen because it has a native field for every one of the 17 minimum data
+fields — including `metadata.lifecycles` for SBOM Generation Context and
+`omniborId`/`swhid` for Component Identifiers — so no element has to be
+smuggled into a free-text extension.
+
+**Coverage.** PHP Composer dependencies with their transitive relationships,
+browser libraries vendored into the repository, browser libraries loaded from
+a CDN at runtime, optional Python service dependencies, third-party source
+ported into this tree, and optional container base images. Excluded: non-code
+assets, and the operator-supplied platform (PHP runtime, web server,
+database engine) — those belong in the operator's own deployment SBOM.
+
+### 6.2 Anti-rot controls
+
+An SBOM that was accurate once and stale afterwards is worse than none,
+because it asserts a currency it does not have. Three gates prevent that:
+
+| Gate | Where | Effect |
+|---|---|---|
+| CI check | `.github/workflows/qa.yml` | Every push fails if `SBOM.cdx.json` no longer matches the dependency set or `VERSION`. |
+| Release gate | `tools/release-snapshot.sh` step 0 | A release cannot be cut against a stale SBOM. |
+| Test suite | `tests/test_sbom.php` | Runs with `tools/test_all.php`; also asserts no component states a version it cannot evidence. |
+
+Versions of vendored browser libraries are **detected at generation time** by
+matching the version banner inside the shipped file, never hardcoded. If a
+library is upgraded, the SBOM follows automatically; if a banner disappears,
+the component degrades to an explicit "unknown" rather than reporting a stale
+value.
+
+### 6.3 Dependency currency
+
+`.github/dependabot.yml` watches Composer, GitHub Actions, and the Meshtastic
+Python service weekly. Vendored browser libraries under `assets/vendor/` have
+no package manifest, so Dependabot cannot watch them; they are reviewed
+manually against the SBOM. **This is a known gap** — the SBOM makes it
+visible rather than hiding it.
+
+### 6.4 Known limitations (stated, not hidden)
+
+| Element | Status |
+|---|---|
+| SBOM Author Signature | **Met.** Detached ECDSA P-256 / SHA-256 signature, verifiable by anyone against the published public key (§5.3). No revocation infrastructure exists; trust in the key comes from its publication in this repository, not from a certificate authority. |
+| Component Hash Value | Present for artifacts we actually ship. Explicitly marked unknown for packages installed at deploy time (Composer, pip, container images), where the SBOM author has no artifact to hash. |
+| Component Producer | Stated for 42 of 56 components. Explicitly marked unknown for the ten PyPI packages and the four container base images, where the producer is whoever controls that name in the registry at install time and cannot be evidenced from this tree. |
+| Component Dependency Relationship | A full transitive graph for the 31 Composer packages, from `composer.lock`. Explicitly marked unknown for the other 25 components: no lockfile in this repository records what they themselves depend on. Their relationship *to* the application is recorded. |
+| Component Version | Explicitly marked unknown for four vendored files that carry no version string and are tracked by no manifest. |
+| Component License | Explicitly marked unknown where the shipped artifact declares none. |
+
+---
+
+## 7. Recovery
 
 See `docs/SECURITY-RECOVERY-GUIDE.md` for full procedures:
 
@@ -245,7 +431,7 @@ See `docs/SECURITY-RECOVERY-GUIDE.md` for full procedures:
 
 ---
 
-## 7. Out-of-scope (organisational responsibility)
+## 8. Out-of-scope (organisational responsibility)
 
 The following CJIS controls are the customer's responsibility:
 
@@ -257,7 +443,11 @@ The following CJIS controls are the customer's responsibility:
 - **MP-family** Media Protection
 - **PE-family** Physical and Environmental Protection
 - **PS-family** Personnel Security
-- **SA-family** System and Services Acquisition
+- **SA-family** System and Services Acquisition — *partially addressed since
+  Phase 127:* TicketsCAD now publishes a Software Bill of Materials with every
+  release (see §6), which supplies the component inventory an acquiring agency
+  needs. Vendor risk assessment, procurement policy, and acceptance testing
+  remain the customer's responsibility.
 - **SC-1, SC-2** Networking architecture (firewall, segmentation, ingress filtering)
 - **CA-family** Security Assessment and Authorization (the ATO process)
 
@@ -265,7 +455,7 @@ Tickets CAD provides the technical primitives (authentication, audit log, encryp
 
 ---
 
-## 8. Audit-readiness checklist
+## 9. Audit-readiness checklist
 
 When preparing for a CJIS audit, the administrator should:
 
@@ -282,7 +472,7 @@ When preparing for a CJIS audit, the administrator should:
 
 ---
 
-## 9. Phase ship history (relevant to this policy)
+## 10. Phase ship history (relevant to this policy)
 
 | Phase | Date | What shipped |
 |---|---|---|
@@ -291,10 +481,12 @@ When preparing for a CJIS audit, the administrator should:
 | Phase 8d (session security) | 2026-06-08 | Password change kills other sessions; admin-reset passwd column fix |
 | **Phase 9 (force pw change on first login)** | **2026-06-08** | `must_change_password` flag + system + per-user toggle; forced redirect flow |
 | **Phase 10 (CJIS hardening)** | **2026-06-08** | Configurable password policy; admin reset reason; password history; rotation reminder; this document; compliance dashboard |
+| **Phase 127 (SBOM / supply chain)** | **2026-07-29** | SBOM rebuilt to the CISA 2026 Minimum Elements; CycloneDX 1.6; versions detected from shipped artifacts; CI + release freshness gates; `tests/test_sbom.php`; §6 of this document |
+| **Phase 127b (SBOM Author Signature)** | **2026-07-29** | SBOM signing key created (ECDSA P-256, maintainer-held, §5.3); public key published; detached signature shipped; `--verify` mode; generator now refuses to emit a silently-absent field. **17 of 17 data fields, 6 of 6 practices** |
 
 ---
 
-## 10. Document control
+## 11. Document control
 
 | Field | Value |
 |---|---|

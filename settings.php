@@ -56,7 +56,7 @@ $csrf     = csrf_token();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
-    <title><?php echo e(t('nav.settings', 'Settings')); ?> — <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo NEWUI_VERSION; ?></title>
+    <title><?php echo e(t('nav.settings', 'Settings')); ?> — <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo newui_version(); ?></title>
 
     <!-- Vendor CSS -->
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
@@ -217,7 +217,7 @@ foreach ($personnelSections as $sec) {
                         <div class="card-body pt-0 small">
                             <div class="d-flex justify-content-between py-1 border-bottom border-opacity-10">
                                 <span>Version</span>
-                                <span class="font-monospace" id="wsVersion"><?php echo NEWUI_VERSION; ?></span>
+                                <span class="font-monospace" id="wsVersion"><?php echo newui_version(); ?></span>
                             </div>
                             <div class="d-flex justify-content-between py-1 border-bottom border-opacity-10">
                                 <span>PHP</span>
@@ -1727,7 +1727,7 @@ foreach ($personnelSections as $sec) {
             </form>
         </div>
 
-        <!-- ── Incident Lifecycle — Phase 104d (Justin GH #11) ────── -->
+        <!-- ── Incident Lifecycle — Phase 104d (a beta tester GH #11) ────── -->
         <div class="config-panel" id="panel-incident-lifecycle">
             <div class="config-panel-title">
                 <i class="bi bi-arrow-clockwise text-primary"></i> Incident Lifecycle
@@ -2704,7 +2704,7 @@ foreach ($personnelSections as $sec) {
             <div class="config-panel-title">
                 <i class="bi bi-building text-warning"></i> Facilities
             </div>
-            <!-- Issue #44 (Justin 2026-07-03): the previous inline
+            <!-- Issue #44 (a beta tester 2026-07-03): the previous inline
                  mini-form in this panel had ~7 fields but the real
                  facility-edit page has ~20 (address, contact fields,
                  bed capacity, status, map picker, etc.). Instead of
@@ -2927,6 +2927,108 @@ foreach ($personnelSections as $sec) {
         <div class="config-panel" id="panel-backup">
             <div class="config-panel-title">
                 <i class="bi bi-archive text-warning"></i> Backup / Maintenance
+            </div>
+
+            <!-- ── Automatic Backups (Phase 126) ──────────────────────────
+                 Everything here writes to the `settings` table via
+                 api/config-admin.php?section=settings and is read back at
+                 runtime with get_variable() (inc/backup_schedule.php →
+                 backup_setting). One store, one helper — see the "TWO settings
+                 stores" pitfall in CLAUDE.md. -->
+            <div class="settings-group mb-3">
+                <div class="settings-group-title">Automatic Backups</div>
+
+                <!-- Live state: what exists, what it costs, what is left. -->
+                <div class="border rounded p-2 mb-3" id="backupStatusBox">
+                    <div class="text-body-secondary small py-1">
+                        <span class="spinner-border spinner-border-sm me-1"></span>Reading backup status&hellip;
+                    </div>
+                </div>
+
+                <form id="backupSettingsForm">
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <div class="form-check form-switch mt-1">
+                                <input class="form-check-input" type="checkbox" id="setBackupAutoEnabled"
+                                       data-key="backup_auto_enabled">
+                                <label class="form-check-label small" for="setBackupAutoEnabled">
+                                    Take automatic backups
+                                </label>
+                            </div>
+                            <div class="form-text">Master switch. Off means no scheduled or opportunistic backup ever runs.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check form-switch mt-1">
+                                <input class="form-check-input" type="checkbox" id="setBackupOpportunistic"
+                                       data-key="backup_opportunistic">
+                                <label class="form-check-label small" for="setBackupOpportunistic">
+                                    Run without a scheduler
+                                </label>
+                            </div>
+                            <div class="form-text">
+                                Lets a due backup start after a page load, so backups happen even with no
+                                cron / Task Scheduler. The page is sent first, so nothing waits on the dump.
+                                On Apache the browser tab may keep spinning until it finishes.
+                                <strong>Large database?</strong> Run <code>tools/backup_run.php</code> from a
+                                scheduler and turn this off.
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="setBackupInterval" class="form-label form-label-sm">Back up every (hours)</label>
+                            <input type="number" min="1" max="8760" class="form-control form-control-sm"
+                                   id="setBackupInterval" data-key="backup_interval_hours">
+                            <div class="form-text">24 = once a day.</div>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mt-1">
+                        <div class="col-md-3">
+                            <label for="setBackupKeepCount" class="form-label form-label-sm">Keep this many</label>
+                            <input type="number" min="1" max="365" class="form-control form-control-sm"
+                                   id="setBackupKeepCount" data-key="backup_retention_count">
+                            <div class="form-text">Oldest beyond this are deleted.</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="setBackupKeepDays" class="form-label form-label-sm">Delete older than (days)</label>
+                            <input type="number" min="0" max="3650" class="form-control form-control-sm"
+                                   id="setBackupKeepDays" data-key="backup_retention_days">
+                            <div class="form-text">0 = no age limit. The newest backup is never deleted.</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="setBackupMinFree" class="form-label form-label-sm">Keep free disk (MB)</label>
+                            <input type="number" min="0" max="1048576" class="form-control form-control-sm"
+                                   id="setBackupMinFree" data-key="backup_min_free_mb">
+                            <div class="form-text">Backups stop rather than eat into this reserve.</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="setBackupMaxDir" class="form-label form-label-sm">Backup folder limit (MB)</label>
+                            <input type="number" min="0" max="10485760" class="form-control form-control-sm"
+                                   id="setBackupMaxDir" data-key="backup_max_dir_mb">
+                            <div class="form-text">0 = no limit. Total size of stored backups.</div>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mt-1">
+                        <div class="col-md-8">
+                            <label for="setBackupDir" class="form-label form-label-sm">Backup directory</label>
+                            <input type="text" class="form-control form-control-sm" id="setBackupDir"
+                                   data-key="backup_dir" maxlength="255"
+                                   placeholder="<?php echo e(NEWUI_ROOT . '/backups'); ?>">
+                            <div class="form-text">
+                                Leave blank for <code><?php echo e(NEWUI_ROOT . '/backups'); ?></code>.
+                                Only files this app created (<code>ticketscad-*</code>) are ever deleted from it.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex align-items-center gap-2 mt-3">
+                        <button type="submit" class="btn btn-sm btn-success">Save Backup Settings</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="btnBackupRunNow">
+                            <i class="bi bi-play-circle me-1"></i>Back up now
+                        </button>
+                        <span class="small" id="backupSettingsStatus"></span>
+                    </div>
+                </form>
             </div>
 
             <!-- Download Full Backup -->
@@ -5819,7 +5921,7 @@ foreach ($personnelSections as $sec) {
                 <button type="button" class="btn btn-sm btn-success" id="btnNewPlace"><i class="bi bi-plus-lg me-1"></i>New Place</button>
                 <!-- GH #36 follow-up (2026-07-08) — bulk export/import moved to
                      the unified Import/Export page with every other table,
-                     per Justin's consistency note + Eric's decision. -->
+                     per a beta tester's consistency note + Eric's decision. -->
                 <a class="btn btn-sm btn-outline-primary" href="import-export.php" title="Bulk import/export places with the unified tool">
                     <i class="bi bi-arrow-left-right me-1"></i>Import / Export…
                 </a>
@@ -6354,7 +6456,7 @@ foreach ($personnelSections as $sec) {
                                 </div>
                             </div>
 
-                            <!-- Phase 99v-4 (Justin/Eric beta 2026-06-30) — Recipients (collapsible) -->
+                            <!-- Phase 99v-4 (a beta tester/Eric beta 2026-06-30) — Recipients (collapsible) -->
                             <div class="mb-2">
                                 <button class="btn btn-sm btn-outline-secondary w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#routeRecipientsCollapse">
                                     <i class="bi bi-people me-1"></i>Recipients <span class="text-body-secondary small">(optional — leave on "Channel broadcast" for default behaviour)</span>
@@ -7005,7 +7107,7 @@ foreach ($personnelSections as $sec) {
             <div id="webhookDeliveriesWidget" class="mt-2">
                 <div class="text-body-secondary small">Loading delivery activity...</div>
             </div>
-            <script src="assets/js/widgets/webhook-deliveries-widget.js?v=<?php echo defined('NEWUI_VERSION') ? e(NEWUI_VERSION) : '4'; ?>"></script>
+            <script src="assets/js/widgets/webhook-deliveries-widget.js?v=<?php echo e(newui_version()); ?>"></script>
             <script>
                 // Mount when the Webhooks tab is activated. config.js's
                 // onPanelActivated dispatcher emits a 'panel:activated'
@@ -9242,7 +9344,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
 <script src="assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>
 <script src="assets/js/toolbar.js?v=<?php echo asset_v('assets/js/toolbar.js'); ?>"></script>
 <script src="assets/vendor/leaflet/leaflet.js"></script>
-<script src="assets/js/leaflet-mobile-fit.js?v=<?php echo function_exists("asset_v")?asset_v("assets/js/leaflet-mobile-fit.js"):NEWUI_VERSION; ?>"></script>
+<script src="assets/js/leaflet-mobile-fit.js?v=<?php echo function_exists("asset_v")?asset_v("assets/js/leaflet-mobile-fit.js"):newui_version(); ?>"></script>
 <script src="assets/js/leaflet-quadkey.js"></script>
 <script src="assets/js/map-prefs.js"></script>
 

@@ -30,7 +30,7 @@ TicketsCAD api/mesh.php
             → chat → broker_send('local_chat', ...)
 ```
 
-**No new daemon, no new auth flow.** The existing two bridges (`meshbridge-01` on your-host, `meshbridge-02` on your-host) already deliver every packet they see. The consolidation hook in `api/mesh.php` recognizes ATAK content and additionally routes it.
+**No new daemon, no new auth flow.** The existing two bridges (`meshbridge-host-1` and `meshbridge-host-2`) already deliver every packet they see. The consolidation hook in `api/mesh.php` recognizes ATAK content and additionally routes it.
 
 ---
 
@@ -38,7 +38,7 @@ TicketsCAD api/mesh.php
 
 | Piece | Status |
 |---|---|
-| Two mesh bridges live | ✅ `meshbridge-01` (your-host) + `meshbridge-02` (your-host) — verified live on [https://your-server.example.com/mesh-console.php](https://your-server.example.com/mesh-console.php) |
+| Two mesh bridges live | ✅ `meshbridge-host-1` + `meshbridge-host-2` — verified live on the Mesh Console page (`mesh-console.php`) |
 | `mesh_channels` table extended with `atak_*` policy columns | ✅ via `sql/run_atak_consolidation.php` |
 | `api/mesh.php` ingest hook → CoT routing | ✅ deployed; gracefully no-ops if ATAK isn't enabled on any channel |
 | `inc/cot.php` + `inc/atak_route.php` | ✅ 50 CoT unit tests passing |

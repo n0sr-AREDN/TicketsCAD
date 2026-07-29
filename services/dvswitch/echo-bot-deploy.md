@@ -1,4 +1,4 @@
-# Deploying the DMR echo bot on `dvswitch-01`
+# Deploying the DMR echo bot on `dvswitch-host`
 
 The bot listens for inbound DMRD voice on the local hbp_client socket
 (via passive tcpdump), decodes AMBE → PCM, transcribes with
@@ -20,10 +20,10 @@ The bot imports `services.dvswitch.ambe_codec`, `ambe_fec`, and
 
 ```bash
 # 1. Push the bot + service file to the host.
-scp services/dvswitch/echo_bot.py dvswitch-01:/tmp/
-scp services/dvswitch/ticketscad-echo-bot.service dvswitch-01:/tmp/
+scp services/dvswitch/echo_bot.py dvswitch-host:/tmp/
+scp services/dvswitch/ticketscad-echo-bot.service dvswitch-host:/tmp/
 
-ssh dvswitch-01
+ssh dvswitch-host
 sudo install -m 0644 -o ticketscad -g ticketscad \
     /tmp/echo_bot.py /opt/ticketscad-dvswitch/echo_bot.py
 sudo install -m 0644 /tmp/ticketscad-echo-bot.service \

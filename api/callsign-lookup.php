@@ -303,7 +303,7 @@ else {
  * its logs; 'minimal' sends only the software name + version.
  */
 function buildLookupUserAgent() {
-    $ver = defined('NEWUI_VERSION') ? NEWUI_VERSION : '4.0';
+    $ver = newui_version();
     $ua  = 'TicketsCAD/' . $ver . ' (+https://github.com/openises/TicketsCAD)';
     $cfg = getLookupConfig();
     if (($cfg['ua_detail'] ?? 'full') !== 'minimal') {

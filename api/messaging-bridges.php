@@ -16,7 +16,7 @@
  *       ] }
  *
  *   summary is the small descriptive string from mesh_bridges.host_hint
- *   (e.g. 'meshbridge-01 (your-host, 10.0.0.10) — 2 nodes: Meshtastic 2.6.4 + MeshCore v1.16.0')
+ *   (e.g. 'meshbridge-host (10.0.0.10) — 2 nodes: Meshtastic 2.6.4 + MeshCore v1.16.0')
  *
  *   recently_heard = 1 when:
  *     - for_node was supplied AND mesh_packet_log has a row from

@@ -417,12 +417,17 @@ function _health_parse_define(string $file, string $constName): ?string
  * into the running process against the same literals parsed FRESH from
  * disk (file_get_contents bypasses opcache).
  *
- *   1. NEWUI_VERSION — defined in config.php (config.example.php on a
- *      template checkout, inc/version.php if a future refactor moves it).
+ *   1. NEWUI_VERSION — a legacy config.php may still define it as a literal.
+ *      Since 2026-07 the canonical version is the git-tracked `VERSION` file
+ *      (see inc/version.php), which is read at RUNTIME — so on a modern
+ *      install this arm can no longer detect staleness (a file read always
+ *      reflects disk). It is kept because installs predating the change do
+ *      still carry the literal, and because reporting the resolved version +
+ *      its source is useful on the health card either way.
  *   2. HEALTH_CHECK_BUILD — self-probe against this very file, which IS
  *      git-tracked: after a pull that updates inc/health-check.php, a
  *      stale opcache serves the old compiled constant while the disk
- *      regex shows the new one.
+ *      regex shows the new one. THIS is the reliable staleness detector.
  *
  * Either mismatch → CRITICAL: "server is executing stale code; reload
  * apache2/php-fpm."
@@ -445,9 +450,32 @@ function health_check_version_match(): array
                 break;
             }
         }
+        // No literal define anywhere → a current install, whose version comes
+        // from the tracked VERSION file. Report that as the source.
+        if ($onDisk === null) {
+            $verFile = $root . DIRECTORY_SEPARATOR . 'VERSION';
+            $raw     = is_file($verFile) ? @file_get_contents($verFile, false, null, 0, 256) : false;
+            if (is_string($raw) && trim($raw) !== '') {
+                $versionFile = 'VERSION';
+                $onDisk      = trim(strtok($raw, "\r\n") ?: '');
+                if ($running === null) {
+                    $running = $onDisk;
+                }
+            }
+        }
         // Only meaningful when both sides resolved.
         $versionComparable = ($running !== null && $onDisk !== null);
         $versionMatch      = $versionComparable ? ($running === $onDisk) : null;
+
+        // A pre-2026-07 config.php may still pin a define('NEWUI_VERSION', …)
+        // from its install date. Harmless — every reader calls newui_version(),
+        // which prefers the tracked file — but worth telling the admin so the
+        // dead line can go. Advisory only: severity stays 'ok'.
+        // NOTE: deliberately does NOT touch $versionMatch. running-vs-disk stays
+        // a pure staleness comparison (both sides read the same config.php
+        // literal); the pin is reported separately.
+        $configPin = function_exists('newui_version_config_pin') ? newui_version_config_pin() : null;
+        $reported  = function_exists('newui_version') ? newui_version() : $running;
 
         // ── Self-probe: HEALTH_CHECK_BUILD running vs disk ───────────────
         $probeRunning = HEALTH_CHECK_BUILD;
@@ -461,11 +489,20 @@ function health_check_version_match(): array
             $note     = 'The server is EXECUTING STALE CODE: the version compiled into the running process differs from the file on disk. Reload the web server: sudo systemctl reload apache2   (or: sudo systemctl reload php8.2-fpm)';
         }
 
+        if ($configPin !== null && $note === '') {
+            $note = 'config.php still pins define(\'NEWUI_VERSION\', \'' . $configPin . '\') from when this '
+                  . 'install was created. TicketsCAD now reports the git-tracked VERSION file (' . $reported
+                  . '), so nothing is broken — but that line is dead and can be deleted (or replaced with '
+                  . "require_once __DIR__ . '/inc/version.php';).";
+        }
+
         return [
             'checked'       => true,
             'version_file'  => $versionFile,
             'running'       => $running,
             'on_disk'       => $onDisk,
+            'reported'      => $reported,
+            'config_pin'    => $configPin,
             'match'         => $versionMatch,
             'probe_file'    => 'inc/health-check.php',
             'probe_running' => $probeRunning,

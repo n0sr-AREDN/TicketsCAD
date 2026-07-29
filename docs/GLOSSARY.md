@@ -118,7 +118,7 @@ The act of sending a unit to an incident. **Verb:** dispatcher assigns a unit. *
 *Digital Mobile Radio* — an open ETSI standard for digital two-way radio. Voice uses the proprietary [AMBE](#ambe) codec. TicketsCAD bridges DMR via the [DVSwitch](#dvswitch) stack.
 
 ### DVSwitch
-A suite of open-source daemons ([Analog_Bridge](#analog_bridge), [MMDVM_Bridge](#mmdvm_bridge), [md380-emu](#md380-emu)) that bridge digital-radio protocols. Lives on VM `dvswitch-01` in TicketsCAD's setup. See [DVSWITCH-ADMIN-GUIDE.md](DVSWITCH-ADMIN-GUIDE.md).
+A suite of open-source daemons ([Analog_Bridge](#analog_bridge), [MMDVM_Bridge](#mmdvm_bridge), [md380-emu](#md380-emu)) that bridge digital-radio protocols. Lives on VM `dvswitch-host` in TicketsCAD's setup. See [DVSWITCH-ADMIN-GUIDE.md](DVSWITCH-ADMIN-GUIDE.md).
 
 ---
 
@@ -304,7 +304,7 @@ A [Responder](#responder) auto-created for a [Member](#member) when they [Clock-
 The members on the [Roster](#roster) — the people available for assignment. Some have logins ([Accounts](#account)), some don't.
 
 ### Piper
-A neural text-to-speech engine — [github.com/rhasspy/piper](https://github.com/rhasspy/piper). TicketsCAD uses it on `dvswitch-01` to synthesise dispatcher-typed text into audio that gets keyed onto the DMR talkgroup. Voice: `en_US-lessac-medium` (22050 Hz, downsampled to 8 kHz inline).
+A neural text-to-speech engine — [github.com/rhasspy/piper](https://github.com/rhasspy/piper). TicketsCAD uses it on `dvswitch-host` to synthesise dispatcher-typed text into audio that gets keyed onto the DMR talkgroup. Voice: `en_US-lessac-medium` (22050 Hz, downsampled to 8 kHz inline).
 
 ### Place
 A named map location with optional polygon. Stored in `places` (new) or repurposed `mmarkup` rows. Used as autocomplete options on the new-incident form.

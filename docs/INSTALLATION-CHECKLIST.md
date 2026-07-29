@@ -126,29 +126,56 @@ EXIT;
 sudo mkdir -p /var/www
 cd /var/www
 sudo git clone https://github.com/openises/TicketsCAD.git newui
-sudo chown -R www-data:www-data newui
+
+# Hand the checkout to YOUR account — whoever owns .git is who can `git pull`.
+sudo chown -R "$(id -un)":www-data newui
+sudo find newui -path '*/.git' -prune -o -type d -exec chmod 755 {} \;
+sudo find newui -path '*/.git' -prune -o -type f -exec chmod 644 {} \;
+
+# Apache OWNS only the two directories PHP writes to inside the tree:
+sudo chown -R www-data:www-data newui/uploads newui/cache
+
+# backups/ is gitignored (absent on a fresh clone) and is written BOTH by
+# `php tools/backup_run.php` on the CLI as you, and by Settings → Backup /
+# the cron entry as www-data. Share it; do not hand it over.
+sudo -u "$(id -un)" mkdir -p newui/backups
+sudo chown -R "$(id -un)":www-data newui/backups
+sudo chmod 2770 newui/backups
 ```
 
 - [ ] `/var/www/newui/api/auth.php` exists
 - [ ] `/var/www/newui/inc/db.php` exists
-- [ ] Permissions are `www-data:www-data` recursively (`ls -ld /var/www/newui` shows it)
+- [ ] `ls -ld /var/www/newui` shows **your** user as owner, group `www-data`
+- [ ] `ls -ld /var/www/newui/uploads /var/www/newui/cache` shows `www-data:www-data`
 
 The repo is large (60 MB+ with history). On constrained bandwidth, use `--depth 1`.
 
-**Note on future `git pull` operations:** because we chown'd everything to `www-data:www-data`, your operator account can no longer write to the tree. Use `sudo` for all subsequent git operations:
+> **Do NOT `sudo chown -R www-data:www-data newui`.** Earlier versions of this
+> checklist said to, and it creates the problem it was meant to avoid: the
+> recursive chown takes `.git`, so `git pull` as your own account then stops with
+> `fatal: detected dubious ownership in repository at '/var/www/newui'`
+> (git ≥ 2.35.2, CVE-2022-24765). Apache never needed to own the code — it only
+> reads it, and `644`/`755` covers that.
+
+**Note on future `git pull` operations:** with the ownership above, you pull as
+yourself, normally:
 
 ```bash
-sudo -u www-data git -C /var/www/newui pull --ff-only
+git -C /var/www/newui pull --ff-only
 ```
 
-Doing it as `www-data` (instead of `sudo git pull` as root) keeps file ownership consistent — saves you re-chowning after every pull. If you'd rather use your own user freely, change the ownership pattern to `<your-user>:www-data` with `g+w` group permissions — that lets you write and lets Apache read/execute. Either pattern works; pick one and stick with it.
+If your install is already `www-data`-owned from the old advice, either keep
+that and always pull as the web user (`sudo -u www-data git -C /var/www/newui
+pull --ff-only`), or take the tree back with the `chown` in the block above.
+Either pattern works; pick one and stick with it — whoever owns `.git` is who
+runs `git pull` from then on.
 
 ---
 
 ## Section 5 — Configure NewUI
 
 ```bash
-sudo cp /var/www/newui/config.sample.php /var/www/newui/config.php
+sudo cp /var/www/newui/config.example.php /var/www/newui/config.php
 sudo nano /var/www/newui/config.php
 ```
 

@@ -20,7 +20,7 @@ This guide covers Phase 73i–73o of the TicketsCAD build. If you're researching
                                              │ HTTP (bearer-auth)
                                              ▼
  ┌─────────────────────────────────────────────────────────────┐
- │  dvswitch-01 VM (e.g. Proxmox VMID 943, 10.0.0.10)      │
+ │  dvswitch-host VM (e.g. Proxmox VMID 943, 10.0.0.10)        │
  │                                                              │
  │  ┌──────────────┐ USRP ┌────────────────┐  DMR  ┌─────────┐ │
  │  │  bridge.py   │◄────►│ Analog_Bridge  │◄─────►│ MMDVM   │ │
@@ -40,7 +40,7 @@ This guide covers Phase 73i–73o of the TicketsCAD build. If you're researching
                                               └─────────────────┘
 ```
 
-You'll set up the right-hand side (`dvswitch-01` VM) once. Then you create one or more channels in the TicketsCAD admin UI, each binding to one DMR talkgroup. Each channel runs its own systemd unit so they're independently restartable.
+You'll set up the right-hand side (`dvswitch-host` VM) once. Then you create one or more channels in the TicketsCAD admin UI, each binding to one DMR talkgroup. Each channel runs its own systemd unit so they're independently restartable.
 
 ---
 
@@ -60,16 +60,16 @@ You do NOT need:
 
 ---
 
-## Section 1 — Provision the dvswitch-01 VM
+## Section 1 — Provision the dvswitch-host VM
 
-If you have Proxmox (recommended), the playbook at [`proxmox-playbook.md`](your provisioning docs) provisions in 5 minutes.
+If you have Proxmox (recommended), provisioning a Debian 13 cloud-init VM takes about 5 minutes.
 
 Without Proxmox: any 2 vCPU / 2 GB RAM Debian 13 VM is fine. Anything older than Debian 12 or Ubuntu 22.04 will pull older Python and may need backports.
 
 After provisioning:
 
 ```bash
-ssh ejosterberg@dvswitch-01
+ssh youruser@dvswitch-host
 sudo apt-get update && sudo apt-get install -y \
   build-essential ca-certificates curl git wget gnupg \
   python3-venv python3-pip ffmpeg unzip
@@ -107,12 +107,12 @@ sudo apt-get install -y analog_bridge mmdvm_bridge md380-emu
 
 ## Section 3 — Install bridge.py + dependencies
 
-The TicketsCAD-specific bridge daemon lives in the TicketsCAD repo. Either clone the repo on dvswitch-01 or just copy the one file over.
+The TicketsCAD-specific bridge daemon lives in the TicketsCAD repo. Either clone the repo on dvswitch-host or just copy the one file over.
 
 ```bash
 # Create the install directory and venv
 sudo mkdir -p /opt/ticketscad-dvswitch/{voices,models}
-sudo chown -R ejosterberg:ejosterberg /opt/ticketscad-dvswitch
+sudo chown -R "$USER:$USER" /opt/ticketscad-dvswitch
 cd /opt/ticketscad-dvswitch
 
 # Python venv
@@ -166,7 +166,7 @@ rm vosk-model-small-en-us-0.15.zip
 ```bash
 cd /opt/ticketscad-dvswitch
 # From your TicketsCAD repo on your workstation:
-scp services/dvswitch/bridge.py dvswitch-01:/opt/ticketscad-dvswitch/bridge.py
+scp services/dvswitch/bridge.py dvswitch-host:/opt/ticketscad-dvswitch/bridge.py
 # OR clone the repo on the VM and copy the file.
 ```
 
@@ -226,7 +226,7 @@ fromRadioIP = 127.0.0.1
 ambeMode = DMR_3600
 ```
 
-These ports (36000) are internal to dvswitch-01 — they connect Analog_Bridge to MMDVM_Bridge. They're different from bridge.py's USRP ports (33000-range) which connect bridge.py to Analog_Bridge.
+These ports (36000) are internal to dvswitch-host — they connect Analog_Bridge to MMDVM_Bridge. They're different from bridge.py's USRP ports (33000-range) which connect bridge.py to Analog_Bridge.
 
 - [ ] Both `.ini` files edited
 - [ ] DMR ID is YOUR ID, not a default
@@ -244,7 +244,7 @@ In your browser, log in to TicketsCAD as admin.
    - **Label:** something short like `tg9990` (used in env file name)
    - **Talkgroup:** `9990` (Parrot, for first test)
    - **Network:** `BrandMeister`
-   - **Bridge host:** `dvswitch-01` (or its IP if not resolvable)
+   - **Bridge host:** `dvswitch-host` (or its IP if not resolvable)
    - **Bridge port:** `18091` (will become `18000 + (channel index * 100) + 91` for multi-channel)
    - **USRP listen port:** `33001`
    - **USRP send port:** `33000`
@@ -263,7 +263,7 @@ In your browser, log in to TicketsCAD as admin.
 The repo ships a systemd template unit: [`services/dvswitch/ticketscad-dvswitch@.service`](../services/dvswitch/ticketscad-dvswitch@.service).
 
 ```bash
-# On dvswitch-01:
+# On dvswitch-host:
 sudo cp /opt/ticketscad-dvswitch/services/dvswitch/ticketscad-dvswitch@.service \
         /etc/systemd/system/
 sudo systemctl daemon-reload
@@ -471,7 +471,7 @@ When a future TicketsCAD radio-control panel ships, it will read this flag to de
 For each additional talkgroup:
 
 1. **In the admin UI:** Settings → Communications → DMR → New Channel. Use different USRP ports (next free range): listen=33101, send=33100. HTTP port: 18191.
-2. **On dvswitch-01:** create `/etc/ticketscad/dvswitch-<newinstance>.env` mirroring the first one with the new ports and a fresh bearer token.
+2. **On dvswitch-host:** create `/etc/ticketscad/dvswitch-<newinstance>.env` mirroring the first one with the new ports and a fresh bearer token.
 3. **Start the unit:**
 
 ```bash
@@ -514,7 +514,7 @@ If a token leaks:
 
 1. Admin UI → row → **Rotate Token**.
 2. Copy the new token.
-3. SSH to dvswitch-01, update the env file, restart the unit.
+3. SSH to dvswitch-host, update the env file, restart the unit.
 
 The old token is invalidated immediately on rotate; the bridge will start failing /health calls until the env is updated.
 
@@ -525,11 +525,11 @@ The old token is invalidated immediately on rotate; the bridge will start failin
 | Symptom | Likely cause | See |
 |---|---|---|
 | `/health` returns `{"error":"bad bearer"}` | Token mismatch | [TROUBLESHOOTING.md § dmr-bad-bearer](TROUBLESHOOTING.md#dmr-bad-bearer) |
-| `/tx/text` returns `503 TTS not configured` | Piper env vars missing or files unreachable | Re-check `DMR_PIPER_BIN` + `DMR_PIPER_VOICE` paths exist on dvswitch-01 |
+| `/tx/text` returns `503 TTS not configured` | Piper env vars missing or files unreachable | Re-check `DMR_PIPER_BIN` + `DMR_PIPER_VOICE` paths exist on dvswitch-host |
 | Transcripts panel empty after real RX | Vosk model missing or `DMR_VOSK_MODEL` wrong path | `ls /opt/ticketscad-dvswitch/models/vosk-model-*` |
-| Bridge log: `Failed to process waveform` | Vosk got 8 kHz audio but expects 16 kHz | Phase 73n fix: the bridge upsamples via ffmpeg. Confirm ffmpeg is on PATH on dvswitch-01 |
+| Bridge log: `Failed to process waveform` | Vosk got 8 kHz audio but expects 16 kHz | Phase 73n fix: the bridge upsamples via ffmpeg. Confirm ffmpeg is on PATH on dvswitch-host |
 | journalctl shows `Connection refused` to TicketsCAD | TicketsCAD URL unreachable from bridge VM | Check firewall, DNS, TLS cert validity from the bridge VM |
-| Slow STT (multi-second delay) | Vosk model too big OR no CPU on dvswitch-01 | Stick with `vosk-model-small-en-us-0.15`; provision 2+ vCPU |
+| Slow STT (multi-second delay) | Vosk model too big OR no CPU on dvswitch-host | Stick with `vosk-model-small-en-us-0.15`; provision 2+ vCPU |
 
 ---
 

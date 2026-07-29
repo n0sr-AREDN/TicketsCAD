@@ -156,7 +156,7 @@ class AudioPump:
 
     Each subscriber registered via subscribe() gets a bounded queue.
     When a voice burst arrives, the AMBE frames are decoded
-    synchronously (md380-emu is ~2 ms per frame on dvswitch-01) and
+    synchronously (md380-emu is ~2 ms per frame on dvswitch-host) and
     the resulting PCM + metadata are pushed as a JSON-able dict on
     every subscriber's queue. Slow listeners drop oldest frames.
     """

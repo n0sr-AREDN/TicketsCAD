@@ -12253,6 +12253,182 @@
         if (refreshBtn) {
             refreshBtn.addEventListener('click', loadBackupHistory);
         }
+
+        bindBackupSettingsForm();
+        bindBackupRunNow();
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Automatic-backup settings (Phase 126)
+    //  Follows bindChatSettingsPanel: collect data-key inputs, add the
+    //  checkbox states explicitly, POST as { settings: {...} } so the values
+    //  land in the SAME `settings` table that get_variable() reads at runtime.
+    // ═══════════════════════════════════════════════════════════════
+    function bindBackupSettingsForm() {
+        var form = document.getElementById('backupSettingsForm');
+        if (!form) return;
+
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var statusEl = document.getElementById('backupSettingsStatus');
+            var pairs = collectSettingsFromForm(form);
+            // Unchecked checkboxes never appear in collectSettingsFromForm's
+            // output (it reads .value, not .checked) — add them by hand.
+            var boxes = form.querySelectorAll('input[type="checkbox"][data-key]');
+            for (var i = 0; i < boxes.length; i++) {
+                pairs[boxes[i].getAttribute('data-key')] = boxes[i].checked ? '1' : '0';
+            }
+            apiPost('settings', { settings: pairs }).then(function (data) {
+                showAlert('Backup settings saved (' + data.saved + ' updated)');
+                if (statusEl) { statusEl.textContent = ''; }
+                // Re-read status so the limits shown reflect what was just saved.
+                loadBackupStatus();
+            }).catch(function (err) {
+                showAlert(err.message, 'danger');
+                if (statusEl) { statusEl.textContent = err.message; statusEl.className = 'small text-danger'; }
+            });
+        });
+    }
+
+    function loadBackupSettings() {
+        var form = document.getElementById('backupSettingsForm');
+        if (!form) return;
+        apiGet('settings').then(function (data) {
+            var settings = data.settings || {};
+            applySettingsToForm(form, settings);
+            // Defaults matter here: an install that has never opened this panel
+            // has no rows at all, and blank number boxes would read as "off" /
+            // "no limit" and then be SAVED that way — silently removing the
+            // guard. Mirror the PHP defaults in inc/backup_schedule.php.
+            var fallbacks = {
+                backup_interval_hours: '24',
+                backup_retention_count: '7',
+                backup_retention_days: '0',
+                backup_min_free_mb: '1024',
+                backup_max_dir_mb: '5120'
+            };
+            var keys = Object.keys(fallbacks);
+            for (var k = 0; k < keys.length; k++) {
+                var el = form.querySelector('[data-key="' + keys[k] + '"]');
+                if (el && (settings[keys[k]] === undefined || settings[keys[k]] === '')) {
+                    el.value = fallbacks[keys[k]];
+                }
+            }
+            var boxes = form.querySelectorAll('input[type="checkbox"][data-key]');
+            for (var i = 0; i < boxes.length; i++) {
+                var key = boxes[i].getAttribute('data-key');
+                // Absent means "never configured", and both switches default ON
+                // in PHP — so an unset value must render as checked, or the
+                // panel would misreport a backing-up system as switched off.
+                boxes[i].checked = (settings[key] === undefined) ? true : (settings[key] === '1');
+            }
+        }).catch(function () { /* panel still usable without prefill */ });
+    }
+
+    function loadBackupStatus() {
+        var box = document.getElementById('backupStatusBox');
+        if (!box) return;
+        fetch('api/backup.php?action=status', { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var st = data.status;
+                if (!st) { box.innerHTML = '<div class="small text-body-secondary">Status unavailable.</div>'; return; }
+                box.innerHTML = renderBackupStatus(st);
+            })
+            .catch(function () {
+                box.innerHTML = '<div class="small text-body-secondary">Status unavailable.</div>';
+            });
+    }
+
+    function renderBackupStatus(st) {
+        var h = '';
+        var badge = st.enabled
+            ? '<span class="badge bg-success">On</span>'
+            : '<span class="badge bg-secondary">Off</span>';
+
+        h += '<div class="d-flex flex-wrap align-items-center gap-3 mb-2">';
+        h += '<div><strong class="small">Automatic backups</strong> ' + badge + '</div>';
+        h += '<div class="small text-body-secondary">Every ' + esc(String(st.interval_hours)) + 'h</div>';
+        h += '</div>';
+
+        h += '<div class="row g-2 small">';
+        h += backupStatCell('Stored backups', esc(String(st.backup_count)) + ' &middot; ' + esc(st.backup_size));
+        h += backupStatCell('Folder limit', esc(st.max_dir_size) +
+             (st.max_dir_bytes > 0 ? ' (' + esc(String(st.cap_pct)) + '% used)' : ''));
+        h += backupStatCell('Disk free', esc(st.free_size));
+        h += backupStatCell('Reserve kept free', esc(st.min_free_size));
+        h += '</div>';
+
+        h += '<div class="row g-2 small mt-1">';
+        h += backupStatCell('Last successful backup', st.last_ok_at
+            ? esc(String(st.last_ok_age_hours)) + 'h ago' : 'never');
+        h += backupStatCell('Last result', esc(st.last_status));
+        h += '</div>';
+
+        h += '<div class="small text-body-tertiary mt-2 text-break">Folder: <code>' + esc(st.directory) + '</code></div>';
+
+        // Warnings, most urgent first. These are the "tell them BEFORE it is an
+        // outage" surfaces — a refused backup and a stale backup are different
+        // problems and get different wording.
+        if (st.space_warning) {
+            h += '<div class="alert alert-warning small mt-2 mb-0 py-2">' +
+                 '<i class="bi bi-exclamation-triangle-fill me-1"></i>' + esc(st.space_warning) + '</div>';
+        }
+        if (st.stale && st.warning) {
+            h += '<div class="alert alert-danger small mt-2 mb-0 py-2">' +
+                 '<i class="bi bi-shield-exclamation me-1"></i>' + esc(st.warning) + '</div>';
+        }
+        if (st.enabled && !st.opportunistic) {
+            h += '<div class="small text-body-secondary mt-2">' +
+                 '<i class="bi bi-info-circle me-1"></i>Backups only run when a scheduler calls ' +
+                 '<code>tools/backup_run.php</code>.</div>';
+        }
+        return h;
+    }
+
+    function backupStatCell(label, value) {
+        return '<div class="col-6 col-lg-3"><div class="text-body-secondary">' + esc(label) +
+               '</div><div class="fw-semibold">' + value + '</div></div>';
+    }
+
+    function bindBackupRunNow() {
+        var btn = document.getElementById('btnBackupRunNow');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+            var statusEl = document.getElementById('backupSettingsStatus');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Backing up...';
+            if (statusEl) { statusEl.textContent = ''; statusEl.className = 'small'; }
+
+            fetch('api/backup.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ action: 'run_now', csrf_token: csrfToken })
+            }).then(function (r) { return r.json(); })
+              .then(function (data) {
+                  btn.disabled = false;
+                  btn.innerHTML = '<i class="bi bi-play-circle me-1"></i>Back up now';
+                  if (data.error) {
+                      if (statusEl) { statusEl.textContent = data.error; statusEl.className = 'small text-danger'; }
+                      return;
+                  }
+                  if (statusEl) {
+                      statusEl.textContent = data.detail || '';
+                      // A refusal is not an error — it is the guard doing its
+                      // job — so it reads as a warning, not a failure.
+                      statusEl.className = 'small ' + (data.success ? 'text-success'
+                                                    : (data.skipped ? 'text-warning' : 'text-danger'));
+                  }
+                  loadBackupStatus();
+                  loadBackupHistory();
+              })
+              .catch(function (err) {
+                  btn.disabled = false;
+                  btn.innerHTML = '<i class="bi bi-play-circle me-1"></i>Back up now';
+                  if (statusEl) { statusEl.textContent = err.message; statusEl.className = 'small text-danger'; }
+              });
+        });
     }
 
     function loadBackupHistory() {
@@ -12936,6 +13112,13 @@
         if (panelId === 'backup' && !_backupHistoryLoaded) {
             _backupHistoryLoaded = true;
             loadBackupHistory();
+            loadBackupSettings();
+        }
+        // Status is refreshed on EVERY visit, not just the first: free space and
+        // stored size move, and a stale panel is how someone concludes "it's
+        // fine" while the disk fills.
+        if (panelId === 'backup') {
+            loadBackupStatus();
         }
         if (panelId === 'geofencing') {
             setTimeout(function () {

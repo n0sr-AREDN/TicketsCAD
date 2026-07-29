@@ -52,7 +52,7 @@ function backup_dump_sql(string $outputPath): bool
     fwrite($fh, "-- Database: {$db_name}\n");
     fwrite($fh, "-- MySQL Version: {$version}\n");
     fwrite($fh, "-- PHP Version: " . PHP_VERSION . "\n");
-    fwrite($fh, "-- TicketsCAD Version: " . (defined('NEWUI_VERSION') ? NEWUI_VERSION : 'unknown') . "\n");
+    fwrite($fh, "-- TicketsCAD Version: " . newui_version() . "\n");
     fwrite($fh, "--\n\n");
 
     fwrite($fh, "SET NAMES utf8mb4;\n");
@@ -188,7 +188,7 @@ function backup_export_config(): string
     $config = [
         '_meta' => [
             'generated'   => date('Y-m-d H:i:s'),
-            'version'     => defined('NEWUI_VERSION') ? NEWUI_VERSION : 'unknown',
+            'version'     => newui_version(),
             'php_version' => PHP_VERSION,
             'database'    => $GLOBALS['db_name'] ?? '',
         ],
@@ -283,7 +283,7 @@ function backup_create_zip(string $sqlPath, string $configJson, string $zipPath)
     // Add README with restore instructions
     $readme = "TicketsCAD NewUI — Backup Archive\n";
     $readme .= "Generated: " . date('Y-m-d H:i:s') . "\n";
-    $readme .= "Version: " . (defined('NEWUI_VERSION') ? NEWUI_VERSION : 'unknown') . "\n\n";
+    $readme .= "Version: " . newui_version() . "\n\n";
     $readme .= "Contents:\n";
     $readme .= "  backup.sql   — Full database dump (all tables)\n";
     $readme .= "  config.json  — System configuration snapshot\n";
@@ -325,10 +325,13 @@ function backup_get_history(string $dir): array
         return [];
     }
 
-    $files = array_merge(
-        glob($dir . '/ticketscad-backup-*.zip') ?: [],
-        glob($dir . '/ticketscad-backup-*.sql.gz') ?: []
-    );
+    // Match BOTH naming schemes. Manual backups (api/backup.php) are written as
+    // 'ticketscad-backup-<date>'; the scheduler (backup_run_now) writes
+    // 'ticketscad-<stamp>'. Globbing only the former meant every automatic
+    // backup was invisible in Settings → Backup History — the operator could
+    // not see the copies the product was making on their behalf, which is half
+    // of "do I actually have a backup?".
+    $files = glob(rtrim($dir, '/\\') . '/ticketscad-*.{zip,gz}', GLOB_BRACE) ?: [];
     if (empty($files)) {
         return [];
     }

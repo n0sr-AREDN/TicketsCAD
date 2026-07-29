@@ -46,6 +46,16 @@
 *.eot  binary
 *.otf  binary
 
+# SBOM signing artifacts (Phase 127).
+# The detached signature covers the EXACT bytes of SBOM.cdx.json, so if git
+# rewrote its line endings on checkout the signature would fail to verify on
+# that platform and nowhere else — a confusing, platform-specific breakage of
+# the one thing recipients are told they can check. Pin all three explicitly
+# to LF rather than leaving the .sig and .pem to the text=auto heuristic.
+SBOM.cdx.json            text eol=lf
+SBOM.cdx.json.sig        text eol=lf
+SBOM-signing-key.pub.pem text eol=lf
+
 # GitHub linguist hints — surface PHP / JS as the languages, hide vendored docs
 docs/* linguist-documentation
 specs/* linguist-documentation

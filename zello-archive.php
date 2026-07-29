@@ -54,8 +54,8 @@ $active_page = 'zello-archive';
 <title>Zello Archive — Tickets CAD</title>
 <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
 <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap-icons.min.css">
-<link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo file_exists(__DIR__ . '/assets/css/dashboard.css') ? filemtime(__DIR__ . '/assets/css/dashboard.css') : NEWUI_VERSION; ?>">
-<link rel="stylesheet" href="assets/css/zello-widget.css?v=<?php echo file_exists(__DIR__ . '/assets/css/zello-widget.css') ? filemtime(__DIR__ . '/assets/css/zello-widget.css') : NEWUI_VERSION; ?>">
+<link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo file_exists(__DIR__ . '/assets/css/dashboard.css') ? filemtime(__DIR__ . '/assets/css/dashboard.css') : newui_version(); ?>">
+<link rel="stylesheet" href="assets/css/zello-widget.css?v=<?php echo file_exists(__DIR__ . '/assets/css/zello-widget.css') ? filemtime(__DIR__ . '/assets/css/zello-widget.css') : newui_version(); ?>">
 <style>
 .z-arch-toolbar {
     position: sticky; top: 0; z-index: 10;
@@ -109,7 +109,7 @@ $active_page = 'zello-archive';
         </div>
         <div class="col-auto" style="min-width:14rem;flex:1;">
             <label for="zArchSearch" class="form-label small mb-1">Search (sender / channel / body)</label>
-            <input type="search" id="zArchSearch" class="form-control form-control-sm" placeholder="ejosterberg, TicketsCAD-Group, ...">
+            <input type="search" id="zArchSearch" class="form-control form-control-sm" placeholder="callsign, channel name, ...">
         </div>
         <div class="col-auto">
             <label for="zArchLimit" class="form-label small mb-1">Show up to</label>
@@ -137,8 +137,8 @@ $active_page = 'zello-archive';
 </main>
 
 <script src="assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-<script src="assets/js/toolbar.js?v=<?php echo file_exists(__DIR__ . '/assets/js/toolbar.js') ? filemtime(__DIR__ . '/assets/js/toolbar.js') : NEWUI_VERSION; ?>"></script>
-<script src="assets/js/theme-manager.js?v=<?php echo file_exists(__DIR__ . '/assets/js/theme-manager.js') ? filemtime(__DIR__ . '/assets/js/theme-manager.js') : NEWUI_VERSION; ?>"></script>
-<script src="assets/js/zello-archive.js?v=<?php echo file_exists(__DIR__ . '/assets/js/zello-archive.js') ? filemtime(__DIR__ . '/assets/js/zello-archive.js') : NEWUI_VERSION; ?>"></script>
+<script src="assets/js/toolbar.js?v=<?php echo file_exists(__DIR__ . '/assets/js/toolbar.js') ? filemtime(__DIR__ . '/assets/js/toolbar.js') : newui_version(); ?>"></script>
+<script src="assets/js/theme-manager.js?v=<?php echo file_exists(__DIR__ . '/assets/js/theme-manager.js') ? filemtime(__DIR__ . '/assets/js/theme-manager.js') : newui_version(); ?>"></script>
+<script src="assets/js/zello-archive.js?v=<?php echo file_exists(__DIR__ . '/assets/js/zello-archive.js') ? filemtime(__DIR__ . '/assets/js/zello-archive.js') : newui_version(); ?>"></script>
 </body>
 </html>

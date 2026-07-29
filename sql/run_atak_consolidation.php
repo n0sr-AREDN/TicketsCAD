@@ -5,7 +5,7 @@
  *
  * BEFORE: my Slice 1 created atak_channels + atak_push_log as a
  * parallel stack alongside mesh_channels + mesh_packet_log. The two
- * existing mesh bridges (meshbridge-01/02 on your-host/your-host) couldn't
+ * existing mesh bridges (meshbridge-host-1/2) couldn't
  * deliver to it because they POST to api/mesh.php?action=ingest.
  *
  * AFTER: ATAK is a *policy* layered onto mesh_channels (per-channel

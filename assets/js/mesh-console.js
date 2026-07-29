@@ -1352,7 +1352,7 @@
             envLines.push('PORT1_SPEC=' + portSpec2);
             envLines.push('PORT1_PROTOCOL=' + proto2);
         }
-        var execStart = '/home/ejosterberg/mesh-venv/bin/python /home/ejosterberg/bridge_v2.py \\\n' +
+        var execStart = '/home/youruser/mesh-venv/bin/python /home/youruser/bridge_v2.py \\\n' +
             '  --port ${PORT0_SPEC} --protocol ${PORT0_PROTOCOL}';
         if (dual) execStart += ' \\\n  --port ${PORT1_SPEC} --protocol ${PORT1_PROTOCOL}';
         execStart += ' \\\n  --cad-url ${CAD_URL} --cad-token ${CAD_TOKEN}';
@@ -1389,7 +1389,7 @@
             'Wants=network-online.target\n\n' +
             '[Service]\n' +
             'Type=simple\n' +
-            'User=ejosterberg\n' +
+            'User=youruser\n' +
             'EnvironmentFile=/etc/ticketscad/meshbridge.env\n' +
             'ExecStart=' + execStart + '\n' +
             'Restart=on-failure\n' +

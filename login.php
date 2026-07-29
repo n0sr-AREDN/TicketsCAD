@@ -665,7 +665,7 @@ $isTrustedNetwork = tfa_check_trusted_network();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
-    <title><?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo NEWUI_VERSION; ?> - <?php echo e(t('login.btn.submit', 'Log In')); ?></title>
+    <title><?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo newui_version(); ?> - <?php echo e(t('login.btn.submit', 'Log In')); ?></title>
     <!-- 2026-06-14 (Phase 49): PWA installability bits also live on the
          login page — it's the first page mobile users hit, and Chrome
          needs <link rel="manifest"> on the *current* page to enable
@@ -741,7 +741,7 @@ $isTrustedNetwork = tfa_check_trusted_network();
             <div class="text-center mb-4">
                 <i class="bi bi-broadcast-pin fs-1 text-primary"></i>
                 <h4 class="mt-2"><?php echo e(t('login.title', 'Tickets NewUI')); ?></h4>
-                <small class="text-body-secondary">v<?php echo e(NEWUI_VERSION); ?></small>
+                <small class="text-body-secondary">v<?php echo e(newui_version()); ?></small>
             </div>
 
             <?php if ($error): ?>

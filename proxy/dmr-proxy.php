@@ -4,7 +4,7 @@
  *
  * CLI entry point. Starts a Ratchet WebSocket server that acts as a
  * relay between browser clients and the DMR bridge's HTTP control
- * surface (hbp_client.py on dvswitch-01:18091).
+ * surface (hbp_client.py on dvswitch-host:18091).
  *
  * Usage:
  *   php proxy/dmr-proxy.php

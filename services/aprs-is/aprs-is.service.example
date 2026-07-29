@@ -4,7 +4,7 @@
 #   1. Copy this file to /etc/systemd/system/aprs-is.service
 #   2. Adjust paths if your install isn't at /var/www/newui
 #   3. Create /etc/ticketscad/aprs-is.ini from listener.ini.example
-#   4. pip install requests aprslib  (as the ejosterberg user, or system-wide)
+#   4. pip install requests aprslib  (as the service user, or system-wide)
 #   5. systemctl daemon-reload
 #   6. systemctl enable --now aprs-is
 #   7. journalctl -u aprs-is -f   # watch logs
@@ -20,7 +20,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=ejosterberg
+User=youruser
 Group=www-data
 WorkingDirectory=/var/www/newui/services/aprs-is
 ExecStart=/usr/bin/python3 /var/www/newui/services/aprs-is/listener.py --config /etc/ticketscad/aprs-is.ini

@@ -57,7 +57,7 @@ $active_page = 'personnel';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
-    <title>Permissions Matrix — Tickets NewUI <?php echo NEWUI_VERSION; ?></title>
+    <title>Permissions Matrix — Tickets NewUI <?php echo newui_version(); ?></title>
 
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap-icons.min.css">

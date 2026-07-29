@@ -408,7 +408,7 @@ $csrf     = csrf_token();
     <!-- Phase 104h (a beta tester GH #13) — EventBus + SSE so mobile.js can
          subscribe to server-side events and refresh without an
          interval poll. -->
-    <script src="assets/js/event-bus.js?v=<?php echo NEWUI_VERSION; ?>"></script>
+    <script src="assets/js/event-bus.js?v=<?php echo newui_version(); ?>"></script>
 
     <!-- Phase 71 — navigation launcher (Apple Maps / Google Maps / Waze / web). -->
     <script src="assets/js/navigate-launcher.js?v=<?php echo asset_v('assets/js/navigate-launcher.js'); ?>"></script>

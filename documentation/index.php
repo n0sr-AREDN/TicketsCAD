@@ -24,6 +24,14 @@ require_once __DIR__ . '/md.php';
 $DOCS_ROOT  = realpath(__DIR__ . '/../docs');                          // newui-dev/newui/docs
 $REPO_DOCS  = realpath(__DIR__ . '/../../../docs');                    // <repo>/docs (cross-project)
 $BASE_PATH  = '/documentation';                                         // public-facing path
+// Assets live beside the documentation directory, not inside it. Derived from
+// $BASE_PATH so the two cannot drift apart. Bootstrap is served from our own
+// tree rather than a CDN: TicketsCAD is run by groups that operate with no
+// internet at all, and a stylesheet fetched at page load is one that vanishes
+// with the uplink. This page skips config.php, so it has no Content Security
+// Policy of its own — but the rest of the app allows scripts and styles from
+// 'self' only, and there is no reason for the doc viewer to be the exception.
+$ASSET_BASE = rtrim(dirname($BASE_PATH), '/') . '/assets/vendor';
 $DEFAULT_DOC = 'INDEX';
 
 // ─── Routing ──────────────────────────────────────────────────────
@@ -132,8 +140,8 @@ header('Referrer-Policy: no-referrer-when-downgrade');
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= htmlspecialchars($html_title) ?> — TicketsCAD Documentation</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+<link rel="stylesheet" href="<?= $ASSET_BASE ?>/bootstrap/bootstrap.min.css">
+<link rel="stylesheet" href="<?= $ASSET_BASE ?>/bootstrap/bootstrap-icons.min.css">
 <link rel="stylesheet" href="<?= $BASE_PATH ?>/style.css">
 </head>
 <body data-bs-theme="auto">
@@ -178,7 +186,7 @@ header('Referrer-Policy: no-referrer-when-downgrade');
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="<?= $ASSET_BASE ?>/bootstrap/bootstrap.bundle.min.js"></script>
 <script>
 // Sidebar filter
 (function () {
@@ -239,11 +247,16 @@ function toggleTheme() {
 
 function _doc_error(string $msg): void
 {
-    global $BASE_PATH;
+    /* $ASSET_BASE as well as $BASE_PATH: this function builds its HTML by string
+       concatenation, so a short-echo tag would be emitted literally rather than
+       evaluated. Interpolate the variable instead.
+       (And note: a PHP close tag inside even a // comment ends PHP mode — which
+       is exactly how this line got written wrong the first time.) */
+    global $BASE_PATH, $ASSET_BASE;
     header('Content-Type: text/html; charset=utf-8');
     echo '<!doctype html><html><head><meta charset="utf-8">'
        . '<title>Documentation — error</title>'
-       . '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">'
+       . '<link rel="stylesheet" href="' . htmlspecialchars((string) $ASSET_BASE) . '/bootstrap/bootstrap.min.css">'
        . '</head><body class="container py-5">'
        . '<div class="alert alert-warning"><h3 class="alert-heading">' . htmlspecialchars($msg) . '</h3>'
        . '<p>Try the <a href="' . htmlspecialchars($BASE_PATH) . '/">documentation index</a>.</p></div>'

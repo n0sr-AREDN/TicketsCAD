@@ -40,7 +40,7 @@ $csrf     = csrf_token();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
-    <title><?php echo e(t('page.sop', 'Standard Operating Procedures')); ?> — <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo NEWUI_VERSION; ?></title>
+    <title><?php echo e(t('page.sop', 'Standard Operating Procedures')); ?> — <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo newui_version(); ?></title>
 
     <!-- Vendor CSS -->
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
@@ -311,14 +311,23 @@ $csrf     = csrf_token();
 
 <!-- Vendor JS -->
 <script src="assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-<script src="assets/js/toolbar.js?v=<?php echo NEWUI_VERSION; ?>"></script>
+<script src="assets/js/toolbar.js?v=<?php echo newui_version(); ?>"></script>
 
 <!-- Markdown parser -->
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!-- Vendored, not loaded from a CDN. Two reasons, both real:
+     1. Our own Content Security Policy (inc/security-headers.php) allows scripts
+        from 'self' only, so the CDN copy was BLOCKED on every install, online or
+        not. sop.js falls back to escaped plain text when `marked` is undefined,
+        so SOPs stayed readable and nobody noticed the formatting never worked.
+     2. TicketsCAD is run by groups that operate fully disconnected. Anything
+        fetched at page load is a feature that disappears when the uplink does.
+     The old reference was also UNPINNED (npm/marked/ = whatever is latest), so
+     an upstream release would have changed our code without a commit here. -->
+<script src="assets/vendor/marked/marked.min.js"></script>
 
 <!-- App JS -->
 <script src="assets/js/theme-manager.js"></script>
-<script src="assets/js/sop.js?v=<?php echo NEWUI_VERSION; ?>"></script>
+<script src="assets/js/sop.js?v=<?php echo newui_version(); ?>"></script>
 
 </body>
 </html>

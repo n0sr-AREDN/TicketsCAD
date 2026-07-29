@@ -160,7 +160,7 @@ $importSqlFile = function (string $path) {
     }
     $env = $_ENV; $env['MYSQL_PWD'] = $dbPass;
 
-    // Phase 102 (Russell beta 2026-07-01) — Windows/XAMPP support.
+    // Phase 102 (a beta tester beta 2026-07-01) — Windows/XAMPP support.
     // Original code hard-coded `sh -c` which doesn't exist on stock
     // Windows PowerShell + XAMPP → CreateProcess error code 2 → every
     // import failed with "Could not exec mariadb CLI". Now:
@@ -361,7 +361,7 @@ $foundationalSql = [
     // not always idempotent" in fix #3, but they actually ARE idempotent:
     // each one uses SET @col_exists + IF() + PREPARE/EXECUTE/DEALLOCATE to
     // skip if the target column already exists. Adding them back so true
-    // fresh installs get the columns they define. Beta tester Justin
+    // fresh installs get the columns they define. Beta tester a beta tester
     // Gilbert 2026-06-26 reported the new-incident form's type dropdown
     // was empty because api/incident-types.php SELECTed in_types.match_pattern
     // and that column was missing — alter_match_pattern.sql adds it.

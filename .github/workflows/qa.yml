@@ -73,6 +73,31 @@ jobs:
       - name: API ↔ JS contract audit
         run: php tests/test_api_contract_audit.php
 
+      # Anti-rot gate for the published SBOM. An SBOM that is accurate once and
+      # stale afterwards is worse than none, because it asserts a currency it
+      # does not have. If a dependency, a vendored library version, or the
+      # application VERSION changes without regenerating, this fails the build.
+      - name: SBOM is current (CISA 2026 minimum elements)
+        run: php tools/generate-sbom.php --check
+
+      # Conformance gate. The document DECLARES "specVersion": "1.6"; this is
+      # what checks that the declaration is true. It was not: a published SBOM
+      # carried the licence id "GPL-2.0-with-FOSS-exception", which SPDX does
+      # not define, so the whole document failed the official schema while we
+      # invited people to load it into Dependency-Track and Trivy. Asserting
+      # conformance is not the same as having it.
+      #
+      # ajv (the reference validator) against the OFFICIAL schema, vendored
+      # unmodified in tools/schema/cyclonedx/. Node is preinstalled on the
+      # runner; the packages come from npm at job time.
+      - name: SBOM conforms to the official CycloneDX 1.6 schema
+        run: php tools/generate-sbom.php --validate
+
+      # The signature must verify against the PUBLISHED public key, using only
+      # what a recipient receives. CI never signs — it only checks.
+      - name: SBOM signature verifies
+        run: php tools/generate-sbom.php --verify
+
       - name: Full test suite (HTTP-integration tests skipped)
         env:
           NEWUI_TEST_NO_HTTP: '1'
