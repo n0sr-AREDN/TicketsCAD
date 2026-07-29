@@ -261,18 +261,36 @@ ok('Regeneration command recorded in the SBOM', isset($metaProps['ticketscad:reg
 ok('Generator script exists', is_file($root . '/tools/generate-sbom.php'));
 
 $qa = (string) @file_get_contents($root . '/.github/workflows/qa.yml');
-ok('CI gates SBOM freshness', str_contains($qa, 'generate-sbom.php --check'));
+ok('CI gates SBOM freshness',    str_contains($qa, 'generate-sbom.php --check'));
+ok('CI gates SBOM conformance',  str_contains($qa, 'generate-sbom.php --validate'));
+ok('CI gates SBOM signature',    str_contains($qa, 'generate-sbom.php --verify'));
 
-$rel = (string) @file_get_contents($root . '/tools/release-snapshot.sh');
-/* The release script quotes the interpolated path, so match the invocation
- * rather than a fixed substring. */
-ok('Release process gates SBOM freshness',
-    preg_match('/generate-sbom\.php["\']?\s+--check/', $rel) === 1);
+/* These two inspect tools/release-snapshot.sh — which the release snapshot
+ * deliberately EXCLUDES from itself, so it is absent from every published tree
+ * by design. Asserting on it unconditionally turned the published copy of this
+ * suite red on the first release that shipped it: two failures for a file whose
+ * absence is the correct state. Skip where it does not exist; still fail in the
+ * development repository, which is the only place the gate can regress. */
+$relPath = $root . '/tools/release-snapshot.sh';
+if (!is_file($relPath)) {
+    echo "  SKIP  release-script gates (tools/release-snapshot.sh is not shipped in a release tree)\n";
+} else {
+    $rel = (string) file_get_contents($relPath);
+    /* The release script quotes the interpolated path, so match the invocation
+     * rather than a fixed substring. */
+    ok('Release process gates SBOM freshness',
+        preg_match('/generate-sbom\.php["\']?\s+--check/', $rel) === 1);
 
-/* Distribution and Delivery: the SBOM must not be excluded from the public
- * release snapshot. */
-ok('SBOM ships in the public release snapshot (not excluded)',
-    $rel !== '' && !preg_match('/^\s*SBOM\./m', $rel));
+    /* …and conformance, not only freshness. A stale SBOM and an invalid one are
+     * different failures and the release must stop on both. */
+    ok('Release process gates SBOM schema conformance',
+        preg_match('/generate-sbom\.php["\']?\s+--validate/', $rel) === 1);
+
+    /* Distribution and Delivery: the SBOM must not be excluded from the public
+     * release snapshot. */
+    ok('SBOM ships in the public release snapshot (not excluded)',
+        !preg_match('/^\s*SBOM\./m', $rel));
+}
 
 /* ---------------------------------------------------------------- *
  * The SBOM is current

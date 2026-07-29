@@ -2,10 +2,10 @@
     "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
     "bomFormat": "CycloneDX",
     "specVersion": "1.6",
-    "serialNumber": "urn:uuid:47ea2c91-27b1-544c-98e4-923c72e08a18",
-    "version": 11,
+    "serialNumber": "urn:uuid:5c730692-d156-51f3-9c13-5d6672495cdb",
+    "version": 12,
     "metadata": {
-        "timestamp": "2026-07-29T22:15:14Z",
+        "timestamp": "2026-07-29T22:32:11Z",
         "lifecycles": [
             {
                 "phase": "pre-build"
@@ -29,9 +29,9 @@
         ],
         "component": {
             "type": "application",
-            "bom-ref": "pkg:generic/ticketscad-newui@4.2.0",
+            "bom-ref": "pkg:generic/ticketscad-newui@4.2.1",
             "name": "TicketsCAD NewUI",
-            "version": "4.2.0",
+            "version": "4.2.1",
             "publisher": "OpenISES TicketsCAD Project",
             "description": "Computer-aided dispatch for volunteer emergency services, amateur-radio emergency communications groups, CERT teams and small public-safety agencies.",
             "licenses": [
@@ -41,7 +41,7 @@
                     }
                 }
             ],
-            "purl": "pkg:generic/ticketscad-newui@4.2.0",
+            "purl": "pkg:generic/ticketscad-newui@4.2.1",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -52,7 +52,7 @@
         "properties": [
             {
                 "name": "ticketscad:content-digest",
-                "value": "101ead642630c4979558f556e65289d66b7d869f736f96e2b926b18438b2f80d"
+                "value": "c68504f01acf20f5853a039ed00fc5e121653686fa61e55e89432dd4e37b2a8a"
             },
             {
                 "name": "ticketscad:standard",
@@ -2700,7 +2700,7 @@
     ],
     "dependencies": [
         {
-            "ref": "pkg:generic/ticketscad-newui@4.2.0",
+            "ref": "pkg:generic/ticketscad-newui@4.2.1",
             "dependsOn": [
                 "pkg:docker/composer@2#container-base",
                 "pkg:docker/debian@bookworm-slim#container-base",

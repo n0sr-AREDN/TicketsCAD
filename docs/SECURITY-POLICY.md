@@ -359,7 +359,7 @@ updates and replaces the 2021 NTIA minimum elements.
 | SBOM Author Signature | detached, ECDSA P-256 / SHA-256, base64 | `SBOM.cdx.json.sig` |
 | Signature verification key | public key, PEM | `SBOM-signing-key.pub.pem` (see §5.3) |
 | Generator | PHP, no external dependencies | `tools/generate-sbom.php` |
-| Conformance tests | 60 assertions | `tests/test_sbom.php` |
+| Conformance tests | 63 assertions (60 in a published tree — three inspect the release script, which is not shipped) | `tests/test_sbom.php` |
 
 **Status against the guidance: 17 of 17 data fields, 6 of 6 practices**, over 56
 components. Every field that is not stated for a component is explicitly

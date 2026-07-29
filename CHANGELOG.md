@@ -3,6 +3,29 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.1] - 2026-07-29
+
+Fixes the test suite that 4.2.0 shipped. **Nothing else changed** — no behaviour
+change, no schema change, and every 4.2.0 artifact (the SBOM, its signature and
+the public key) was correct and still verifies.
+
+**Upgrading:** `git pull`. No migration. Docker: `git pull && docker compose up
+-d --build` — but if you are coming from **4.1.x**, do the backup rescue in the
+4.2.0 notes below **first**.
+
+### Fixed
+- **`php tools/test_all.php` reported two failures on a fresh clone.** Two
+  assertions in `tests/test_sbom.php` inspect `tools/release-snapshot.sh`, which
+  the release snapshot deliberately excludes from itself — so it is absent from
+  every published copy by design. 4.2.0 was the first release to ship that test
+  file, so the problem had never appeared outside the development repository.
+  You were being told something was wrong when nothing was. Those assertions now
+  skip when the release script is not present, and still run where it is.
+
+  Verified in both shapes: 63 passed / 0 failed in the development tree, and
+  60 passed / 0 failed with one skip in a fresh clone of the published v4.2.0
+  tag — the exact place the failure showed up.
+
 ## [4.2.0] - 2026-07-29
 
 Automatic backups now actually run, the Software Bill of Materials is published
