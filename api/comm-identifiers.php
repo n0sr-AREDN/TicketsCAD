@@ -152,7 +152,7 @@ function handleGet() {
 // ─── POST handlers ─────────────────────────────────────────────────────
 
 function handlePost() {
-    global $current_level, $current_user_id;
+    global $current_user_id;
 
     $raw   = file_get_contents('php://input');
     $input = json_decode($raw, true) ?: [];

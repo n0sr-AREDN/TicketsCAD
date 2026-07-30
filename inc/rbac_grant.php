@@ -101,13 +101,37 @@ function rbac_grant_role(
         // VM where PHP=America/New_York, system=UTC).
         $expiresUnix = $expiresAt ? strtotime($expiresAt) : null;
 
+        // ON DUPLICATE KEY UPDATE re-grants in place.
+        //
+        // Phase 129 gave (user_id, role_id, scope_kind, scope_id) a
+        // uniqueness constraint that actually binds — previously a NULL
+        // scope_id made the key inert, so nothing here ever collided. Now
+        // it can, and the case that collides is a legitimate one: an admin
+        // re-granting a role whose grant has LAPSED. A plain INSERT would
+        // throw "Grant failed: Duplicate entry" at them. Reviving the row
+        // is also the more honest model — "user U holds role R in scope S"
+        // is one fact, and expires_at is an attribute of it, not a
+        // discriminator that justifies a second row.
+        //
+        // `id = LAST_INSERT_ID(id)` makes db_insert_id() return the
+        // existing row's id on the update branch; without it LAST_INSERT_ID
+        // is left at 0 and the audit entry below would reference grant #0.
+        $expiresSql = ($expiresUnix === null || $expiresUnix === false)
+            ? 'NULL' : 'FROM_UNIXTIME(?)';
         db_query(
             "INSERT INTO `{$prefix}user_roles`
              (user_id, role_id, org_id, scope_kind, scope_id, expires_at,
               granted_by, granted_at, reason, delegated_by, delegation_depth)
-             VALUES (?, ?, ?, ?, ?,
-                     " . ($expiresUnix === null || $expiresUnix === false ? "NULL" : "FROM_UNIXTIME(?)") . ",
-                     ?, NOW(), ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, {$expiresSql}, ?, NOW(), ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+                 id               = LAST_INSERT_ID(id),
+                 org_id           = VALUES(org_id),
+                 expires_at       = VALUES(expires_at),
+                 granted_by       = VALUES(granted_by),
+                 granted_at       = NOW(),
+                 reason           = VALUES(reason),
+                 delegated_by     = VALUES(delegated_by),
+                 delegation_depth = VALUES(delegation_depth)",
             $expiresUnix === null || $expiresUnix === false
                 ? [$userId, $roleId, $orgIdMirror, $scopeKind, $scopeId,
                    ($grantedBy ?: null), $reason, $delegatedBy, $delegationDepth]

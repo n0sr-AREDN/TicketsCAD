@@ -31,7 +31,13 @@ $level = current_role_name();
 $theme    = $_SESSION['day_night'] ?? 'Day';
 $bs_theme = ($theme === 'Night') ? 'dark' : 'light';
 $csrf     = csrf_token();
-$is_admin = ((int) $_SESSION['level'] <= 1);
+// Phase 128 (2026-07-29): was `(int) $_SESSION['level'] <= 1`. This flag
+// shows/hides the add/edit/delete controls on the links panel; the write
+// path in api/links.php is RBAC-gated, so the level test only ever
+// produced a UI that disagreed with the server.
+// (is_admin() already covers action.manage_config, and it is exactly what
+// api/links.php:16 tests — so the page and the API agree by construction.)
+$is_admin = is_admin();
 $active_page = 'links';
 ?>
 <!DOCTYPE html>

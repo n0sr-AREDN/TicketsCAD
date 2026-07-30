@@ -233,7 +233,19 @@ if ($action === 'ingest' && $method === 'POST') {
                      port_kind, snr, rssi, hops, payload_text, payload_json, lat, lng";
             $vals = "COALESCE(?, NOW(3)), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?";
             $args = [
-                    isset($p['received_at']) ? (gmdate('Y-m-d H:i:s', (int) $p['received_at']) . sprintf('.%03d', (int) ((floatval($p['received_at']) - intval($p['received_at'])) * 1000))) : null,
+                    // CLOCK: date(), not gmdate(). $p['received_at'] is a bare
+                    // Unix epoch from the bridge (time.time(), tz-neutral), and
+                    // mesh_packet_log.received_at holds area-local wall clock —
+                    // the fallback three lines up is NOW(3), and every reader
+                    // measures with NOW(): api/mesh.php:1212,1225, api/atak.php:138,
+                    // api/messaging-bridges.php:83, inc/channels/meshtastic.php:220.
+                    // Commit 1c9c590 changed date()->gmdate() reasoning that PHP's
+                    // America/Chicago tz made the column "5 hours behind real UTC";
+                    // that inverts this stack's convention and instead made every
+                    // bridge-supplied row read 5 h stale on non-UTC servers, so the
+                    // 1-hour "recently heard node" windows never matched and
+                    // hop-latency spread_ms mixed the two clocks into ~18,000,000 ms.
+                    isset($p['received_at']) ? (date('Y-m-d H:i:s', (int) $p['received_at']) . sprintf('.%03d', (int) ((floatval($p['received_at']) - intval($p['received_at'])) * 1000))) : null,
                     $bridgeId,
                     $protocol,
                     isset($p['packet_id']) ? (int) $p['packet_id'] : null,

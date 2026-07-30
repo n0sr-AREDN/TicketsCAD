@@ -125,4 +125,4 @@ For deeper diagnostics: `sudo journalctl -u <name-of-the-bridge-service-on-your-
 - **Outbound emission** (TicketsCAD incident → ATAK marker). The push policy fields exist on `mesh_channels` but no emitter is hooked into the incident/responder/facility lifecycle yet. We wire that once inbound smoke is green.
 - **TAKPacket protobuf decode validation against real plugin output.** The hook in `api/mesh.php` handles two formats (TAKPacket fields under `payload_json` AND raw `<event>` XML in `payload_text`); first smoke might reveal the bridge daemons need to be taught to decode and ship the protobuf fields. If they're not currently parsing port 72, that's a fix on the bridge-daemon side (separate from this PHP side).
 - **TAK Server federation (v1.5)** — IP path is a separate phase.
-- **Bloomington UI smoke** — code + migration deployed there, but no live bridges on Bloomington yet, so nothing to receive ATAK packets locally. Mirror demo after training is green.
+- **your deployment UI smoke** — code + migration deployed there, but no live bridges on your deployment yet, so nothing to receive ATAK packets locally. Mirror demo after training is green.

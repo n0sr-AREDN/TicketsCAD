@@ -11,8 +11,8 @@
  *
  * Two ways events get fired:
  *
- *   1. Audit-driven (Phase 94 Stage 5, the reliability fix for a beta tester
- *      Gilbert's report). inc/audit.php's audit_log() calls
+ *   1. Audit-driven (Phase 94 Stage 5, the reliability fix for a beta
+ *      tester's report). inc/audit.php's audit_log() calls
  *      webhook_fire() after a successful INSERT, using
  *      _audit_to_webhook_event() to map (category, activity,
  *      target_type) → event_type. This is the canonical path — if it's

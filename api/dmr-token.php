@@ -37,7 +37,14 @@ $prefix    = $GLOBALS['db_prefix'] ?? '';
 $channelId = (int) ($_GET['channel'] ?? 0);
 $userId    = (int) ($_SESSION['user_id'] ?? 0);
 $user      = (string) ($_SESSION['user'] ?? 'unknown');
-$level     = (int) ($_SESSION['level'] ?? 99);
+// Phase 128 (2026-07-29): the `user_level` column on dmr_ws_tokens is
+// diagnostic only — DmrProxyApp.php stores it in its auth context and
+// writes it to one log line; nothing compares it. It used to carry the
+// legacy user.level, which api/config-admin.php stopped maintaining in
+// Phase 12, so recent accounts logged a meaningless 0. Same column, same
+// type, now carrying the RBAC role id, which actually identifies someone.
+require_once __DIR__ . '/../inc/router.php';
+$level     = router_current_role_id();
 
 if ($userId <= 0) {
     json_error('No authenticated user in session', 401);

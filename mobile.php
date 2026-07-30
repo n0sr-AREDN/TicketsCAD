@@ -96,7 +96,11 @@ force_pw_change_redirect();
 
 
 $user     = e($_SESSION['user']);
-$level    = (int) ($_SESSION['level'] ?? 99);
+// Phase 128 (2026-07-29): was `$level = (int) $_SESSION['level']`, used
+// below to decide whether to offer the "Full Dashboard" link. A field
+// unit's access to the desktop dashboard is a permission, not a rank.
+require_once __DIR__ . '/inc/rbac.php';
+$canOpenDashboard = rbac_can('screen.dashboard');
 $theme    = $_SESSION['day_night'] ?? 'Day';
 $bs_theme = ($theme === 'Night') ? 'dark' : 'light';
 $csrf     = csrf_token();
@@ -376,7 +380,7 @@ $csrf     = csrf_token();
         <!-- ── Navigation ──────────────────────────────────────── -->
         <div class="mobile-card mt-3 mb-4">
             <div class="d-grid gap-2">
-                <?php if ($level <= 2): ?>
+                <?php if ($canOpenDashboard): ?>
                 <a href="index.php" class="btn btn-outline-secondary btn-mobile">
                     <i class="bi bi-grid me-2"></i> Full Dashboard
                 </a>

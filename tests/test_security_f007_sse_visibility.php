@@ -204,12 +204,21 @@ if (strpos($streamSrc, 'visibility_scope') !== false
     bad('stream.php has F-007 visibility WHERE clause');
 }
 
-// ── 10. stream.php pulls user level + groups from session ──
-if (strpos($streamSrc, "\$_SESSION['level']") !== false
+// ── 10. stream.php resolves the actor's admin status + groups ──
+// 2026-07-29 — was asserting a $_SESSION['level'] read. That read was dead
+// code (assigned, never used): every visibility decision in stream.php goes
+// through is_admin() / rbac_can(). Asserting the legacy read kept a
+// misleading claim alive, so assert what actually gates instead.
+if (strpos($streamSrc, 'is_admin()') !== false
     && strpos($streamSrc, "\$_SESSION['user_groups']") !== false) {
-    ok('stream.php reads user level + groups from session');
+    ok('stream.php resolves admin status via is_admin() + reads user groups');
 } else {
-    bad('stream.php reads user level + groups from session');
+    bad('stream.php resolves admin status via is_admin() + reads user groups');
+}
+if (strpos($streamSrc, "\$_SESSION['level']") === false) {
+    ok('stream.php no longer reads the legacy user.level');
+} else {
+    bad('stream.php no longer reads the legacy user.level');
 }
 
 // ── 11. Filter behavior: admin sees admin events; non-admin in same db doesn't ──

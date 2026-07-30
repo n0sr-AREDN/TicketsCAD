@@ -18,6 +18,8 @@
  */
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/_test_admin.php';
+$ADMIN_UID = test_admin_user_id();
 
 $prefix = $GLOBALS['db_prefix'] ?? '';
 $pass = 0;
@@ -121,7 +123,7 @@ test('scheduling_is_admin() exists', function_exists('scheduling_is_admin'));
 // we have to grant the test session a super-admin role. Easiest: set
 // user_id to the real admin user 1 and reset the RBAC cache.
 require_once __DIR__ . '/../inc/rbac.php';
-$_SESSION['user_id'] = 1;  // real admin user on the test DB
+$_SESSION['user_id'] = $ADMIN_UID;  // the account that actually holds Super Admin
 if (function_exists('rbac_reset_cache')) rbac_reset_cache();
 $adminPerms = scheduling_get_effective_permissions(999999, 'global', null);
 test('Admin gets full_control profile', $adminPerms['profile_code'] === 'full_control');

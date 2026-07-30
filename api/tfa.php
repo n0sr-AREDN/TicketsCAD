@@ -45,7 +45,7 @@ if ($method === 'GET' && ($action === '' || $action === 'status')) {
     $enrolled = tfa_is_enabled($current_user_id);
     $pending = tfa_has_pending_enrollment($current_user_id);
     $settings = tfa_get_settings();
-    $required = tfa_is_required_for_user($current_user_id, $current_level);
+    $required = tfa_is_required_for_user($current_user_id);
 
     json_response([
         'enrolled'       => $enrolled,

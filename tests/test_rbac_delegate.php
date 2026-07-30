@@ -27,14 +27,19 @@ function bad(string $n, string $w = ''): void { global $fail; echo "[FAIL] $n" .
 $users = db_fetch_all("SELECT id FROM `{$prefix}user` WHERE level > 0 ORDER BY id LIMIT 2");
 $role  = (int) (db_fetch_value("SELECT id FROM `{$prefix}roles` WHERE is_super = 0 ORDER BY sort_order, id LIMIT 1") ?: 0);
 if (count($users) < 2 || !$role) {
-    echo "[SKIP] need two non-admin users + a non-super role; not available.\n";
+    echo "SKIP: need two non-admin users + a non-super role; not available.\n";
+    echo "=== 0 passed, 0 failed ===\n";
     exit(0);
 }
 $sam = (int) $users[0]['id'];   // grantee (receives delegated authority)
 $pat = (int) $users[1]['id'];   // delegating user
 $maxDepth = (int) (rbac_setting('rbac.delegation_max_depth', '1') ?? '1');
 echo "grantee=#$sam delegating=#$pat role=#$role max_depth=$maxDepth\n\n";
-if ($maxDepth < 1) { echo "[SKIP] delegation disabled on this install (max_depth=$maxDepth).\n"; exit(0); }
+if ($maxDepth < 1) {
+    echo "SKIP: delegation disabled on this install (max_depth=$maxDepth).\n";
+    echo "=== 0 passed, 0 failed ===\n";
+    exit(0);
+}
 
 $created = [];
 register_shutdown_function(function () use (&$created, $prefix) {

@@ -3,6 +3,156 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.2] - 2026-07-30
+
+A security and reliability release. **It closes a privilege-escalation hole in
+the permissions system — please update.** It also revives two background jobs
+that had never once run on a real install (one of them the Personnel
+Accountability Report roll-call), fixes a clock bug that made a healthy radio
+position feed look dead on any server not set to UTC, and repairs a test suite
+that had been quietly counting empty files as passes.
+
+**Upgrading:** `git pull` then `php sql/run_migrations.php`. Docker:
+`git pull && docker compose up -d --build`.
+
+> ### ⚠ The migration step is required this release, not optional
+>
+> Several fixes below *are* migrations. This release no longer guesses a user's
+> permissions from the pre-v4 "level" column when their roles cannot be read —
+> guessing is what the security hole was made of. An install that has not been
+> migrated is therefore **refused at the login screen**, with the exact command
+> to run printed on it. Anyone already signed in is not thrown out mid-incident;
+> they see a banner instead. Running the migration clears it.
+
+After upgrading, check three things:
+
+1. **Settings → Users & Roles** — confirm every account has the role you expect.
+   The one-time migration that assigns roles to accounts carried over from v3
+   had never actually worked, so some accounts may have had no role at all.
+2. **Settings → Status → System Health** — a new *Scheduled jobs* row reports
+   whether the background jobs this install needs have ever run.
+3. **Your scheduler.** If you use Personnel Accountability Reports, delayed
+   message release, or automatic backups, confirm something on the server is
+   really running the tick scripts — see
+   [docs/MAINTENANCE-RUNBOOK.md](docs/MAINTENANCE-RUNBOOK.md). Dropping a file
+   into `/etc/cron.d` on a machine with no cron daemon installed fails silently,
+   and minimal cloud images routinely ship without one.
+
+### Security
+- **Privilege escalation: almost any signed-in account could edit roles and
+  permissions.** The endpoint that manages the role system was itself guarded by
+  the *old* permission system it replaced — and the old check ran first, so an
+  account whose legacy "level" was 0 or 1 skipped the role check entirely. Since
+  v4 stopped writing that column, every account created since reads as 0. In
+  practice a Dispatcher — or anyone else — could grant themselves any
+  permission. The endpoint now asks the role system, on the endpoint that
+  manages roles. Six other endpoints (audit log, callsign lookup, compliance,
+  vehicles, time entries, languages) carried the same "old system OR new system"
+  shape and were closed with it.
+- **The pre-v4 "level" system is gone, not deprecated.** It kept coming back
+  after v4 declared it dead for one reason: the one-time migration that assigns
+  roles to carried-over accounts had never run successfully on any install. It
+  queried a column name that does not exist, the error was swallowed, the script
+  reported success, and a silent fallback answered permission questions from the
+  old column instead. Broken migration, hidden by a caught error, concealed by a
+  fallback. The migration is fixed, it now re-checks its own result and fails
+  loudly if any account was left without a role, and the fallback has been
+  deleted. When permissions cannot be read, the answer is now **no**.
+- **Duplicate and orphaned administrator grants.** The uniqueness rule meant to
+  stop duplicate role grants never applied to organisation-wide grants, so every
+  run of the migration pipeline appended another copy — hundreds on
+  long-lived installs. Worse, the seed granted Super Admin to user number 1
+  whether or not such an account existed, leaving grants addressed to nobody
+  that a future account created with that number would silently inherit. Both
+  are fixed and existing databases are cleaned up by the migration.
+
+### Fixed
+- **Organisation Admins could not run a single report.** The Reports page let
+  them in and the reports API turned them away, because the two halves checked
+  different permission systems. Reports now use a new `action.view_reports`
+  permission, granted to Super Admin and Organisation Admin; the
+  organisation-scoped filtering that was written for exactly this case now
+  actually runs.
+- **Personnel Accountability Report roll-calls never fired on their own.** The
+  scheduled task that starts a PAR on cadence, and that marks a unit *missed*
+  when its answer window closes, had never executed. PAR worked only if a
+  dispatcher pressed **Initiate** by hand, and an unanswered roll-call produced
+  silence. Restarting it needed care rather than enthusiasm: an overdue sweep
+  with no upper bound would have raised missed-PAR alarms about incidents closed
+  weeks earlier, and a life-safety alert about something that is not happening
+  now teaches crews to ignore the one that is. Work more than
+  `sched_stale_cutoff_min` minutes past due (default 60) is therefore recorded
+  as *expired* and not acted on. Nothing is deleted, and an operator can release
+  an expired message by setting it back to pending.
+- **Turning PAR off froze it instead of quieting it.** Housekeeping was behind
+  the same switch as the feature, so cycles in flight when you switched off
+  stayed in flight — and switching PAR back on months later could resume a
+  month-old roll-call and escalate it. Switching off now expires stale cycles
+  quietly and starts nothing; nothing is ever escalated while PAR is off.
+- **PAR was looking at closed incidents.** The scheduler and the rest of the
+  feature disagreed about which incident statuses count as live, and the half
+  that was wrong was the half that had never run.
+- **Automatic backups were not being scheduled at all on some servers.** 4.2.0
+  made the scheduler tick on page loads; this release documents and ships the
+  supported way to schedule it on a server with no cron daemon (a systemd timer,
+  with `Persistent=true` so a machine switched off at the scheduled hour backs up
+  at next boot rather than skipping the day), plus the check that tells you
+  whether a scheduler exists at all instead of assuming one does.
+- **The APRS map reported "0 stations" while the receiver was healthy.** Position
+  timestamps are stored in the install's local time; the map was comparing them
+  against UTC, so on any server not set to UTC the window matched nothing and the
+  page also claimed the listener was inactive. Ten more instances of the same
+  mistake were found and fixed in the same sweep: mesh packet ages (which could
+  read as negative), external API tokens expiring up to a full time-zone offset
+  early while the admin panel still showed them active, several "last heard"
+  ages in the browser, and the chat widget's own echo of a message you just sent.
+  A new check runs on every build so this cannot come back — it is invisible on a
+  UTC server and silently wrong everywhere else, which is most volunteer
+  installs.
+- **A fresh install reported itself as critically broken.** The new
+  scheduled-jobs health check treated a security label that ships enabled by
+  default as evidence the delayed-message queue was in use, so a brand-new
+  deployment went red before an administrator had touched anything. It now looks
+  for a message actually waiting in the queue.
+- **`php tools/test_all.php` was counting silence as success.** The runner
+  decided each file's result from one line of its output, so a file that stopped
+  early — or exited cleanly without reporting anything — was printed exactly like
+  a clean pass. Fourteen files, roughly 290 real checks, were contributing
+  nothing to a headline number used as proof the release was sound. Files that
+  report no result are now their own category, they turn the run red on their
+  own, and their output is printed so you can see why. The suite reads **4434
+  passed, 0 failed** on this release.
+- **Documentation told you to check a log file that no longer proves anything.**
+  Four places said an empty tick log means the job never ran. That is true of a
+  cron line and false of the systemd timers that replaced it, which log to the
+  journal — so the advice had inverted itself and now made a perfectly healthy
+  job look dead. Replaced with checks that actually distinguish the two.
+
+### Added
+- `action.view_reports` permission (Super Admin and Organisation Admin).
+- A **Scheduled jobs** row on Settings → Status → System Health, fed by a
+  heartbeat the background jobs write themselves — so it cannot report a run that
+  did not happen. It goes red only for jobs this install actually needs.
+- `sched_stale_cutoff_min` setting: how far past due background work may be
+  before it is expired rather than acted on. Default 60 minutes; 0 disables.
+
+### Changed
+- Settings pages now require the administrative *manage configuration*
+  permission rather than the broader *view settings* one, so an Operator no
+  longer reaches them.
+- The Software Bill of Materials was regenerated and re-signed for this version
+  (it records the application version, so a version bump invalidates the old
+  signature). **The signing key has not changed** — the published fingerprint is
+  still `XRcJ3AwAm0OzSzjmU8KWkknftutwY36a6z7st2YrU0g=`, and the verification
+  steps in [SECURITY.md](SECURITY.md) are unchanged.
+
+### Removed
+- The pre-v4 `user.level` permission fallback, its allow-lists, and the writing
+  of that value into the session at login. Every gate in the application is now
+  a role/permission check. An automated check runs on every build and fails on
+  any comparison against the old column outside the short, reviewable migration
+  path.
+
 ## [4.2.1] - 2026-07-29
 
 Fixes the test suite that 4.2.0 shipped. **Nothing else changed** — no behaviour

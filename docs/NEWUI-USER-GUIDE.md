@@ -1096,7 +1096,7 @@ Each list has a name and a description, plus a roster of members. A member can b
 - **Member** (a personnel record from the Roster), addressed using the email on file.
 - **Constituent** (a contact from the Constituents page), addressed using the email on file.
 - **Inline** address --- a free-form email address you type in (`sheriff@county.gov`). Use this for one-off contacts that don't belong in the Roster.
-- **List** --- another email list, by reference. This is how you build groups of groups ("All Cities" = Bloomington Staff + Edina Staff + Minnetonka Staff). The resolver detects circular references and refuses to fan out a list that loops back on itself.
+- **List** --- another email list, by reference. This is how you build groups of groups ("All Cities" = Riverside Staff + Lakeside Staff + Fairview Staff). The resolver detects circular references and refuses to fan out a list that loops back on itself.
 
 **Importing from a CSV** --- click the **Import** button and paste a CSV with `email,name,note` columns (header row required). Inline addresses are created for each row that doesn't already match a member by email.
 

@@ -382,9 +382,8 @@ try {
 }
 
 // ─── Summary ───
-echo "\n=== Results ===\n";
-echo "Passed: {$pass}\n";
-echo "Failed: {$fail}\n";
-echo "Total:  " . ($pass + $fail) . "\n";
+// Canonical summary — tools/test_all.php will not count a file that does
+// not print this exact shape, and errors on one that prints nothing.
+echo "\n=== {$pass} passed, {$fail} failed ===\n";
 
 exit($fail > 0 ? 1 : 0);

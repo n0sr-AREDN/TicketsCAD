@@ -60,7 +60,7 @@ ini_set('display_errors', $prevDisplay);
  */
 function handleAssign(array $input, bool $selfSignup): void
 {
-    global $current_user_id, $current_level;
+    global $current_user_id;
 
     $slotId   = intval($input['slot_id'] ?? 0);
     $roleId   = intval($input['role_id'] ?? 0);
@@ -299,8 +299,6 @@ function handleCancel(array $input): void
  */
 function handleDelete(array $input): void
 {
-    global $current_level;
-
     if (!is_admin()) {
         json_error('Only admins can delete assignments');
     }

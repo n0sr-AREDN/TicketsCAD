@@ -74,16 +74,31 @@ if (!function_exists('rrbv2_index_exists')) {
     }
 }
 if (!function_exists('rrbv2_step')) {
-    function rrbv2_step(string $name, callable $check, callable $apply): void {
+    /**
+     * @param bool $critical  Phase 128 — a critical step failing makes the
+     *   whole runner exit non-zero. Historically EVERY failure here was
+     *   swallowed with a `[fail]` line and exit code 0, which is how step
+     *   A9 (the one-time user.level -> role migration) sat broken and
+     *   invisible: it raised MySQL 1054 on a column that does not exist,
+     *   printed one line nobody read, and the install carried on with
+     *   users who had no roles. Most steps stay non-critical — they are
+     *   additive column/permission seeds that tolerate a re-run — but the
+     *   level->role migration and its verification do not.
+     */
+    function rrbv2_step(string $name, callable $check, callable $apply, bool $critical = false): void {
         try {
             if ($check()) { echo "  [skip] $name (already in place)\n"; return; }
             $apply();
             echo "  [ok]   $name\n";
         } catch (Throwable $e) {
             echo "  [fail] $name — " . $e->getMessage() . "\n";
+            if ($critical) {
+                $GLOBALS['rrbv2_critical_failures'][] = $name . ' — ' . $e->getMessage();
+            }
         }
     }
 }
+$GLOBALS['rrbv2_critical_failures'] = $GLOBALS['rrbv2_critical_failures'] ?? [];
 if (!function_exists('rrbv2_parse_code')) {
     /**
      * Map an old permission code + category to (resource, verb).
@@ -412,45 +427,149 @@ rrbv2_step('roles.is_super: set role_id=1 to super',
 //   3 -> 5 Read-Only
 //   4 -> 6 Field Unit
 //   5..8 -> 5 Read-Only
-//   anything else -> 5 Read-Only
+//   NULL / anything else -> 5 Read-Only
+//
+// Phase 128 (2026-07-29) — this step had NEVER run successfully. It read
+// `u.username`, and there is no such column: the `user` table's login
+// column is `user` (sql/base_schema.sql). MySQL raised 1054, rrbv2_step()
+// caught the Throwable, printed `[fail]` and carried on with exit code 0 —
+// so every orphaned user was left with no role, and _rbac_legacy_check()
+// silently covered for it by authorising from user.level instead. That is
+// the whole reason "no more levels" kept failing to stick: the one-time
+// migration Eric asked for was a no-op, and the fallback hid it.
+//
+// Two further corrections while we are here:
+//   * Orphan detection now ignores EXPIRED grants, so it agrees with what
+//     rbac_user_roles() actually sees. A user whose only grant lapsed used
+//     to read as "already migrated" and got nothing.
+//   * A NULL level lands on Read-Only explicitly rather than casting to 0
+//     and being handed Super Admin.
+//
+// The outcome is verified by A9b below — never trust the step, ask the DB.
+
+/** The active-grant orphan count: users with no unexpired role grant. */
+if (!function_exists('rrbv2_orphan_count')) {
+    function rrbv2_orphan_count(string $prefix): int {
+        return (int) db_fetch_value(
+            "SELECT COUNT(*) FROM `{$prefix}user` u
+              WHERE NOT EXISTS (
+                    SELECT 1 FROM `{$prefix}user_roles` ur
+                     WHERE ur.user_id = u.id
+                       AND (ur.expires_at IS NULL OR ur.expires_at > NOW()))"
+        );
+    }
+}
 
 rrbv2_step('legacy users: ensure each user has at least one grant',
     function () use ($prefix) {
         try {
-            // Skip if every user already has at least one grant.
-            $orphans = (int) db_fetch_value(
-                "SELECT COUNT(*) FROM `{$prefix}user` u
-                 LEFT JOIN `{$prefix}user_roles` ur ON u.id = ur.user_id
-                 WHERE ur.id IS NULL"
-            );
-            return $orphans === 0;
+            return rrbv2_orphan_count($prefix) === 0;
         } catch (Throwable $e) { return false; }
     },
     function () use ($prefix) {
         $orphans = db_fetch_all(
-            "SELECT u.id, u.username, u.level
-             FROM `{$prefix}user` u
-             LEFT JOIN `{$prefix}user_roles` ur ON u.id = ur.user_id
-             WHERE ur.id IS NULL"
+            "SELECT u.id, u.`user` AS username, u.level
+               FROM `{$prefix}user` u
+              WHERE NOT EXISTS (
+                    SELECT 1 FROM `{$prefix}user_roles` ur
+                     WHERE ur.user_id = u.id
+                       AND (ur.expires_at IS NULL OR ur.expires_at > NOW()))
+              ORDER BY u.id"
         );
         $map = [0=>1, 1=>2, 2=>3, 3=>5, 4=>6, 5=>5, 6=>5, 7=>5, 8=>5];
+        $roleNames = [];
+        try {
+            foreach (db_fetch_all("SELECT id, name FROM `{$prefix}roles`") as $r) {
+                $roleNames[(int) $r['id']] = (string) $r['name'];
+            }
+        } catch (Throwable $e) { /* names are cosmetic */ }
+
         $count = 0;
         foreach ($orphans as $u) {
-            $level = (int) $u['level'];
-            $roleId = $map[$level] ?? 5;
+            // NULL is not level 0. An unset level means "we do not know
+            // what this account was", which is Read-Only, not Super Admin.
+            $known  = $u['level'] !== null && $u['level'] !== '';
+            $level  = $known ? (int) $u['level'] : null;
+            $roleId = ($level !== null && isset($map[$level])) ? $map[$level] : 5;
+            $shown  = $known ? (string) $level : 'NULL';
+            $why    = ($level !== null && isset($map[$level]))
+                ? '' : ' (unrecognised level -> Read-Only)';
+            $rname  = $roleNames[$roleId] ?? ('role ' . $roleId);
+
+            // ON DUPLICATE KEY UPDATE, not a plain INSERT: an orphan may be
+            // orphaned precisely BECAUSE its grant of this very role has
+            // lapsed (rrbv2_orphan_count ignores expired grants, by
+            // design). Since Phase 129 the natural key (user, role, scope)
+            // is genuinely unique, so a second row for the same fact is no
+            // longer possible — and should not be wanted. Expiry is an
+            // attribute of the grant, so re-granting revives the row
+            // rather than stacking another one beside it.
             db_query(
                 "INSERT INTO `{$prefix}user_roles`
                  (user_id, role_id, org_id, scope_kind, scope_id, granted_at, reason)
-                 VALUES (?, ?, NULL, 'global', NULL, NOW(), 'auto-migrated from user.level')",
+                 VALUES (?, ?, NULL, 'global', NULL, NOW(), 'auto-migrated from user.level')
+                 ON DUPLICATE KEY UPDATE
+                     expires_at = NULL,
+                     granted_at = NOW(),
+                     reason     = 'auto-migrated from user.level (revived lapsed grant)'",
                 [$u['id'], $roleId]
             );
-            echo "          user #{$u['id']} ({$u['username']}, level={$level}) -> role $roleId\n";
+            echo "          user #{$u['id']} ({$u['username']}, level={$shown})"
+               . " -> role {$roleId} {$rname}{$why}\n";
             $count++;
         }
         if ($count === 0) {
             echo "          (no orphans found)\n";
+        } else {
+            echo "          migrated {$count} user(s) from user.level to RBAC roles\n";
         }
-    });
+    },
+    true);   // critical — this IS the one-time level->role migration
+
+// ─────────────────────────────────────────────────────────────────────
+// A9b — VERIFY the outcome of A9 (Phase 128)
+// ─────────────────────────────────────────────────────────────────────
+//
+// CLAUDE.md, Phase 125: "never trust a migration tracker as evidence that
+// schema exists — ask the database." Same rule for data. A9 is the one
+// moment where levels become roles; if it leaves anybody behind, the
+// install has users who can authenticate and hold no permissions, and
+// (since Phase 128 deleted the fallback) nothing to quietly paper over it.
+// Fail here, in the migration output, rather than in the field.
+
+rrbv2_step('legacy users: VERIFY every user holds an active role',
+    function () use ($prefix) {
+        // No cheap "already done" state — this step is the check.
+        return false;
+    },
+    function () use ($prefix) {
+        $orphans = rrbv2_orphan_count($prefix);
+        if ($orphans > 0) {
+            $who = db_fetch_all(
+                "SELECT u.id, u.`user` AS username, u.level
+                   FROM `{$prefix}user` u
+                  WHERE NOT EXISTS (
+                        SELECT 1 FROM `{$prefix}user_roles` ur
+                         WHERE ur.user_id = u.id
+                           AND (ur.expires_at IS NULL OR ur.expires_at > NOW()))
+                  ORDER BY u.id LIMIT 20"
+            );
+            $names = [];
+            foreach ($who as $u) {
+                $names[] = "#{$u['id']} {$u['username']}";
+            }
+            throw new RuntimeException(
+                "{$orphans} user(s) still hold no active role after the "
+                . "level->role migration: " . implode(', ', $names)
+                . ". Assign a role in Settings -> Roles & Permissions, or re-run "
+                . "this migration once the cause is fixed. Levels are no longer "
+                . "consulted at runtime, so these accounts can log in and do nothing."
+            );
+        }
+        $total = (int) db_fetch_value("SELECT COUNT(*) FROM `{$prefix}user`");
+        echo "          all {$total} user(s) hold an active role grant\n";
+    },
+    true);   // critical — an account with no role can log in and do nothing
 
 // ─────────────────────────────────────────────────────────────────────
 // A11 — Seed RBAC settings (per Eric's 2026-05-05 decisions)
@@ -578,3 +697,33 @@ foreach ($settingsToSeed as $name => $default) {
         });
 }
 
+
+// ─────────────────────────────────────────────────────────────────────
+// Exit status (Phase 128)
+// ─────────────────────────────────────────────────────────────────────
+//
+// CLAUDE.md: "Migration scripts must exit non-zero on failure" —
+// sql/run_migrations.php runs each script as its OWN PROCESS and reads
+// the child's exit code first. This file used to exit 0 unconditionally,
+// so A9's failure was invisible to the runner AND to CI.
+//
+// Only CRITICAL steps affect the status. When this file is *included*
+// (tools/install_fresh.php uses require_once) exiting would abort the
+// caller mid-install, so the flag is left in $GLOBALS for it to read.
+
+if (!empty($GLOBALS['rrbv2_critical_failures'])) {
+    echo "\n";
+    echo "!! RBAC migration did NOT complete. Levels are no longer consulted at\n";
+    echo "!! runtime, so this must be fixed before anyone can use the install:\n";
+    foreach ($GLOBALS['rrbv2_critical_failures'] as $f) {
+        echo "!!   - {$f}\n";
+    }
+    echo "!! Re-run:  php sql/run_migrations.php\n\n";
+
+    $selfInvoked = PHP_SAPI === 'cli'
+        && !empty($_SERVER['SCRIPT_FILENAME'])
+        && realpath($_SERVER['SCRIPT_FILENAME']) === realpath(__FILE__);
+    if ($selfInvoked) {
+        exit(1);
+    }
+}

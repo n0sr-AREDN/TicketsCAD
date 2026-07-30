@@ -117,6 +117,7 @@ INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VAL
     ('action.manage_orgs',     'Manage Organizations', 'action', 'Create/edit organizations'),
     ('action.manage_types',    'Manage Incident Types', 'action', 'Create/edit incident type definitions'),
     ('action.view_audit',      'View Audit Log',       'action', 'View the system audit log'),
+    ('action.view_reports',    'Run Aggregate Reports', 'action', 'Run cross-incident / cross-responder and personnel reports (screen.reports alone only allows single-resource reports)'),
     ('action.export_data',     'Export Data',           'action', 'Export data and reports'),
     ('action.import_data',     'Import Data',           'action', 'Import data from external sources'),
     ('action.manage_sop',      'Manage SOPs',          'action', 'Create/edit standard operating procedures'),
@@ -160,7 +161,9 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
         'action.import_data',          -- bulk import is an admin task
         'action.bulk_delete_members',  -- bulk roster removal is Super-Admin-only by default (Eric, 2026-07-04)
         'console.design',              -- shared console-view designer is admin-only (Phase 114, roles 1-2)
-        'action.intercom_unlock'       -- intercom door actuator is admin-only (Phase 114, roles 1-2)
+        'action.intercom_unlock',      -- intercom door actuator is admin-only (Phase 114, roles 1-2)
+        'action.view_reports'          -- org-wide aggregate reports are admin-only (roles 1-2, 2026-07-29);
+                                       -- grant per-role via the Roles UI if your dispatchers need them
     );
 
 -- Operator gets all screens/widgets/fields + key operational actions (45 permissions)

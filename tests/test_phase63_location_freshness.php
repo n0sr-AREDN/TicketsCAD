@@ -53,6 +53,7 @@ try {
     );
 } catch (Exception $e) {
     echo "SKIP: fixture setup failed: " . $e->getMessage() . "\n";
+    echo "=== 0 passed, 0 failed ===\n";
     exit(0);
 }
 
@@ -130,10 +131,10 @@ try {
 } catch (Exception $e) {}
 
 // ── Report ────────────────────────────────────────────────────────
-echo "Phase 63 location-freshness tests: $passes/$tests passed\n";
-if ($fails) {
-    foreach ($fails as $f) {
-        echo "  FAIL: $f\n";
-    }
-    exit(1);
+foreach ($fails as $f) {
+    echo "  FAIL: $f\n";
 }
+// Canonical summary — tools/test_all.php will not count a file that does
+// not print this exact shape, and errors on one that prints nothing.
+echo "Phase 63 location-freshness — === $passes passed, " . count($fails) . " failed ===\n";
+exit($fails ? 1 : 0);

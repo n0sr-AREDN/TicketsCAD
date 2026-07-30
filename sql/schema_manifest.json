@@ -918,6 +918,16 @@
             "source_message_id",
             "status"
         ],
+        "scheduled_job_runs": [
+            "error_count",
+            "job_key",
+            "last_detail",
+            "last_duration_ms",
+            "last_ok_at",
+            "last_run_at",
+            "last_status",
+            "run_count"
+        ],
         "scheduling_permission_assignments": [
             "profile_id",
             "scope_id",
@@ -1396,6 +1406,7 @@
         "role_permissions",
         "roles",
         "routing_log",
+        "scheduled_job_runs",
         "scheduling_permission_assignments",
         "scheduling_permission_profiles",
         "security_labels",
@@ -1444,8 +1455,8 @@
     "_meta": {
         "generated_by": "tools/gen_schema_manifest.php",
         "purpose": "columns this code writes to + tables it references; checked by inc/schema-verify.php",
-        "tables": 129,
-        "columns": 1011,
-        "required_tables": 169
+        "tables": 130,
+        "columns": 1019,
+        "required_tables": 170
     }
 }

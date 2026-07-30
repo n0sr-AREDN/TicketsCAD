@@ -17,6 +17,7 @@
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/audit.php';
+require_once __DIR__ . '/../inc/rbac.php';   // is_admin() — privacy redaction gate
 
 $prevDisplay = ini_get('display_errors');
 ini_set('display_errors', '0');
@@ -42,7 +43,6 @@ function safe_fetch_all_v($sql, $params = []) {
  */
 function applyPrivacy($vehicle) {
     global $current_user_id;
-    $userLevel = (int)($_SESSION['level'] ?? 99);
 
     // No redaction needed for agency vehicles or non-private records
     if (!$vehicle['is_private'] || $vehicle['is_agency_vehicle']) {
@@ -62,8 +62,13 @@ function applyPrivacy($vehicle) {
         }
     }
 
-    // Supervisors (level 0=Super, 1=Admin) can see everything
-    if ($userLevel <= 1 || $isOwner) {
+    // Supervisors can see everything.
+    // 2026-07-29 — was `$userLevel <= 1` only, while vehicles.php gates on
+    // rbac_require_screen('screen.vehicles'). After the Phase 12 RBAC
+    // migration an admin whose legacy user.level is 4 got their own agency's
+    // plates/VINs redacted. Phase 128 removed the level term entirely —
+    // is_admin() is the whole test now.
+    if (is_admin() || $isOwner) {
         $vehicle['redacted'] = false;
         return $vehicle;
     }

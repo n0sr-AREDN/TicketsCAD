@@ -30,9 +30,16 @@ $action = trim($_GET['action'] ?? $_POST['action'] ?? '');
 // ACTION: overview — full compliance grid
 // ══════════════════════════════════════════════════════════════
 if ($action === 'overview') {
-    // Require admin
-    $userLevel = (int) ($_SESSION['level'] ?? 99);
-    if ($userLevel > 2) {
+    // Cross-member certification grid — staff-level data.
+    // 2026-07-29 — was `$_SESSION['level'] > 2` only, while
+    // compliance-dashboard.php gates on rbac_can('action.manage_config').
+    // A Super/Org Admin whose legacy user.level is 4 passed the page and
+    // was refused here. action.manage_members is the RBAC equivalent of
+    // the old "level <= 2" set (Super Admin, Org Admin, Dispatcher — not
+    // Operator or Read-Only).
+    // Phase 128 — the level fallback is gone; RBAC is the only gate.
+    require_once __DIR__ . '/../inc/rbac.php';
+    if (!is_admin() && !rbac_can('action.manage_members')) {
         json_error('Operator access required', 403);
     }
 

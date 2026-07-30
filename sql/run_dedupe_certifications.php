@@ -20,7 +20,7 @@
  *      Every re-run added 12 more rows.
  *
  *   your-server.example.com accumulated 138 rows (6x from seed 1, 7x
- *   from seed 2) before we caught it. Bloomington didn't have seed 1's
+ *   from seed 2) before we caught it. your deployment didn't have seed 1's
  *   base names at all (installed from a legacy base_schema import that
  *   never ran membership.sql's certification seed), so it was missing
  *   the modern IS-100.c / IS-200.c / IS-700.b / IS-800.d entries

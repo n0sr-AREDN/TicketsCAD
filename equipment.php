@@ -459,7 +459,10 @@ $csrf     = csrf_token();
 
 <!-- CSRF token for JS -->
 <input type="hidden" id="csrfToken" value="<?php echo e($csrf); ?>">
-<input type="hidden" id="userLevel" value="<?php echo (int) $_SESSION['level']; ?>">
+<!-- Phase 128 (2026-07-29): the #userLevel hidden input is removed.
+     Nothing read it — it piped the legacy user.level into the page for
+     a client-side check that was never written. Authorisation is RBAC,
+     server-side; this endpoint's API (api/equipment.php) already enforces it. -->
 
 <!-- Vendor JS -->
 <script src="assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>

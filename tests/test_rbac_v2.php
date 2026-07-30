@@ -46,7 +46,8 @@ $sandbox = (int) (db_fetch_value(
     "SELECT id FROM `{$prefix}user` WHERE level > 0 ORDER BY id LIMIT 1"
 ) ?: 0);
 if (!$sandbox) {
-    echo "[SKIP] No non-admin user available; cannot run dynamic checks.\n";
+    echo "SKIP: no non-admin user available; cannot run dynamic checks.\n";
+    echo "=== 0 passed, 0 failed ===\n";
     exit(0);
 }
 echo "Sandbox user: #$sandbox\n\n";
@@ -417,17 +418,30 @@ foreach (['user_id','role_id','scope_kind'] as $k) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// F8 — Legacy fallback presence + alias resolver (5)
+// F8 — Legacy fallback ABSENCE + alias resolver (5)
 // ─────────────────────────────────────────────────────────────────────
 echo "\n── F8 Legacy + alias ──\n";
 
-if (function_exists('_rbac_legacy_check')) ok('_rbac_legacy_check still present (deprecation window)');
-else                                       bad('_rbac_legacy_check should still be present per Eric decision #5');
+// This block used to assert the OPPOSITE: "_rbac_legacy_check should
+// still be present per Eric decision #5" — the deprecation window agreed
+// during the RBAC v2 redesign. That window closed on 2026-07-29, when the
+// fallback turned out to be why the one-time level->role migration had
+// never been performed on any install (it silently answered from
+// user.level instead, so nobody noticed step A9 was failing). Phase 128
+// deleted it. See specs/phase-128-eliminate-legacy-levels/.
+if (!function_exists('_rbac_legacy_check')) ok('_rbac_legacy_check is gone (Phase 128)');
+else                                        bad('_rbac_legacy_check is back — levels can authorise again');
 
-if (function_exists('_rbac_v2_schema_present') && _rbac_v2_schema_present()) {
-    ok('_rbac_v2_schema_present returns true on migrated DB');
+if (function_exists('rbac_schema_ready') && rbac_schema_ready()) {
+    ok('rbac_schema_ready() returns true on a migrated DB');
 } else {
-    bad('_rbac_v2_schema_present returns true on migrated DB');
+    bad('rbac_schema_ready() returns true on a migrated DB');
+}
+// The historical name survives as an alias for tools/upgrade/smoke_test.php.
+if (function_exists('_rbac_v2_schema_present') && _rbac_v2_schema_present()) {
+    ok('_rbac_v2_schema_present() alias still answers correctly');
+} else {
+    bad('_rbac_v2_schema_present() alias broken');
 }
 
 // Alias pair: action.edit_incident -> incident.edit. Granter who has

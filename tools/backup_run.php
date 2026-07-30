@@ -13,6 +13,17 @@
  * Linux cron, hourly (the schedule itself is the interval setting):
  *   0 * * * * www-data php /var/www/newui/tools/backup_run.php >/dev/null 2>&1
  *
+ * CHECK THAT YOU ACTUALLY HAVE CRON BEFORE YOU RELY ON IT. Dropping a file into
+ * /etc/cron.d is silent when no cron daemon is installed, and minimal Debian
+ * cloud images frequently ship without one — both TicketsCAD beta servers had
+ * /etc/cron.d entries that had never executed once. Verify, don't assume:
+ *   systemctl is-active cron   # "inactive"/"not-found" => nothing is scheduled
+ *
+ * systemd timer (no cron package needed; survives reboots properly). See
+ * docs/BACKUP-RECOVERY-RUNBOOK.md "Method C2" for the two unit files; the
+ * timer wants Persistent=true so a machine that was switched off at the
+ * scheduled hour backs up at next boot rather than skipping silently.
+ *
  * Windows Task Scheduler: run C:\xampp\php\php.exe with the argument
  *   C:\xampp\htdocs\ticketscad\tools\backup_run.php
  *

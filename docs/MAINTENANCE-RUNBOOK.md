@@ -29,19 +29,133 @@ at the end of this document.
 
 ## Continuous — automated
 
-These run on cron or systemd timers. Set up in [INSTALLATION-CHECKLIST.md § Section 12](INSTALLATION-CHECKLIST.md#section-12--cron-for-background-tasks). Verify they're firing:
+These run on cron or systemd timers. Set up in [INSTALLATION-CHECKLIST.md § Section 12](INSTALLATION-CHECKLIST.md#section-12--cron-for-background-tasks).
+
+> ### Before you trust any of this: confirm a scheduler actually exists
+>
+> On 29 July 2026 both servers running TicketsCAD were found to have
+> `/etc/cron.d/par_tick` and `/etc/cron.d/pending_msg_tick` installed since
+> 11 June — and **no cron daemon installed at all**. Neither job had executed
+> once in seven weeks. Their log files were still zero bytes. Writing a file
+> into `/etc/cron.d` on a host without cron fails *completely silently*:
+> no error, no log, nothing to distinguish it from a working scheduler.
+> Minimal Debian cloud images routinely ship without `cron`.
+>
+> ```bash
+> systemctl is-active cron                          # "not-found" => no cron daemon
+> systemctl list-timers --all | grep -i ticketscad  # is a timer scheduled instead?
+> journalctl -u ticketscad-par-tick -n 20           # what the last runs actually did
+> ```
+>
+> Do **not** judge a timer by `/var/log/par_tick.log`. That file belonged to the
+> cron line; the timer units set `StandardOutput=journal`, so it stays zero bytes
+> on a perfectly healthy host. Reading it as "never ran" inverts the original
+> bug — a dead scheduler that looked configured becomes a live one that looks
+> dead — and sends you fixing something that works.
+>
+> **Settings → Status → File & Code Health → Scheduled background jobs** now
+> shows the last successful run of each job and turns red when one stops or
+> has never started. It reads the `scheduled_job_runs` heartbeat, which the tick
+> writes itself, so it cannot report a run that did not happen. Check there
+> first; it is the surface that was missing.
+
+Verify they're firing:
 
 ```bash
-sudo crontab -l -u www-data
-# OR
-sudo systemctl list-timers --all | grep -i newui
+sudo systemctl list-timers --all | grep -Ei 'newui|ticketscad'
+sudo crontab -l -u www-data          # only meaningful if cron is installed
+php tools/check-health.php           # includes the Scheduled background jobs section
 ```
+
+### Scheduled background jobs — systemd timer units
+
+Use these when there is no cron daemon (they need no extra package). One
+`.service` + one `.timer` per job; `Persistent=true` so a machine that was
+switched off catches up at next boot instead of skipping silently.
+
+`/etc/systemd/system/ticketscad-par-tick.service`:
+
+```ini
+[Unit]
+Description=TicketsCAD PAR scheduler tick
+After=network.target mariadb.service mysql.service
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/newui
+ExecStart=/usr/bin/php /var/www/newui/tools/par_tick.php
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=300
+```
+
+`/etc/systemd/system/ticketscad-par-tick.timer`:
+
+```ini
+[Unit]
+Description=Run the TicketsCAD PAR scheduler every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=15s
+Persistent=true
+Unit=ticketscad-par-tick.service
+
+[Install]
+WantedBy=timers.target
+```
+
+The pending-message sweep is identical with the name and ExecStart changed —
+`ticketscad-pending-msg.service` running
+`/usr/bin/php /var/www/newui/tools/pending_messages_tick.php`, and
+`ticketscad-pending-msg.timer` pointing `Unit=` at it.
+
+Install and prove them:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now ticketscad-par-tick.timer ticketscad-pending-msg.timer
+sudo systemctl list-timers --all | grep ticketscad
+sudo journalctl -u ticketscad-par-tick.service -n 20 --no-pager
+
+# Remove the cron.d files that never worked, so nobody trusts them again:
+sudo rm -f /etc/cron.d/par_tick /etc/cron.d/pending_msg_tick
+```
+
+### The stale-work cutoff — why a restarted job does not flush its backlog
+
+Both sweeps act on "everything overdue". That is right for a job running
+every minute and dangerous for one restarted after an outage: the first tick
+would deliver seven weeks of held messages at once, and raise PAR alarms
+about incidents that closed a month ago.
+
+Work more than **`sched_stale_cutoff_min`** minutes past due (default **60**;
+`0` disables the cutoff) is therefore recorded as **expired** and *not* acted
+on. Nothing is deleted — the rows stay, with the reason, the scheduled time
+and the governing setting written into them, so both
+*"why did I get this?"* and *"why did I NOT get this?"* have an answer:
+
+```sql
+-- messages that were held back, and why
+SELECT id, channel, target, scheduled_send_at, send_error
+  FROM pending_routed_messages WHERE status = 'expired';
+
+-- PAR cycles that were closed out instead of escalated retroactively
+SELECT id, ticket_id, initiated_at, notes
+  FROM par_cycles WHERE status = 'expired';
+```
+
+To deliberately release an expired message, set it back to `pending` with a
+fresh `scheduled_send_at`. Expiry is reversible by design.
 
 | Job | Cadence | What it does | If it stops |
 |---|---|---|---|
 | `tools/expire_grants.php` | hourly | Removes time-bound role grants past `expires_at` | Users keep elevated access past intended window |
-| `tools/par_tick.php` | every minute | Fires PAR cycles for active incidents per cadence; marks missed acks; posts escalation chat | PAR doesn't fire; manual PAR still works |
-| `tools/pending_messages_tick.php` | every minute | Delivers queued broker messages | Outbound notifications stall |
+| `tools/par_tick.php` | every minute | Fires PAR cycles for active incidents per cadence; marks missed acks; posts escalation chat | PAR doesn't fire; manual PAR still works. **Flagged on the Status page** |
+| `tools/pending_messages_tick.php` | every minute | Delivers routed messages held for their security-label kill window | Held messages never leave the queue; after `sched_stale_cutoff_min` they expire undelivered. **Flagged on the Status page** |
 | audit-log trim *(planned)* | daily 03:00 | Will drop `audit_log` rows past retention — no script yet; run as SQL: `DELETE FROM audit_log WHERE created_at < NOW() - INTERVAL 365 DAY;` | DB bloat over time |
 | location-reports trim *(planned)* | daily 03:30 | Same idea for `location_reports`; same workaround | DB bloat; map slowness |
 | backup *(planned)* | daily 02:00 | No all-in-one script yet — use `mysqldump` via cron per [BACKUP-RECOVERY-RUNBOOK.md](BACKUP-RECOVERY-RUNBOOK.md) | No fresh backup if a disaster hits |

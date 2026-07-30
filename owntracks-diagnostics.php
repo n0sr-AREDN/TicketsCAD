@@ -246,7 +246,11 @@ $csrf     = csrf_token();
                 var html = '';
                 for (var i = 0; i < rows.length; i++) {
                     var r = rows[i];
-                    var stale = (!r.last_post || (Date.now() - new Date(r.last_post.replace(' ', 'T') + 'Z').getTime()) / 1000 > 1800);
+                    // CLOCK: parse as LOCAL — no 'Z', same reason as fmtAge()
+                    // above. This second call site kept the 'Z' through the
+                    // Phase 58 fix because the guard string-matched fmtAge's
+                    // exact `ts.replace(...)` text rather than the pattern.
+                    var stale = (!r.last_post || (Date.now() - new Date(r.last_post.replace(' ', 'T')).getTime()) / 1000 > 1800);
                     html += '<tr' + (stale ? ' class="table-warning"' : '') + '>'
                           + '<td><strong>' + esc(r.member_name) + '</strong></td>'
                           + '<td><code class="small">' + esc(r.username || '—') + '</code></td>'

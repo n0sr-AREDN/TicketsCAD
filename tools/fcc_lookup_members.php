@@ -25,7 +25,7 @@ function callook_lookup(string $callsign, int $timeout = 6) {
         'http' => [
             'timeout'       => $timeout,
             'ignore_errors' => true,
-            'user_agent'    => 'NewUI-CAD/4.0 Bloomington-AUXCOMM',
+            'user_agent'    => 'NewUI-CAD/4.0',
         ],
         'ssl'  => ['verify_peer' => false],
     ]);

@@ -128,7 +128,7 @@ synthesizes with Piper and keys the Opus audio). Requirements:
 The poller runs server-side (browsers never touch NWS directly — no CSP change,
 central de-dup).
 
-### Linux (training / Bloomington / any VM) — systemd timer (preferred)
+### Linux (training / your deployment / any VM) — systemd timer (preferred)
 
 `/etc/systemd/system/tickets-weather.service`:
 

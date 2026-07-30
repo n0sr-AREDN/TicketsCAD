@@ -21,10 +21,29 @@
  *     Mark a row 'killed'. The cron sweep will not send killed rows.
  *
  *   pending_sweep(?int $now=null): array
- *     Cron entry point. For each pending row whose scheduled_send_at
+ *     Scheduler entry point. For each pending row whose scheduled_send_at
  *     has passed, dispatch via the broker and mark sent/failed. Caps
  *     work at 200 rows per tick to avoid runaway.
+ *
+ * STALE WORK IS NOT DELIVERED (Phase 127, 2026-07-29)
+ * ---------------------------------------------------
+ * This sweep was installed as a cron job on hosts that had no cron daemon,
+ * so it never ran once in seven weeks. The queue holds messages that were
+ * deliberately delayed by a few minutes to give a dispatcher a kill window
+ * — not messages that are meant to arrive in the middle of next month. The
+ * first successful tick after a long outage would otherwise deliver the
+ * entire backlog at once to a live emergency-response team, out of context
+ * and possibly contradicting whatever happened since.
+ *
+ * So a row more than sched_stale_cutoff_min minutes past its scheduled time
+ * is moved to status='expired' and NOT sent. The row is kept, not deleted;
+ * send_error records the scheduled time, the age and the cutoff that
+ * governed the call, so "why did I not get this?" has an answer. An
+ * operator who decides a message should still go out can set it back to
+ * 'pending' with a fresh scheduled_send_at.
  */
+
+require_once __DIR__ . '/scheduled-jobs.php';
 
 function pending_enqueue(array $msg): ?int {
     $prefix = $GLOBALS['db_prefix'] ?? '';
@@ -82,11 +101,11 @@ function pending_kill(int $id, ?int $userId, ?string $reason): bool {
     } catch (Exception $e) { return false; }
 }
 
-function pending_sweep(?int $now = null): array {
+function pending_sweep(?int $now = null, ?int $cutoffMin = null): array {
     $prefix = $GLOBALS['db_prefix'] ?? '';
     if ($now === null) $now = time();
     $nowStr = date('Y-m-d H:i:s', $now);
-    $sent = 0; $failed = 0; $considered = 0;
+    $sent = 0; $failed = 0; $considered = 0; $expired = 0;
     try {
         $rows = db_fetch_all(
             "SELECT * FROM `{$prefix}pending_routed_messages`
@@ -94,10 +113,40 @@ function pending_sweep(?int $now = null): array {
                 AND scheduled_send_at <= ?
               ORDER BY scheduled_send_at ASC
               LIMIT 200", [$nowStr]);
-    } catch (Exception $e) { return ['considered' => 0, 'sent' => 0, 'failed' => 0]; }
+    } catch (Exception $e) {
+        return ['considered' => 0, 'sent' => 0, 'failed' => 0, 'expired' => 0];
+    }
 
     foreach ($rows as $r) {
         $considered++;
+
+        // ── Stale-work cutoff ────────────────────────────────────────────
+        // Too far past due to deliver as if it were current. Expire it,
+        // recording why, and move on. Never delete: the message is user
+        // data and the decision must be auditable and reversible.
+        $dueTs = strtotime((string) $r['scheduled_send_at']);
+        if ($dueTs && sched_is_stale($dueTs, $now, $cutoffMin)) {
+            $reason = sched_expiry_reason((string) $r['scheduled_send_at'], $dueTs, $now, $cutoffMin);
+            try {
+                db_query("UPDATE `{$prefix}pending_routed_messages`
+                             SET status = 'expired', send_error = ?
+                           WHERE id = ? AND status = 'pending'", [substr($reason, 0, 255), $r['id']]);
+                $expired++;
+                if (function_exists('audit_log')) {
+                    audit_log('routing', 'expire', 'pending_message', (int) $r['id'],
+                        "Not delivered — {$reason}", [
+                            'channel'           => $r['channel'],
+                            'target'            => $r['target'],
+                            'scheduled_send_at' => $r['scheduled_send_at'],
+                            'ticket_id'         => $r['ticket_id'],
+                        ]);
+                }
+            } catch (Exception $e) {
+                error_log('pending_sweep expire failed for #' . $r['id'] . ': ' . $e->getMessage());
+            }
+            continue;
+        }
+
         $ok = false;
         $err = null;
         if (function_exists('broker_send')) {
@@ -138,5 +187,6 @@ function pending_sweep(?int $now = null): array {
             }
         } catch (Exception $e) {}
     }
-    return ['considered' => $considered, 'sent' => $sent, 'failed' => $failed];
+    return ['considered' => $considered, 'sent' => $sent,
+            'failed' => $failed, 'expired' => $expired];
 }

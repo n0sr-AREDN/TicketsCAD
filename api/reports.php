@@ -23,18 +23,30 @@ ini_set('display_errors', '0');
 // IDOR — reports.php aggregates incident, responder, and facility data.
 // Aggregate reports without a single-resource filter expose cross-org data
 // to anyone with a session, which violates Constitution rule #5 (every
-// endpoint must enforce permission). Allow only admins (level <= 1) for
-// the aggregate reports; non-admins must scope to a specific resource
-// they have access to.
-$_currentLevel = (int) ($_SESSION['level'] ?? 99);
+// endpoint must enforce permission). Only holders of action.view_reports
+// may run the aggregate reports; everyone else must scope to a specific
+// resource they have access to (the per-resource IDOR check below still
+// applies to those).
+//
+// 2026-07-29 — this gate USED to read the legacy `user.level` column
+// (`$_SESSION['level'] <= 1`), which is dead weight after the Phase 12
+// RBAC migration: reports.php (the page) gates on rbac_require_screen(
+// 'screen.reports'), so an Org Admin passed the page and was then refused
+// by the API. On your deployment she was user.level=4 / role_id=2 and could
+// not run a single report, while the org-scope filter twenty lines below
+// — written specifically so an Org Admin (vs Super Admin) could — was
+// unreachable code. The gate now asks the role system, like the rest of
+// the app. is_admin() (Super Admin / action.manage_config) is unchanged.
+require_once __DIR__ . '/../inc/rbac.php';
+$_canAggregate = is_admin() || rbac_can('action.view_reports');
 
 $prefix = $GLOBALS['db_prefix'] ?? '';
 
 // Phase 99j-7 (Billy beta 2026-06-29) — org-scope filter for the
-// aggregate reports. Reports are admin-only (line ~30 below), so
-// the org filter only narrows things when an Org Admin (vs Super
-// Admin) runs a report. Super Admin gets ('', []) so all queries
-// are unchanged.
+// aggregate reports. Aggregate reports require action.view_reports
+// (see the gate above), so the org filter only narrows things when an
+// Org Admin (vs Super Admin) runs a report. Super Admin gets ('', [])
+// so all queries are unchanged.
 require_once __DIR__ . '/../inc/org-scope.php';
 [$rptTicketFrag, $rptTicketVars] = org_query_filter('t.org_id');
 [$rptMemberFrag, $rptMemberVars] = org_member_query_filter('m.id');
@@ -86,15 +98,15 @@ if (!in_array($report, $valid_reports, true)) {
     json_error('Invalid report type', 400);
 }
 
-// Personnel reports — read across the org, so they require admin like
-// the other aggregate reports below. Skip the incident/responder IDOR
-// checks because they don't take those filters.
+// Personnel reports — read across the org, so they need the same
+// aggregate permission as the reports below. Skip the incident/responder
+// IDOR checks because they don't take those filters.
 $personnelReports = ['license_expirations', 'roster_snapshot', 'dmr_inventory',
                      'membership_due', 'inactive_members', 'time_summary'];
 $isPersonnel = in_array($report, $personnelReports, true);
-if ($isPersonnel && $_currentLevel > 1) {
+if ($isPersonnel && !$_canAggregate) {
     ini_set('display_errors', $prevDisplay);
-    json_error('Personnel reports require admin access', 403);
+    json_error('Personnel reports require the "Run Aggregate Reports" permission', 403);
 }
 
 // Per-resource IDOR check first — a user requesting one specific incident
@@ -108,11 +120,12 @@ if ($responder_id > 0 && !user_can_access_entity('responder', $responder_id)) {
     json_error('Responder not found', 404);
 }
 
-// Aggregate / cross-resource reports (no specific filter) require admin.
+// Aggregate / cross-resource reports (no specific filter) need the
+// aggregate permission; everyone else must scope to one resource.
 $isFiltered = ($incident_id > 0) || ($responder_id > 0);
-if (!$isPersonnel && !$isFiltered && $_currentLevel > 1) {
+if (!$isPersonnel && !$isFiltered && !$_canAggregate) {
     ini_set('display_errors', $prevDisplay);
-    json_error('Aggregate reports require admin access — filter by incident or responder', 403);
+    json_error('Aggregate reports require the "Run Aggregate Reports" permission — filter by incident or responder', 403);
 }
 
 // ── Build date range from period ──────────────────────────────────────────────

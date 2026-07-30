@@ -140,6 +140,31 @@ if (!empty($v['config_pin'])) {
         . " (or replace it with: require_once __DIR__ . '/inc/version.php';)";
 }
 
+// ── Scheduled background jobs ────────────────────────────────────────
+// A job nobody records is a job nobody can miss. Two of these had never
+// executed for seven weeks because /etc/cron.d was a no-op on a host with
+// no cron daemon, and there was no surface anywhere that would have said so.
+$sj = $all['scheduled_jobs'] ?? [];
+echo "\n-- Scheduled background jobs --\n";
+if (empty($sj['jobs'])) {
+    echo "[INFO] No background jobs registered.\n";
+} else {
+    foreach ($sj['jobs'] as $jb) {
+        $tag = ($jb['severity'] === 'critical') ? '[CRIT]'
+             : (($jb['severity'] === 'warn') ? '[WARN]' : '[OK]  ');
+        $last = ($jb['state'] === 'never') ? 'NEVER RUN' : (string) $jb['last_ok_at'];
+        echo "$tag {$jb['label']} — last success: $last\n";
+        echo "       " . wordwrap((string) ($jb['note'] ?? ''), 68, "\n       ") . "\n";
+    }
+    if (($sj['severity'] ?? 'ok') !== 'ok') {
+        echo "\n       " . wordwrap((string) ($sj['remedy'] ?? ''), 68, "\n       ") . "\n";
+        $suggestions[] = 'systemctl is-active cron   # "not-found" means NOTHING is scheduled';
+        $suggestions[] = '# then: see docs/MAINTENANCE-RUNBOOK.md "Scheduled background jobs"';
+    }
+    echo "       Stale-work cutoff: " . (int) ($sj['cutoff_min'] ?? 0)
+       . " min (work older than this is expired, not run retroactively).\n";
+}
+
 // ── Summary + suggestions ────────────────────────────────────────────
 $crit = (int) ($all['summary']['critical'] ?? 0);
 $warn = (int) ($all['summary']['warn'] ?? 0);

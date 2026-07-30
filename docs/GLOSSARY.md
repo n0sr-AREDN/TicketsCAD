@@ -212,7 +212,7 @@ The mechanism by which a [Responder](#responder) (unit) gets its position from t
 Incident type. Row in `in_types` defining a category of incident (medical, fire, traffic, etc.) with associated protocol text, default severity, color, and PAR cadence override. The new-incident form dropdown reads from this table.
 
 ### `is_admin()`
-The canonical PHP check for "is the current user an administrator?" Returns true if the user has a role with `is_super=1` or holds `action.manage_config`. **Use this instead of `$_SESSION['level'] <= 1`** — Phase 12 deprecated the legacy level integer.
+The canonical PHP check for "is the current user an administrator?" Returns true if the user has a role with `is_super=1` or holds `action.manage_config`. **Use this instead of `$_SESSION['level'] <= 1`** — Phase 12 deprecated the legacy level integer and Phase 128 (2026-07-29) removed it from authorisation entirely. `$_SESSION['level']` is no longer even set at login, and `tools/legacy_level_audit.php` fails the build on any level-based gate — including one kept "as a fallback" beside an RBAC check.
 
 ---
 

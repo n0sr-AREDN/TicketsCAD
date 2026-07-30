@@ -72,7 +72,8 @@ if (empty($_SESSION['user_id'])) {
     exit;
 }
 $userId     = (int) $_SESSION['user_id'];
-$userLevel  = (int) ($_SESSION['level'] ?? 99);
+// (No $userLevel here — the legacy user.level read was dead code; every
+//  visibility decision below goes through is_admin() / rbac_can().)
 $userGroups = $_SESSION['user_groups'] ?? [];
 $userGroups = array_values(array_filter(array_map('intval', is_array($userGroups) ? $userGroups : []), function ($g) { return $g > 0; }));
 

@@ -68,7 +68,9 @@ Neither outcome is wrong — they suit different account types. The warning bann
 
 ## How RBAC roles map to legacy levels
 
-Older docs and the User Accounts form still show a numeric "Level" dropdown. That's the legacy authority field from v3.44 — it's still there for backward compatibility but **RBAC role is the real authority** post-migration. The level→role auto-grant maps them consistently:
+**This map applies during the v3.44 → v4 upgrade and nowhere else.** As of Phase 128 (2026-07-29) the legacy `user.level` column takes part in **no authorisation decision at all** — not as a gate, not as a fallback, not in JavaScript. It exists so the one-time migration below can read it, and `tools/legacy_level_audit.php` fails the build if any code starts consulting it again. If an install has not completed that migration, it is refused at login with the command to run; it does *not* quietly fall back to levels.
+
+The level→role auto-grant maps them consistently:
 
 | User form **Level** | Auto-granted **RBAC role** | What it means |
 |---|---|---|
@@ -85,7 +87,7 @@ If you need a finer-grained role assignment than this map allows, go to `Personn
 
 When you upgrade an existing v3.44 install:
 
-1. The migration runner (`tools/migrate_rbac.php`, called once during the upgrade) walks every existing user record and creates a `user_roles` row using the level→role map above. Every legacy user ends up with a modern RBAC grant.
+1. The migration runner (`sql/run_rbac_v2.php` step **A9**, applied by `php sql/run_migrations.php`; `tools/migrate_rbac.php` is the standalone equivalent) walks every user with no active role grant and creates a `user_roles` row using the level→role map above. Every legacy user ends up with a modern RBAC grant. Step **A9b** then re-asks the database and **fails the migration** if anybody was left without one — an account that can authenticate and holds no role can now do nothing at all, so this is not allowed to pass quietly. Users whose only grant has *expired* count as unmigrated and are re-granted.
 2. The user's existing `allocates` group memberships stay intact in the legacy table. The four widget APIs honour BOTH the new RBAC grant AND the legacy allocates — when either says "you can see this," you see it.
 3. The user's `member` link and their `member_organizations` rows are preserved as-is. Org chain unchanged.
 4. Phase 7d (planned, not yet shipped) will fold the legacy `allocates` table into RBAC as `scope_kind='group'`. After that, "legacy" stops being a concept here entirely.

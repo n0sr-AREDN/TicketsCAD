@@ -3,7 +3,7 @@
  * Phase 41 — Deduplicate `newui_vehicle_types` rows and add a UNIQUE KEY.
  *
  * Eric reported that your-server.example.com had each vehicle type listed
- * multiple times. Bloomington beta showed 272 rows (34 copies × 8 names)
+ * multiple times. your deployment beta showed 272 rows (34 copies × 8 names)
  * on 2026-07-04, same-day report — visible in /vehicles.php's Type
  * filter row rendering the same chip 34 times.
  *

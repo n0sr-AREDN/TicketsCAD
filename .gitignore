@@ -92,7 +92,7 @@ Thumbs.db
 
 /tools/data/
 
-# Bloomington-specific seed scripts left from the test deploy — they
+# your deployment-specific seed scripts left from the test deploy — they
 # contain real personnel emails and should not be in the public repo.
 /tools/a-seed-script.php
 /tools/enrich_from_contacts_csv.php
@@ -107,3 +107,25 @@ Thumbs.db
 # Upgrade orchestrator artifacts — DB dumps + run logs (may contain live data)
 tools/upgrade/backups/
 tools/upgrade/upgrade-*.log
+
+# Local Claude Code state, including the agent worktrees kept at
+# .claude/worktrees/<name>/ — each an entire second copy of this repository.
+# Never part of the product tree.
+#
+# Untracked was not enough. Unignored, one `git add -A` commits a duplicate of
+# the whole project, and tools that WALK the tree kept re-importing these files:
+# `specs/` is excluded from the SBOM anchored at the repository root, so it never
+# matched .claude/worktrees/x/specs/…, and a Phase 36 planning mock-up walked
+# back in as a sortablejs component — `generate-sbom.php --check` then failed on
+# any machine that happened to have a worktree open (fixed in 269d79b by adding
+# .claude/ to that tool's exclusion list; this entry closes the git side).
+#
+# Anchorless on purpose: a nested .claude/ inside a worktree is ignored too.
+.claude/
+
+# Probe test files planted (and swept) by tests/test_runner_end_to_end.php to
+# drive the real runner against a file that fatals. They exist for a few
+# hundred milliseconds. If a crashed run ever leaks one it will break the next
+# full suite run — which is the point, it is a test file that fatals — but it
+# must not be committable by a stray `git add -A`.
+tests/test_zzprobe_*.php

@@ -48,6 +48,7 @@ try {
     );
     if (!$hasRef) {
         echo "SKIP: constituents.reference column not present on this install\n";
+        echo "=== 0 passed, 0 failed ===\n";
         exit(0);
     }
     // Two spotters: exact-match + prefix-collision
@@ -71,6 +72,7 @@ try {
     $cleanup[] = (int) db_insert_id();
 } catch (Exception $e) {
     echo "SKIP: fixture failed — " . $e->getMessage() . "\n";
+    echo "=== 0 passed, 0 failed ===\n";
     exit(0);
 }
 
@@ -142,6 +144,8 @@ $empty_q = call_constituents_api('$_GET["reference"] = " ";');
 t73h(is_array($empty_q), 'whitespace-only is handled');
 t73h(empty($empty_q['constituent']), 'whitespace-only -> null constituent');
 
-echo "Phase 73h constituent-reference tests: $passes/$tests passed\n";
 foreach ($fails as $f) echo "  FAIL: $f\n";
-if ($fails) exit(1);
+// Canonical summary — tools/test_all.php will not count a file that does
+// not print this exact shape, and errors on one that prints nothing.
+echo "Phase 73h constituent-reference — === $passes passed, " . count($fails) . " failed ===\n";
+exit($fails ? 1 : 0);

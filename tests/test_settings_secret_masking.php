@@ -49,5 +49,7 @@ if ($js !== false) {
 }
 
 foreach ($fails as $f) fwrite(STDERR, "FAIL: $f\n");
-echo "$pass/" . ($pass + $fail) . " settings-secret-masking assertions passed\n";
+// Canonical summary — tools/test_all.php will not count a file that does
+// not print this exact shape, and errors on one that prints nothing.
+echo "settings-secret-masking — === $pass passed, $fail failed ===\n";
 exit($fail === 0 ? 0 : 1);

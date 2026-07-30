@@ -35,6 +35,7 @@
  */
 
 require_once __DIR__ . '/audit.php';
+require_once __DIR__ . '/scheduled-jobs.php';
 
 function par_enabled(): bool {
     $prefix = $GLOBALS['db_prefix'] ?? '';
@@ -815,32 +816,69 @@ function par_abort_cycle(int $cycleId, ?int $byUserId, ?string $reason): bool {
  *
  *   2. For every PAR cycle in 'pending' status whose cycle_window_s has
  *      elapsed, mark still-pending units as 'missed' and trigger
- *      escalation (chat + SSE).
+ *      escalation (chat + SSE) — UNLESS the window elapsed so long ago
+ *      that escalating now would be a retroactive alarm about an
+ *      incident nobody is working any more. See the cutoff below.
  *
- * Returns ['cycles_started' => N, 'units_missed' => M].
+ * WHEN PAR IS DISABLED (Phase 129, 2026-07-29)
+ *
+ * This function used to return immediately if par_enabled() was false,
+ * which meant the stale-cycle expiry in (2) — housekeeping, not
+ * behaviour — could only ever run while the feature was switched on.
+ * Turning PAR off therefore froze every in-flight cycle permanently:
+ * training.ticketscad accumulated 10 pending cycles and 8 unanswered
+ * acks, all 28-30 days old, sitting behind a cron job that had been
+ * running fine and reporting "reason=disabled" 26 times.
+ *
+ * That is the wrong shape for the switch. Disabling a feature should
+ * stop it ACTING — no new roll-calls, no "unit missed PAR" alarms — not
+ * suspend the tidying that closes out work nobody can answer any more.
+ * Left frozen, the rows are worse than untidy: re-enabling PAR months
+ * later would resume a month-old roll-call and, once past its window,
+ * escalate a life-safety alert about an incident that closed in June.
+ *
+ * So when disabled we now run the stale-expiry pass ONLY. Cycles past
+ * the cutoff are expired (no escalation, no SSE, units recorded as
+ * 'expired' rather than 'missed'); cycles still inside the cutoff are
+ * left alone to age out naturally. Nothing is initiated and nothing
+ * escalates while the feature is off.
+ *
+ * Returns ['cycles_started' => N, 'units_missed' => M, 'units_expired' => X,
+ *          'cycles_expired' => Y] — plus 'reason' => 'disabled' when the
+ * feature is off, so callers and the job log can still tell the
+ * difference between "nothing to do" and "not running".
  */
-function par_run_scheduler(?int $now = null): array {
+function par_run_scheduler(?int $now = null, ?int $cutoffMin = null): array {
     $prefix = $GLOBALS['db_prefix'] ?? '';
     if ($now === null) $now = time();
-    $started = 0; $missed = 0;
-    if (!par_enabled()) {
-        return ['cycles_started' => 0, 'units_missed' => 0, 'reason' => 'disabled'];
-    }
+    $started = 0; $missed = 0; $unitsExpired = 0; $cyclesExpired = 0;
+    $enabled = par_enabled();
 
     // ── Auto-initiate due cycles ─────────────────────────────────────
-    try {
-        // Status semantics: legacy tickets use status = 0 for "open".
-        // Don't auto-PAR closed or wastebasketed incidents.
+    // Skipped entirely when the feature is off — a disabled PAR must
+    // never open a new roll-call.
+    $active = [];
+    if ($enabled) try {
+        // Status semantics (CLAUDE.md): 1 = CLOSED, 2 = ACTIVE, 3 = SCHEDULED.
+        // Legacy tickets additionally use 0 for "open".
+        //
+        // 2026-07-29: this read `status IN (0, 1, 2)` — which INCLUDED
+        // CLOSED — directly under a comment promising not to auto-PAR
+        // closed incidents. It never bit anybody only because the job it
+        // lives in had never executed; the first run would have opened
+        // roll-calls on closed incidents. api/par.php's overdue endpoint
+        // has always used IN (2, 3), so the two halves of one feature
+        // disagreed about which incidents are live. They now agree.
         $active = db_fetch_all(
             "SELECT id FROM `{$prefix}ticket`
-              WHERE status IN (0, 1, 2)
+              WHERE status IN (0, 2, 3)
                 AND (deleted_at IS NULL OR deleted_at = '0000-00-00 00:00:00')"
         );
     } catch (Exception $e) {
         // deleted_at may not exist; retry without
         try {
             $active = db_fetch_all(
-                "SELECT id FROM `{$prefix}ticket` WHERE status IN (0, 1, 2)"
+                "SELECT id FROM `{$prefix}ticket` WHERE status IN (0, 2, 3)"
             );
         } catch (Exception $e2) { $active = []; }
     }
@@ -868,6 +906,63 @@ function par_run_scheduler(?int $now = null): array {
         $cycleStart = strtotime($c['initiated_at']);
         $elapsed = $now - $cycleStart;
         if ($elapsed <= (int) $c['cycle_window_s']) continue;
+
+        // ── Stale-work cutoff ────────────────────────────────────────
+        // A PAR cycle whose answer window shut weeks ago is history, not
+        // an emergency. Marking its units 'missed' now would fire
+        // par.unit_missed over SSE and post "Unit X missed PAR" to the
+        // escalation channel — a life-safety alarm about an incident that
+        // closed last month. Personnel accountability alerts have to mean
+        // "check on this person NOW"; a retroactive one teaches crews to
+        // ignore the real thing.
+        //
+        // So: expire the cycle instead. The units are recorded as
+        // 'expired', not 'missed' — never answered, but never asked in a
+        // way anyone could have answered either — and nothing escalates.
+        $deadline = $cycleStart + (int) $c['cycle_window_s'];
+        if (sched_is_stale($deadline, $now, $cutoffMin)) {
+            $reason = sched_expiry_reason(
+                date('Y-m-d H:i:s', $deadline), $deadline, $now, $cutoffMin);
+            try {
+                $n = (int) db_fetch_value(
+                    "SELECT COUNT(*) FROM `{$prefix}par_unit_acks`
+                      WHERE par_cycle_id = ? AND state = 'pending'",
+                    [(int) $c['id']]);
+                db_query(
+                    "UPDATE `{$prefix}par_unit_acks` SET state = 'expired'
+                      WHERE par_cycle_id = ? AND state = 'pending'",
+                    [(int) $c['id']]);
+                db_query(
+                    "UPDATE `{$prefix}par_cycles`
+                        SET status = 'expired', completed_at = ?,
+                            notes = CONCAT_WS(' | ', notes, ?)
+                      WHERE id = ?",
+                    [date('Y-m-d H:i:s', $now), $reason, (int) $c['id']]);
+                $unitsExpired += $n;
+                $cyclesExpired++;
+                audit_log('par', 'expire', 'par_cycle', (int) $c['id'],
+                    "PAR cycle not escalated — {$reason} ({$n} unit(s) left unanswered)", [
+                        'ticket_id'      => (int) $c['ticket_id'],
+                        'initiated_at'   => $c['initiated_at'],
+                        'cycle_window_s' => (int) $c['cycle_window_s'],
+                        'units_expired'  => $n,
+                    ]);
+            } catch (Exception $e) {
+                error_log('par_run_scheduler expire failed for cycle #'
+                          . $c['id'] . ': ' . $e->getMessage());
+            }
+            continue;
+        }
+
+        // Not stale yet. If PAR is switched off we stop here: this cycle
+        // keeps its 'pending' units and will be expired by the branch
+        // above once it crosses the cutoff. What we must NOT do while the
+        // feature is disabled is fall through and mark units 'missed' —
+        // that escalates to chat and fires par.unit_missed over SSE, and
+        // an accountability alarm from a feature the agency has turned
+        // off is exactly the kind of alert that teaches crews to ignore
+        // the real one.
+        if (!$enabled) continue;
 
         // Window elapsed — mark remaining pending acks as missed.
         try {
@@ -906,7 +1001,14 @@ function par_run_scheduler(?int $now = null): array {
         } catch (Exception $e) {}
     }
 
-    return ['cycles_started' => $started, 'units_missed' => $missed];
+    $out = ['cycles_started' => $started, 'units_missed'  => $missed,
+            'units_expired'  => $unitsExpired, 'cycles_expired' => $cyclesExpired];
+    // Keep the marker the job log has always shown, so "PAR is off" stays
+    // distinguishable from "PAR is on and there was nothing to do" — but
+    // report it alongside the housekeeping we now still perform, rather
+    // than instead of doing any.
+    if (!$enabled) $out['reason'] = 'disabled';
+    return $out;
 }
 
 /**

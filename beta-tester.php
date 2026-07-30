@@ -552,7 +552,7 @@ function checked_if($v) { return $v ? ' checked' : ''; }
                         <label for="city" class="form-label">City</label>
                         <input type="text" class="form-control" id="city" name="city" maxlength="120"
                                value="<?php echo e_attr($submitted['city'] ?? ''); ?>"
-                               placeholder="e.g. Bloomington">
+                               placeholder="e.g. Riverside">
                     </div>
                     <div class="col-md-4">
                         <label for="state_or_region" class="form-label">State / province / region</label>

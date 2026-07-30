@@ -8,7 +8,7 @@
  *   on `name` — only PRIMARY KEY (id) auto-increment. That means the
  *   "on duplicate key" clause NEVER fires and each re-run of
  *   run_equipment.php silently inserts a fresh 10 rows with new IDs.
- *   Bloomington accumulated 341 rows (34x dupes); training accumulated
+ *   your deployment accumulated 341 rows (34x dupes); training accumulated
  *   51 (5x dupes); each canonical name (Radio, Medical, PPE, Tools,
  *   Communications, Electronics, Shelter, Signage, Generator, Other)
  *   repeated exactly as many times as the seed had been re-run.

@@ -78,7 +78,7 @@ $ping = _ext_curl('GET', $BASE_URL . '/api/external/v1/');
 if ($ping['status'] === 0) {
     echo "  SKIP  All tests — localhost web server not reachable. ";
     echo "Run with EXT_API_BASE_URL=http://your.host if testing remote.\n\n";
-    echo "=== Results: SKIPPED (0 / 0) ===\n";
+    echo "=== 0 passed, 0 failed ===\n";
     exit(0);
 }
 
@@ -101,10 +101,12 @@ try {
     $userRow = db_fetch_one("SELECT id FROM `{$prefix}user` ORDER BY id ASC LIMIT 1");
 } catch (Exception $e) {
     echo "  SKIP — couldn't query user table: {$e->getMessage()}\n";
+    echo "=== 0 passed, 0 failed ===\n";
     exit(0);
 }
 if (!$userRow) {
     echo "  SKIP — no users in user table to bind a token to\n";
+    echo "=== 0 passed, 0 failed ===\n";
     exit(0);
 }
 $bindUserId = (int) $userRow['id'];
@@ -313,10 +315,11 @@ try {
 }
 
 // ── Summary ────────────────────────────────────────────────────
-echo "\n=== Results: " . ($fail === 0 ? 'PASS' : 'FAIL') .
-     " ({$pass} pass, {$fail} fail) ===\n";
 if ($fail > 0) {
     echo "Failures:\n";
     foreach ($failures as $f) echo "  - {$f}\n";
 }
-exit($fail === 0 ? 0 : 1);
+// Canonical summary — tools/test_all.php will not count a file that does
+// not print this exact shape, and errors on one that prints nothing.
+echo "\n=== {$pass} passed, {$fail} failed ===\n";
+exit($fail > 0 ? 1 : 0);

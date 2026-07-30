@@ -451,7 +451,11 @@
         if (!ts) {
             return { state: 'unknown', icon: '<i class="bi bi-geo-alt-fill text-body-tertiary" style="font-size:0.7rem;" title="Zoom to location"></i>' };
         }
-        var updMs = Date.parse(String(ts).replace(' ', 'T') + 'Z');
+        // CLOCK: parse as LOCAL — no 'Z'. last_track/updated are MySQL
+        // DATETIMEs in the install's area timezone; appending 'Z' reads them
+        // as UTC and skews the staleness age by the whole UTC offset (5 h on
+        // US Central), marking healthy units stale.
+        var updMs = Date.parse(String(ts).replace(' ', 'T'));
         if (isNaN(updMs)) {
             return { state: 'fresh', icon: '<i class="bi bi-geo-alt-fill text-body-tertiary" style="font-size:0.7rem;" title="Zoom to location"></i>' };
         }

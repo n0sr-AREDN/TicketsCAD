@@ -23,8 +23,10 @@
 
 // ── Bootstrap ────────────────────────────────────────────────
 @session_start();
-$_SESSION = ['user_id' => 1, 'level' => 0, 'user' => 'admin'];
+$_SESSION = ['user_id' => $ADMIN_UID, 'level' => 0, 'user' => 'admin'];
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/_test_admin.php';
+$ADMIN_UID = test_admin_user_id();
 
 // Load additional NewUI modules for testing
 $inc = __DIR__ . '/../inc/';
@@ -550,7 +552,7 @@ echo "\n── Section 11: RBAC Permission Verification ──\n";
 if (function_exists('rbac_can')) {
     // Super admin should have everything
     $_SESSION['level'] = 0;
-    $_SESSION['user_id'] = 1;
+    $_SESSION['user_id'] = $ADMIN_UID;
     test("rbac_can('screen.incidents') for super admin", rbac_can('screen.incidents'));
     test("rbac_can('action.create_incident') for super admin", rbac_can('action.create_incident'));
     test("rbac_can('action.manage_config') for super admin", rbac_can('action.manage_config'));

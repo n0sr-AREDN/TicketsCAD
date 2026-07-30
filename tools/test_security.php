@@ -9,6 +9,8 @@
  * Usage: php tools/test_security.php
  */
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../tests/_test_admin.php';
+$ADMIN_UID = test_admin_user_id();
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/field-encrypt.php';
 require_once __DIR__ . '/../inc/login-security.php';
@@ -233,8 +235,11 @@ try {
 
 // ── RBAC Permission Tests ───────────────────────────────────
 
-echo "[Test 18] rbac_can() grants all to Super Admin (level 0)... ";
-$_SESSION = ['user_id' => 1, 'level' => 0, 'user' => 'admin'];
+echo "[Test 18] rbac_can() grants all to Super Admin... ";
+// Not user 1 — the account that actually holds Super Admin. See
+// tests/_test_admin.php: the admin is id 3 on a fresh install, and the
+// "user 1 is admin" assumption used to be propped up by a phantom grant.
+$_SESSION = ['user_id' => $ADMIN_UID, 'level' => 0, 'user' => 'admin'];
 if (rbac_can('action.manage_config') && rbac_can('screen.settings') && rbac_can('action.delete_incident')) {
     echo "[PASS]\n";
     $pass++;
@@ -243,44 +248,59 @@ if (rbac_can('action.manage_config') && rbac_can('screen.settings') && rbac_can(
     $fail++;
 }
 
-echo "[Test 19] Legacy level 2 (Operator) blocked from settings... ";
-$_SESSION = ['user_id' => 999, 'level' => 2, 'user' => 'operator_test'];
-// Force legacy fallback by using a non-existent user
-$blocked = ['screen.settings', 'action.manage_users', 'action.manage_config'];
-$allBlocked = true;
-foreach ($blocked as $perm) {
-    if (_rbac_legacy_check($perm, 2)) {
-        $allBlocked = false;
+// Tests 19-21 used to assert what each LEGACY LEVEL was allowed to do
+// via _rbac_legacy_check() — level 2 blocked from settings, level 3
+// read-only, level 99 minimal. Phase 128 (2026-07-29) deleted that
+// function and every level-based authorisation path with it, so those
+// three assertions describe a system that no longer exists.
+//
+// What replaces them is the security property they were reaching for,
+// stated once and much more strongly: an unknown or unprivileged session
+// gets NOTHING, whatever its legacy level claims — including the level
+// the old system considered most privileged.
+// See specs/phase-128-eliminate-legacy-levels/.
+
+echo "[Test 19] A legacy level alone grants nothing... ";
+$savedSess = $_SESSION;
+$leaked = [];
+foreach ([0 /* "Super" */, 1, 2, 3, 99] as $lvl) {
+    $_SESSION = ['user_id' => 999999, 'level' => $lvl, 'user' => 'level_probe'];
+    if (function_exists('rbac_reset_cache')) rbac_reset_cache();
+    foreach (['screen.dashboard', 'screen.settings', 'screen.search',
+              'action.create_incident', 'action.manage_users',
+              'action.manage_config'] as $perm) {
+        if (rbac_can($perm)) $leaked[] = "level $lvl => $perm";
     }
 }
-if ($allBlocked) {
-    echo "[PASS]\n";
+$_SESSION = $savedSess;
+if (function_exists('rbac_reset_cache')) rbac_reset_cache();
+if (!$leaked) {
+    echo "[PASS] (no permission reachable from a level, including level 0)\n";
     $pass++;
 } else {
-    echo "[FAIL] operator not blocked from admin permissions\n";
+    echo "[FAIL] level still authorises: " . implode(', ', $leaked) . "\n";
     $fail++;
 }
 
-echo "[Test 20] Legacy level 3 (Guest) is read-only... ";
-$canView = _rbac_legacy_check('screen.dashboard', 3);
-$cannotCreate = !_rbac_legacy_check('action.create_incident', 3);
-$cannotManage = !_rbac_legacy_check('action.manage_config', 3);
-if ($canView && $cannotCreate && $cannotManage) {
+echo "[Test 20] The level-based permission path is deleted... ";
+if (!function_exists('_rbac_legacy_check')) {
     echo "[PASS]\n";
     $pass++;
 } else {
-    echo "[FAIL] guest permissions incorrect\n";
+    echo "[FAIL] _rbac_legacy_check() is back\n";
     $fail++;
 }
 
-echo "[Test 21] Legacy level 99 has minimal access... ";
-$canDash = _rbac_legacy_check('screen.dashboard', 99);
-$cannotSearch = !_rbac_legacy_check('screen.search', 99);
-if ($canDash && $cannotSearch) {
-    echo "[PASS]\n";
+echo "[Test 21] An unmigrated install refuses instead of falling back... ";
+$rbacSrc = @file_get_contents(__DIR__ . '/../inc/rbac.php');
+if ($rbacSrc !== false
+    && function_exists('rbac_unmigrated_message')
+    && strpos(rbac_unmigrated_message(), 'run_migrations.php') !== false
+    && strpos($rbacSrc, 'function rbac_schema_ready') !== false) {
+    echo "[PASS] (login refuses and names the repair command)\n";
     $pass++;
 } else {
-    echo "[FAIL]\n";
+    echo "[FAIL] no loud refusal path for an unmigrated install\n";
     $fail++;
 }
 

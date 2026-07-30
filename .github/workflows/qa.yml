@@ -73,6 +73,23 @@ jobs:
       - name: API ↔ JS contract audit
         run: php tests/test_api_contract_audit.php
 
+      # Third gate in the same family: a PAGE that gates on RBAC while its
+      # API still gates on the legacy user.level column. Post-Phase-12 those
+      # two disagree (role_id=2 + user.level=4 is a normal state), so the
+      # user gets a screen that refuses to do anything.
+      - name: Page/API authorisation-split audit
+        run: php tests/test_legacy_level_audit.php
+
+      # Fourth gate in the family, and the one CI is least able to feel: a
+      # query that measures a locally-stamped DATETIME against UTC_TIMESTAMP()
+      # (or the JS/gmdate equivalents). On a UTC runner the two clocks are the
+      # same instant, so the bug passes every test here and breaks only on the
+      # local-timezone servers most volunteer groups actually run — the APRS
+      # map reporting "0 stations" while the listener wrote 1,288 rows/hour.
+      # The test pins a -05:00 session so the check works on a UTC runner.
+      - name: Clock-consistency audit (local-time columns vs UTC comparisons)
+        run: php tests/test_timezone_audit.php
+
       # Anti-rot gate for the published SBOM. An SBOM that is accurate once and
       # stale afterwards is worse than none, because it asserts a currency it
       # does not have. If a dependency, a vendored library version, or the

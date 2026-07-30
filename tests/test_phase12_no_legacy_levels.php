@@ -18,6 +18,8 @@
  */
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/_test_admin.php';
+$ADMIN_UID = test_admin_user_id();
 
 $base = realpath(__DIR__ . '/..');
 
@@ -156,7 +158,7 @@ if (strpos($cj, "var LEVELS = {") === false) {
 // ── is_admin() reset-cache behavior ─────────────────────────────────
 // Simulate two different sessions and verify rbac_reset_cache() clears
 // the static cache so is_admin() recomputes.
-$_SESSION = ['user_id' => 1, 'user' => 'admin'];
+$_SESSION = ['user_id' => $ADMIN_UID, 'user' => 'admin'];
 rbac_reset_cache();
 $wasAdmin = is_admin();
 $_SESSION = ['user_id' => 999998];

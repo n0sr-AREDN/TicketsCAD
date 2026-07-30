@@ -54,7 +54,12 @@ if (!$bearer) ext_api_error('missing_token', 401);
 $token = ext_api_resolve($bearer);
 if (!$token)                                  ext_api_error('invalid_token', 401);
 if ($token['revoked_at'])                     ext_api_error('token_revoked', 401);
-if ($token['expires_at'] && $token['expires_at'] < gmdate('Y-m-d H:i:s')) {
+// CLOCK: date(), not gmdate(). external_api_tokens.expires_at is an
+// operator-entered 'Y-m-d H:i:s' wall-clock value in the install's area
+// timezone (api/external-api-tokens.php:171 -> inc/external-auth.php:70),
+// and its sibling columns are stamped with NOW(). Comparing it against a UTC
+// clock retired every token one full UTC offset early — 5 h on US Central.
+if ($token['expires_at'] && $token['expires_at'] < date('Y-m-d H:i:s')) {
     ext_api_error('token_expired', 401);
 }
 

@@ -20,6 +20,8 @@
  */
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/_test_admin.php';
+$ADMIN_UID = test_admin_user_id();
 
 $base   = realpath(__DIR__ . '/..');
 $prefix = $GLOBALS['db_prefix'] ?? '';
@@ -53,7 +55,7 @@ if (strpos($acc, "facility.view") !== false &&
 // (admin shortcut) which has always worked.
 require_once $base . '/inc/access.php';
 $_SESSION['level'] = 0;
-$_SESSION['user_id'] = 1;
+$_SESSION['user_id'] = $ADMIN_UID;
 if (user_can_access_entity('facility', 1) === true) {
     ok('user_can_access_entity returns true for level=0 (admin shortcut)');
 } else {

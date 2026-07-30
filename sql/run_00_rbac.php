@@ -166,6 +166,11 @@ $perms = [
     ['action.manage_orgs',     'Manage Organizations', 'action'],
     ['action.manage_types',    'Manage Incident Types', 'action'],
     ['action.view_audit',      'View Audit Log',       'action'],
+    // 2026-07-29 — org-wide aggregate + personnel reports (api/reports.php).
+    // Granted below to Super Admin (broad SELECT) and Org Admin (broad NOT IN);
+    // Dispatcher/Operator/Read-Only/Field Unit grants below are allow-lists that
+    // do NOT include 'action' rows, so they correctly do not receive it.
+    ['action.view_reports',    'Run Aggregate Reports', 'action'],
     ['action.export_data',     'Export Data',           'action'],
     ['action.import_data',     'Import Data',           'action'],
     ['action.manage_sop',      'Manage SOPs',          'action'],
@@ -264,10 +269,56 @@ try {
     echo "[OK] Field Unit permissions mapped\n";
 } catch (Exception $e) {}
 
-// 8. Auto-assign Super Admin role to user #1 (if exists)
+// 8. Auto-assign Super Admin role to user #1 (only if user #1 exists)
+//
+// Phase 129 (2026-07-29). This was:
+//
+//     INSERT IGNORE INTO user_roles (user_id, role_id, org_id)
+//     VALUES (1, 1, NULL);
+//
+// and the comment already said "(if exists)" — describing an intent the
+// code never implemented. Two defects, both live for months:
+//
+//  1. INSERT IGNORE deduped nothing. It relies on a unique key raising a
+//     duplicate-key error, and `uk_user_role_scope` / `uk_user_role_org`
+//     both end in a NULLable column (scope_id / org_id). MySQL and
+//     MariaDB treat every NULL in a UNIQUE index as distinct, so a global
+//     grant — org_id NULL, scope_id NULL — collides with nothing. Each
+//     run of the migration pipeline appended another identical row:
+//     13 copies on your-server, 23 on training, one per run.
+//     Fixed properly at the schema level by
+//     sql/run_rbac_v3_grant_uniqueness.php; guarded here as well, because
+//     a writer should not depend on a constraint to be correct.
+//
+//  2. It never checked that user 1 exists. On an install whose
+//     administrator is not id 1 (training: user 1 has never existed) this
+//     wrote Super Admin grants to a phantom, and the first account later
+//     created with id 1 would have inherited them. That — not the row
+//     count — is why these had to go.
+//
+// The natural key is matched with <=> so NULL matches NULL, which is
+// exactly the comparison the index could not make.
 try {
-    db_query("INSERT IGNORE INTO `{$prefix}user_roles` (`user_id`, `role_id`, `org_id`) VALUES (1, 1, NULL)");
-    echo "[OK] User #1 assigned Super Admin role\n";
-} catch (Exception $e) {}
+    $adminExists = (int) db_fetch_value(
+        "SELECT COUNT(*) FROM `{$prefix}user` WHERE `id` = 1");
+    if ($adminExists === 0) {
+        echo "[--] No user #1 on this install — Super Admin grant skipped\n";
+        echo "     (assign a role in Settings -> Roles & Permissions;\n";
+        echo "      sql/run_rbac_v2.php step A9 also maps legacy accounts)\n";
+    } else {
+        $already = (int) db_fetch_value(
+            "SELECT COUNT(*) FROM `{$prefix}user_roles`
+              WHERE `user_id` = 1 AND `role_id` = 1 AND `org_id` <=> NULL");
+        if ($already > 0) {
+            echo "[OK] User #1 already holds Super Admin ({$already} grant)\n";
+        } else {
+            db_query("INSERT INTO `{$prefix}user_roles`
+                      (`user_id`, `role_id`, `org_id`) VALUES (1, 1, NULL)");
+            echo "[OK] User #1 assigned Super Admin role\n";
+        }
+    }
+} catch (Exception $e) {
+    echo "[WARN] Super Admin grant for user #1: " . $e->getMessage() . "\n";
+}
 
 echo "\nDone.\n";

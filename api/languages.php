@@ -99,9 +99,11 @@ if (!csrf_verify((string) $csrfTok)) {
     json_error('Invalid CSRF token', 403);
 }
 
-// RBAC (admins only)
-$currLevel = (int) ($_SESSION['level'] ?? 99);
-if (!rbac_can('action.manage_config') && $currLevel > 1) {
+// RBAC (admins only).
+// Phase 128 (2026-07-29) — dropped the `|| $currLevel <= 1` legacy-level
+// fallback. A level can no longer grant anything; login refuses on an
+// unmigrated install rather than letting stale authority through.
+if (!is_admin() && !rbac_can('action.manage_config')) {
     json_error('Admin access required', 403);
 }
 

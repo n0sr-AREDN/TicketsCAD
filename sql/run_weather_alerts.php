@@ -11,7 +11,7 @@
  * Eric-install-specific; this migration runs on every install worldwide and
  * "a fresh non-US install seeds none" (spec §Configurability). Eric's MN rows
  * are loaded from the settings panel's one-click "Minnesota example" button
- * (or applied directly on training/Bloomington), never globally. Result: a
+ * (or applied directly on training/your deployment), never globally. Result: a
  * fresh install is completely inert — master OFF, zero areas, zero rules, no
  * NWS traffic, no UI noise.
  *

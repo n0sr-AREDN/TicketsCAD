@@ -271,7 +271,15 @@ $csrf     = csrf_token();
 <!-- QA #2 — the schedule grid's clickable ids are MEMBER ids; self-signup
      must compare against the logged-in user's member id, not their user id. -->
 <input type="hidden" id="currentMemberId" value="<?php echo (int) ($_SESSION['member_id'] ?? 0); ?>">
-<input type="hidden" id="currentLevel" value="<?php echo (int) $_SESSION['level']; ?>">
+<!-- Phase 128 (2026-07-29): was #currentLevel, the legacy user.level piped
+     to the browser so scheduling.js could compute `isAdmin = level <= 1`.
+     The server now answers the question the client was guessing at, using
+     the SAME helper the scheduling API enforces with
+     (inc/scheduling-perms.php :: scheduling_is_admin()). -->
+<input type="hidden" id="currentIsAdmin" value="<?php
+    require_once __DIR__ . '/inc/scheduling-perms.php';
+    echo scheduling_is_admin() ? '1' : '0';
+?>">
 
 <!-- Vendor JS -->
 <script src="assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>

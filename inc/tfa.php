@@ -812,7 +812,14 @@ function tfa_check_trusted_network()
  * @param int $userLevel Legacy user level
  * @return bool True if the user must have 2FA enabled
  */
-function tfa_is_required_for_user($userId, $userLevel)
+/**
+ * @param int      $userId
+ * @param int|null $userLevel  DEPRECATED and ignored since Phase 128
+ *   (2026-07-29). Kept in the signature so existing callers and any
+ *   third-party code keep working; the requirement is resolved purely
+ *   from the user's RBAC role grants.
+ */
+function tfa_is_required_for_user($userId, $userLevel = null)
 {
     $settings = tfa_get_settings();
 
@@ -838,7 +845,7 @@ function tfa_is_required_for_user($userId, $userLevel)
     // arguments and always resolved via $_SESSION['user_id']. During the
     // login flow the session id isn't set yet, so the check ALWAYS
     // returned [] and role-based 2FA requirements effectively never fired.
-    // On training + Bloomington the setting is empty (0 rows in
+    // On training + your deployment the setting is empty (0 rows in
     // tfa_required_roles), so no admin has been silently miscovered, but
     // the moment any operator configured "require 2FA for role X" the bug
     // would have quietly no-op'd. Fixed alongside the rbac_user_roles()
@@ -853,12 +860,18 @@ function tfa_is_required_for_user($userId, $userLevel)
     $userRoles = function_exists('rbac_user_roles') ? rbac_user_roles((int) $userId) : [];
     $userRoleIds = array_map(fn($r) => (int) ($r['id'] ?? 0), $userRoles);
 
+    // Phase 128 (2026-07-29): the `$rn === (int) $userLevel` branch is
+    // gone. It compared a stored ROLE ID against a legacy LEVEL — two
+    // different numbering schemes that happen to overlap in 1..6 — so
+    // "require 2FA for role 3 (Dispatcher)" also fired for anyone whose
+    // legacy level was 3, and did not fire for a Dispatcher whose level
+    // was something else. It failed safe (over-requiring) which is why
+    // nobody noticed, but it was answering from the wrong column.
     foreach ($requiredRoles as $r) {
         $rs = (string) $r;
         if (!is_numeric($rs)) continue;      // codes were never populated
         $rn = (int) $rs;
         if ($rn > 0 && in_array($rn, $userRoleIds, true)) return true;
-        if ($rn === (int) $userLevel)                     return true;  // legacy level
     }
     return false;
 }

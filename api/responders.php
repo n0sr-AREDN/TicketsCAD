@@ -122,7 +122,7 @@ try {
 // canonical responder.view permission, they have explicit grant to
 // view responders via RBAC and the legacy allocates filter is skipped.
 // See api/incidents.php for the same pattern (deployed 2026-05-26 after
-// shoreas demo-user couldn't see any responders despite Operator role).
+// a demo user could not see any responders despite Operator role).
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/par.php';  // Phase 17 (2026-06-11) — par_due_at()
 $rbacResponderView = (function_exists('rbac_can')

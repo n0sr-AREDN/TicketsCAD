@@ -26,7 +26,7 @@
 // version-match check re-reads this constant FRESH from disk and compares
 // — a mismatch means the server is executing a stale compiled copy.
 if (!defined('HEALTH_CHECK_BUILD')) {
-    define('HEALTH_CHECK_BUILD', '2026-07-04');
+    define('HEALTH_CHECK_BUILD', '2026-07-29');
 }
 
 /**
@@ -617,6 +617,29 @@ function health_check_schema(): array
     }
 }
 
+/**
+ * Are the background jobs actually being run by anything?
+ *
+ * Added 2026-07-29, after two scheduled ticks were found to have never
+ * executed in the seven weeks since they were installed. They had been
+ * dropped into /etc/cron.d on hosts with no cron daemon, which fails
+ * silently, and no surface anywhere reported a job's last run — so there
+ * was no observation that could have distinguished "running fine" from
+ * "never started". This is that observation.
+ *
+ * Delegates to sched_jobs_status(); shaped like the other sections.
+ */
+function health_check_scheduled_jobs(): array
+{
+    try {
+        require_once __DIR__ . '/scheduled-jobs.php';
+        return sched_jobs_status();
+    } catch (Throwable $e) {
+        return ['checked' => false, 'error' => 'scheduled job check failed',
+                'jobs' => [], 'severity' => 'ok'];
+    }
+}
+
 function health_check_all(): array
 {
     try {
@@ -626,6 +649,7 @@ function health_check_all(): array
         $version    = health_check_version_match();
         $deps       = health_check_dependencies();
         $schema     = health_check_schema();
+        $jobs       = health_check_scheduled_jobs();
 
         $critical = 0;
         $warn     = 0;
@@ -654,6 +678,11 @@ function health_check_all(): array
         } elseif (($schema['severity'] ?? '') === 'warn') {
             $warn++;
         }
+        if (($jobs['severity'] ?? '') === 'critical') {
+            $critical++;
+        } elseif (($jobs['severity'] ?? '') === 'warn') {
+            $warn++;
+        }
 
         return [
             'checked'      => true,
@@ -666,6 +695,7 @@ function health_check_all(): array
             'version'      => $version,
             'dependencies' => $deps,
             'schema'       => $schema,
+            'scheduled_jobs' => $jobs,
             'summary'      => ['critical' => $critical, 'warn' => $warn],
         ];
     } catch (Throwable $e) {

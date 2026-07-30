@@ -314,8 +314,18 @@ function isNotShipped(string $absPath): bool
 
     /* Top-level trees the snapshot removes, or that git never tracks. Anchored
      * at the repository root, so the SHIPPED `assets/vendor/` browser libraries
-     * are unaffected by the `vendor/` entry. */
-    foreach (['specs/', 'coordination/', 'vendor/', 'node_modules/', '.git/'] as $prefix) {
+     * are unaffected by the `vendor/` entry.
+     *
+     * `.claude/` earns its place the same way `specs/` did. Claude Code keeps
+     * agent worktrees at `.claude/worktrees/<name>/` — entire second copies of
+     * this repository, `specs/` and all. The `specs/` entry above is anchored
+     * at the root, so it does not match `.claude/worktrees/x/specs/…`, and the
+     * planning mock-up described above walked straight back into the SBOM as
+     * sortablejs. The document then differed from the committed one on any
+     * machine that happened to have a worktree open — an SBOM whose contents
+     * depend on the developer's tooling state is not reproducible, which is
+     * most of what an SBOM is for. */
+    foreach (['specs/', 'coordination/', 'vendor/', 'node_modules/', '.git/', '.claude/'] as $prefix) {
         if (strncmp($p, $prefix, strlen($prefix)) === 0) return true;
     }
 

@@ -20,6 +20,14 @@
 
 require_once __DIR__ . '/i18n.php';
 
+// Phase 128 (2026-07-29): the navbar decides what to render from RBAC —
+// is_admin() and rbac_can() are called unguarded from line ~151 onward.
+// That worked only because every including page happened to have loaded
+// rbac.php first. Now that the legacy-level fallbacks are gone there is
+// no second answer if it hasn't, so make the dependency explicit rather
+// than inherited (idempotent).
+require_once __DIR__ . '/rbac.php';
+
 // Phase 126 (2026-07-29) — the automatic-backup scheduler's only trigger on
 // installs without cron / Task Scheduler, which is most of them.
 //
@@ -279,8 +287,14 @@ function nav_btn($href, $icon, $label, $key, $active_page, $attrs = '') {
                     <span class="badge bg-danger rounded-pill nav-msg-badge d-none position-absolute top-0 start-100 translate-middle" id="navMsgBadge">0</span>
                 </a>
 
-                <!-- HAS Broadcast (Dispatcher+ only) -->
-<?php if ((int)($_SESSION['level'] ?? 99) <= 2): ?>
+                <!-- HAS Broadcast -->
+<?php
+// Phase 128 (2026-07-29): was `$_SESSION['level'] <= 2` ("Dispatcher+").
+// The button is now shown to exactly whoever api/messaging.php:453 will
+// accept, so the affordance and the server agree instead of the button
+// appearing for people the endpoint then refuses.
+if (rbac_can('action.send_chat') && (is_admin() || rbac_can('action.manage_members'))):
+?>
                 <button type="button" class="btn btn-sm has-broadcast-btn" id="navHasBtn"
                         title="HAS Broadcast — All Stations" aria-label="HAS Broadcast"
                         data-bs-toggle="modal" data-bs-target="#hasBroadcastModal">
@@ -786,6 +800,28 @@ if (count($_navbar_langs) >= 2):
 </script>
 
 <?php
+// Phase 128 (2026-07-29): unmigrated-RBAC banner.
+//
+// Login refuses outright while the v2 schema is absent, so the only way
+// to reach this is a session that was already open when the schema went
+// away (a restore from an old dump, a half-finished upgrade, a table
+// dropped during crash recovery). Such a dispatcher is NOT thrown out
+// mid-incident — but nothing they do will be authorised, because
+// rbac_can() no longer falls back to `user.level`. Say so, permanently
+// and undismissably, with the command that fixes it.
+require_once __DIR__ . '/rbac.php';
+if (!rbac_schema_ready()):
+?>
+<div class="alert alert-danger d-flex align-items-center mb-0 rounded-0 py-2 px-3" role="alert" id="rbacUnmigratedBanner">
+    <i class="bi bi-shield-exclamation me-2 fs-5"></i>
+    <div>
+        <strong>Access control is not configured.</strong>
+        <span class="ms-1"><?php echo e(rbac_unmigrated_message()); ?></span>
+    </div>
+</div>
+<?php
+endif;
+
 // Phase 10 (2026-06-08): rotation-reminder banner.
 // Renders if $_SESSION['rotation_reminder_age'] is set (login.php seeds
 // it via pw_needs_rotation()). The banner spans the full viewport width,

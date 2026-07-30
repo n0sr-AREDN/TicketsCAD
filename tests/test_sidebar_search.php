@@ -12,7 +12,11 @@
  * No DB/i18n boot required, so it runs on any checkout.
  */
 $src = @file_get_contents(__DIR__ . '/../inc/config-sidebar.php');
-if ($src === false) { fwrite(STDERR, "SKIP: config-sidebar.php not found\n"); echo "0/0\n"; exit(0); }
+if ($src === false) {
+    echo "SKIP: config-sidebar.php not found\n";
+    echo "=== 0 passed, 0 failed ===\n";
+    exit(0);
+}
 
 $items = [];
 $re = "/_cfg_(?:tab|link)\\(\\s*'[^']*'\\s*,\\s*(?:'[^']*'\\s*,\\s*)?t\\(\\s*'[^']*'\\s*,\\s*'([^']*)'\\s*\\)(?:\\s*,\\s*'([^']*)')?/";
@@ -55,5 +59,7 @@ if ($total < 60) { $fail++; $fails[] = "only $total items parsed (expected 60+)"
 if ($withKw < $total * 0.9) { $fail++; $fails[] = "keyword coverage $withKw/$total below 90%"; } else { $pass++; }
 
 foreach ($fails as $f) fwrite(STDERR, "FAIL: $f\n");
-echo ($pass) . "/" . ($pass + $fail) . " sidebar-search assertions passed\n";
+// Canonical summary — tools/test_all.php will not count a file that does
+// not print this exact shape, and errors on one that prints nothing.
+echo "sidebar-search — === $pass passed, $fail failed ===\n";
 exit($fail === 0 ? 0 : 1);

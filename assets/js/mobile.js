@@ -1045,7 +1045,7 @@
             // body," EventSource silently errored, and mobile has
             // been permanently disconnected from real-time events —
             // which is exactly the bidirectional CAD↔mobile sync gap
-            // a beta tester reported in #13. Both training and Bloomington
+            // a beta tester reported in #13. Both training and your deployment
             // had the same silent failure but nobody noticed because
             // desktop dispatchers don't use mobile.js.
             sseSource = new EventSource('api/stream.php');

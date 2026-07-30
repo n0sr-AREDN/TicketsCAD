@@ -923,7 +923,63 @@ $csrf     = csrf_token();
             }
         }
 
+        // ── Scheduled background jobs ──────────────────────────────
+        // Two of these ran for the first time on 2026-07-29, seven weeks
+        // after being "installed" into an /etc/cron.d on a host with no
+        // cron daemon. Nothing reported it because nothing recorded a
+        // last-run anywhere. This table is that record.
+        var sj   = data.scheduled_jobs || {};
+        var jobs = sj.jobs || [];
+        html += '<div class="mt-3 mb-1 fw-semibold" style="font-size:0.8rem">' +
+                '<i class="bi bi-clock-history me-1"></i>Scheduled background jobs' +
+                '</div>';
+        if (jobs.length === 0) {
+            html += '<div class="text-body-secondary" style="font-size:0.78rem">No background jobs registered.</div>';
+        } else {
+            html += '<div class="table-responsive"><table class="table table-sm mb-2" style="font-size:0.78rem">';
+            html += '<thead><tr><th>Job</th><th>Every</th><th>Last success</th><th>Runs</th><th>Status</th></tr></thead><tbody>';
+            for (var k = 0; k < jobs.length; k++) {
+                var jb = jobs[k];
+                var last;
+                if (jb.state === 'never') {
+                    last = '<span class="text-danger fw-semibold">never</span>';
+                } else {
+                    last = esc(jb.last_ok_at || '') +
+                           '<br><small class="text-body-secondary">' + esc(fmtAgo(jb.age_s)) + ' ago</small>';
+                }
+                html += '<tr>';
+                html += '<td><strong>' + esc(jb.label) + '</strong>' +
+                        '<br><small class="text-body-secondary">' + esc(jb.purpose || '') + '</small></td>';
+                html += '<td>' + esc(fmtAgo(jb.interval_s)) + '</td>';
+                html += '<td>' + last + '</td>';
+                html += '<td>' + esc(jb.run_count) +
+                        (jb.error_count > 0 ? ' <span class="text-danger">(' + esc(jb.error_count) + ' err)</span>' : '') +
+                        '</td>';
+                html += '<td>' + sevBadge(jb.severity) +
+                        (jb.required ? '' : ' <small class="text-body-secondary">not required</small>') +
+                        '<br><small class="text-body-secondary">' + esc(jb.last_detail || jb.required_why || '') + '</small></td>';
+                html += '</tr>';
+            }
+            html += '</tbody></table></div>';
+            if ((sj.severity === 'critical' || sj.severity === 'warn') && sj.remedy) {
+                html += '<div class="alert alert-warning py-1 px-2 mb-2" style="font-size:0.75rem">' +
+                        esc(sj.remedy) + '</div>';
+            }
+            html += '<div class="text-body-secondary" style="font-size:0.72rem">' +
+                    'Work more than <strong>' + esc(sj.cutoff_min) + ' min</strong> past due is recorded as ' +
+                    '<em>expired</em> rather than acted on retroactively ' +
+                    '(setting <code>sched_stale_cutoff_min</code>).</div>';
+        }
+
         body.innerHTML = html;
+    }
+
+    function fmtAgo(s) {
+        if (s === null || s === undefined) return 'never';
+        if (s < 90) return s + 's';
+        if (s < 5400) return Math.round(s / 60) + ' min';
+        if (s < 172800) return Math.round(s / 3600) + ' hours';
+        return Math.round(s / 86400) + ' days';
     }
 
     function fetchIt() {

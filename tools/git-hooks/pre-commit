@@ -6,14 +6,24 @@
 #   1. php -l on every staged .php file          (syntax)
 #   2. tools/schema_audit.php                    (SQL ↔ real database schema)
 #   3. tools/api_contract_audit.php              (JS reads ↔ API emitted keys)
+#   3b. tools/legacy_level_audit.php             (API gate ↔ the page's RBAC gate)
+#   3c. tools/timezone_audit.php                 (stored clock ↔ the clock queried)
+#   4. tools/gen_schema_manifest.php --check     (manifest ↔ what the code writes)
+#   5. tools/generate-sbom.php --check/--verify  (SBOM ↔ dependencies + signature)
+#
+# This list must stay in step with .github/workflows/qa.yml. A CI gate with no
+# local mirror is a gate you meet by email, minutes after pushing, instead of in
+# the second before committing — see §5 for what that cost us once already.
 #
 # Install once per clone:  bash tools/install-git-hooks.sh
 # Bypass in an emergency:  git commit --no-verify   (CI still catches it)
 #
 # The two audits compare against baselines (tools/schema_audit_baseline.txt,
 # tools/api_contract_baseline.txt) — they only fail on NEW findings.
-# The schema audit needs a reachable database (config.php); if the DB is
-# down it warns and passes rather than blocking unrelated commits.
+# Gates with an environmental prerequisite warn and pass rather than blocking an
+# unrelated commit: §2 and §4 need a reachable database (config.php), and §5's
+# signature check needs the OpenSSL extension. CI has all three, so nothing is
+# lost — the finding simply arrives there instead.
 
 set -u
 
@@ -67,6 +77,30 @@ if [ -f tools/api_contract_audit.php ]; then
     fi
 fi
 
+# ── 3b. Page/API authorisation-split audit (static, always runs) ───
+# An api/ endpoint that gates on the legacy user.level while its page
+# gates on RBAC = a screen the user can open but not use.
+if [ -f tools/legacy_level_audit.php ]; then
+    OUT="$("$PHP" tools/legacy_level_audit.php 2>&1)"
+    if [ $? -ne 0 ]; then
+        echo "✗ authorisation-split audit found an api/ endpoint gating on user.level alone:"
+        echo "$OUT" | tail -20
+        FAILED=1
+    fi
+fi
+
+# ── 3c. Clock-consistency audit (static, always runs) ──────────────
+# A query that measures a locally-stamped DATETIME against UTC_TIMESTAMP()
+# is invisible on a UTC server and silently wrong on every other one.
+if [ -f tools/timezone_audit.php ]; then
+    OUT="$("$PHP" tools/timezone_audit.php 2>&1)"
+    if [ $? -ne 0 ]; then
+        echo "✗ clock audit found a timestamp compared against the wrong clock:"
+        echo "$OUT" | tail -20
+        FAILED=1
+    fi
+fi
+
 # ── 4. Schema manifest freshness (needs DB; warn-and-pass if unreachable) ──
 # Phase 125: sql/schema_manifest.json is what an INSTALL checks itself against.
 # If it goes stale, every user's self-check silently stops covering new columns.
@@ -79,6 +113,56 @@ if [ -f tools/gen_schema_manifest.php ]; then
         echo "✗ sql/schema_manifest.json is stale — run: php tools/gen_schema_manifest.php"
         echo "$OUT" | tail -5
         FAILED=1
+    fi
+fi
+
+# ── 5. SBOM freshness + signature (static, always runs) ────────────
+# Phase 127: every release ships an SBOM describing the code in it, and CI
+# enforces that. This section exists because CI enforced it and nothing local
+# did: on 2026-07-29 dependencies moved, the committed SBOM did not, and the
+# build went red on a command that costs about a second to run here. The same
+# gate then caught a newly vendored component that would otherwise have shipped
+# unrecorded — it was doing its job; nobody was reading it until the email.
+#
+# --check regenerates and compares, so it catches both a moved dependency and a
+# hand-edited document. --verify proves the detached signature still matches the
+# bytes on disk, so an SBOM edited without re-signing cannot pass either.
+#
+# --validate (CycloneDX schema conformance) is NOT run unconditionally: it costs
+# ~7s against ~1s for the other two, and the only breakage it catches that they
+# miss is a generator that emits a non-conforming document. That has exactly one
+# cause, so it is gated on that cause below.
+if [ -f tools/generate-sbom.php ]; then
+    OUT="$("$PHP" tools/generate-sbom.php --check 2>&1)"
+    CODE=$?
+    if [ $CODE -ne 0 ]; then
+        echo "✗ the committed SBOM does not match the current dependencies or VERSION:"
+        echo "$OUT" | tail -10
+        echo "  Run: php tools/generate-sbom.php   (then review the diff and stage it)"
+        FAILED=1
+    fi
+
+    OUT="$("$PHP" tools/generate-sbom.php --verify 2>&1)"
+    CODE=$?
+    if echo "$OUT" | grep -qi "OpenSSL extension is required"; then
+        echo "⚠ SBOM signature check skipped (no OpenSSL extension) — CI will run it"
+    elif [ $CODE -ne 0 ]; then
+        echo "✗ the SBOM signature does not verify against SBOM.cdx.json:"
+        echo "$OUT" | tail -10
+        FAILED=1
+    fi
+
+    # Only the generator itself, or the vendored CycloneDX schemas it validates
+    # against, can make the document non-conforming without also making it stale.
+    if git diff --cached --name-only --diff-filter=ACM \
+         | grep -qE '^tools/(generate-sbom\.php|schema/)'; then
+        OUT="$("$PHP" tools/generate-sbom.php --validate 2>&1)"
+        CODE=$?
+        if [ $CODE -ne 0 ]; then
+            echo "✗ SBOM.cdx.json does not conform to the CycloneDX 1.6 schema:"
+            echo "$OUT" | tail -10
+            FAILED=1
+        fi
     fi
 fi
 

@@ -744,7 +744,7 @@ class ZelloProxyApp implements MessageComponentInterface
         // (username + password against the network user DB — the config
         // page correctly told him no JWT / private key was needed), the
         // proxy successfully connected upstream and authenticated as
-        // justin.gilbert, then this same check fired a
+        // that beta tester, then this same check fired a
         // "credentials not configured — go set up issuer and private key"
         // status message that contradicts the config page and disconnects
         // the widget.

@@ -15,7 +15,7 @@
  * cadence IS the poll cadence, so match it to weather_poll_seconds):
  *   * * * * * php /var/www/newui/tools/weather_poll.php >/dev/null 2>&1
  *
- * systemd timer is preferred on training/Bloomington — see
+ * systemd timer is preferred on training/your deployment — see
  * docs/WEATHER-ALERTS-GUIDE.md for the unit files.
  */
 

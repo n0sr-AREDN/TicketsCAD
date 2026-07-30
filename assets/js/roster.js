@@ -487,7 +487,7 @@
         // (white), which worked under the legacy interpretation when bg
         // was always a saturated color, but breaks under the new
         // convention where bg can legitimately be white (e.g. a beta tester
-        // Gilbert 2026-06-26: 'Dispatcher' type with white bg / black
+        // A beta tester, 2026-06-26: 'Dispatcher' type with white bg / black
         // text rendered as invisible white-on-white in the detail
         // panel). Setting both bg and text from the API-provided
         // *_text_color fields makes the detail badge consistent with

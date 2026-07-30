@@ -164,12 +164,10 @@ assertNull(_cot_color_to_argb('#FFF'),    'color: short form unsupported (return
 // ─── Report ─────────────────────────────────────────────────────
 echo "Phase 91 — CoT translation library tests\n";
 echo "========================================\n";
-echo "  Passed: $pass\n";
-echo "  Failed: $fail\n";
 if ($fail > 0) {
-    echo "\n";
-    foreach ($failures as $msg) echo "$msg\n\n";
-    exit(1);
+    foreach ($failures as $msg) echo "$msg\n";
 }
-echo "  All passing.\n";
-exit(0);
+// Canonical summary — tools/test_all.php will not count a file that does
+// not print this exact shape, and errors on one that prints nothing.
+echo "=== $pass passed, $fail failed ===\n";
+exit($fail > 0 ? 1 : 0);

@@ -369,7 +369,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'in_types_id'      => $input['in_types_id'] ?? null,
                 'incident_type_id' => $input['incident_type_id'] ?? null,
                 'ticket_id'        => $input['ticket_id'] ?? null,
-                'sender_role'      => $input['sender_role'] ?? ($current_level ?? 0)
+                // Phase 128 (2026-07-29): was `$current_level`, the legacy
+                // user.level. Two problems: it is being deleted, and it was
+                // already wrong — api/config-admin.php stopped writing
+                // user.level in Phase 12, so every account created since
+                // then carries the column default 0, which this filter read
+                // as "Super Admin". A rule filtered on Super Admin matched
+                // every new user. The sender's RBAC role id is the real
+                // answer. See the note on the filter's UI in settings.php.
+                'sender_role'      => $input['sender_role'] ?? router_current_role_id()
             ];
 
             $matches = router_test($channel, $direction, $testMessage);

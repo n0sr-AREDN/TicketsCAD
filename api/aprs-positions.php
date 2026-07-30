@@ -62,7 +62,7 @@ try {
                 r1.lat, r1.lng, r1.altitude, r1.speed, r1.heading,
                 r1.reported_at, r1.raw_data,
                 latest.report_count AS reports,
-                TIMESTAMPDIFF(SECOND, r1.reported_at, UTC_TIMESTAMP()) AS age_sec
+                TIMESTAMPDIFF(SECOND, r1.reported_at, NOW()) AS age_sec
            FROM `{$prefix}location_reports` r1
            JOIN (
                SELECT unit_identifier,
@@ -70,7 +70,7 @@ try {
                       COUNT(*)           AS report_count
                  FROM `{$prefix}location_reports`
                 WHERE provider_id = ?
-                  AND reported_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? MINUTE)
+                  AND reported_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)
                 GROUP BY unit_identifier
            ) latest
              ON latest.unit_identifier = r1.unit_identifier
@@ -82,15 +82,31 @@ try {
     );
 
     // Last seen across the whole provider — feeds the "listener status"
-    // widget. 2026-06-29 fix (Eric beta): use TIMESTAMPDIFF in SQL
-    // instead of PHP time() - strtotime(). The Python listener stores
-    // UTC strings; PHP strtotime() interprets them as LOCAL time,
-    // adding the local-to-UTC offset (~5h on CDT). TIMESTAMPDIFF works
-    // on MariaDB-internal datetime values with no TZ math, so it
-    // matches the rest of the API which uses TIMESTAMPDIFF for age_sec.
+    // widget.
+    //
+    // CLOCK NOTE (2026-07-29 fix, Eric beta) — compare against NOW(),
+    // never UTC_TIMESTAMP(). `location_reports.reported_at` holds
+    // wall-clock time in the install's `area_timezone`, and every
+    // writer agrees on that: the Python listener stamps
+    // `_now_local_str()` (services/aprs/aprs_listener.py:139),
+    // api/location.php:279,578 uses date('Y-m-d H:i:s'), and
+    // inc/atak_route.php:95 converts inbound ISO-Z to local before the
+    // INSERT. inc/db.php:52 + config.php:91 sync the MySQL session
+    // time_zone to PHP's zone, so NOW() is that same clock.
+    //
+    // History of the bug this replaces: commit 3c556fb (2026-06-29)
+    // switched this API to UTC_TIMESTAMP() back when the listener
+    // really did write datetime.utcnow(). Commit 0115613 (2026-07-08)
+    // moved the listener to area-local stamps but left the reader on
+    // UTC — so on any server not running UTC every row looked exactly
+    // one UTC offset old (5 h on US Central). Symptoms: the map showed
+    // "0 stations in window", because no local-time row is ever newer
+    // than UTC-minus-an-hour, and the banner claimed the listener was
+    // down while it was healthily writing ~1,300 rows an hour.
+    // tools/timezone_audit.php now gates this class of bug.
     $listenerRow = db_fetch_one(
         "SELECT MAX(reported_at) AS last_seen,
-                TIMESTAMPDIFF(SECOND, MAX(reported_at), UTC_TIMESTAMP()) AS last_seen_ago
+                TIMESTAMPDIFF(SECOND, MAX(reported_at), NOW()) AS last_seen_ago
            FROM `{$prefix}location_reports`
           WHERE provider_id = ?",
         [(int) $provider['id']]
@@ -116,7 +132,7 @@ try {
         "SELECT COUNT(DISTINCT unit_identifier)
            FROM `{$prefix}location_reports`
           WHERE provider_id = ?
-            AND reported_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? MINUTE)",
+            AND reported_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)",
         [(int) $provider['id'], $sinceMin]
     );
 

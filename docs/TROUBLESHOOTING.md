@@ -43,6 +43,7 @@ If your symptom isn't here, check [FAQ.md](FAQ.md), then [/help.php → Troubles
   - [OwnTracks returns 403 Forbidden](#owntracks-403)
   - [DMR bridge `/health` returns "bad bearer"](#dmr-bad-bearer)
   - [Mesh bridge stays disconnected](#mesh-disconnected)
+  - [APRS map shows "0 stations" and claims the listener is down](#aprs-zero-stations)
   - [Webhook deliveries all show "failed"](#webhook-failed)
 - [Mobile + PWA](#mobile--pwa)
   - [PWA "Add to Home Screen" missing on Android](#pwa-missing)
@@ -792,6 +793,42 @@ journalctl -u meshbridge_v2 -n 50
 - USB device disconnected → check `ls /dev/ttyUSB*` matches the bridge's expected port
 - Bearer token mismatch → see [dmr-bad-bearer](#dmr-bad-bearer) (same pattern)
 - TicketsCAD unreachable from the bridge VM → `curl -I https://cad.example.org/api/mesh.php?action=poll_outbox` should not error
+
+---
+
+### aprs-zero-stations
+
+**Symptom:** the APRS map shows "0 stations in window" under a banner reading
+"APRS-IS receive listener is not active. Last position received 5h ago" — but
+the listener is running fine and rows really are arriving. The reported age is
+suspiciously close to your server's offset from UTC.
+
+**Fixed in 4.2.2.** If you are on 4.2.1 or earlier and your server is not set
+to UTC, you have this bug; `git pull` and reload PHP. Nothing in the database
+needs to change — the stored rows were always correct, only the query that
+measured their age was wrong.
+
+**Diagnostic** (confirms it is this and not a genuinely dead listener):
+
+```sql
+SELECT NOW()                                              AS now_local,
+       UTC_TIMESTAMP()                                    AS now_utc,
+       MAX(reported_at)                                   AS newest_row,
+       TIMESTAMPDIFF(SECOND, MAX(reported_at), NOW())     AS age_real,
+       COUNT(*)                                           AS rows_last_hour
+  FROM location_reports
+ WHERE reported_at > DATE_SUB(NOW(), INTERVAL 1 HOUR);
+```
+
+If `age_real` is a few seconds and `rows_last_hour` is large, the listener is
+healthy and you are hitting this bug. If `rows_last_hour` is 0, the listener
+really is down — check `systemctl status aprs-listener`.
+
+**Cause:** `location_reports.reported_at` stores wall-clock time in the
+install's `area_timezone`, but the map's query measured its age against
+`UTC_TIMESTAMP()`. On a UTC server the two clocks are identical and nothing
+looks wrong, which is why it survived; on any other server every row looked
+exactly one UTC offset old, so the one-hour window matched nothing.
 
 ---
 

@@ -146,6 +146,38 @@ function _router_has_subaddress_col(): bool {
  * @param int|null $sourceMessageId  The messages.id from the broker log
  * @return array   Summary of routing actions: [{route_id, dest, status, error}, ...]
  */
+/**
+ * The current session user's primary RBAC role id, for the `sender_role`
+ * routing filter. Returns 0 when there is no session or no grant, which
+ * matches no configured role and therefore fails the filter closed.
+ *
+ * Phase 128 (2026-07-29) — replaces the legacy `$current_level` this
+ * filter used to read.
+ */
+function router_current_role_id(): int {
+    if (!empty($_SESSION['role_id'])) {
+        return (int) $_SESSION['role_id'];
+    }
+    $userId = (int) ($_SESSION['user_id'] ?? 0);
+    if (!$userId) return 0;
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+    try {
+        $id = db_fetch_value(
+            "SELECT r.id
+               FROM `{$prefix}user_roles` ur
+               JOIN `{$prefix}roles` r ON r.id = ur.role_id
+              WHERE ur.user_id = ?
+                AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+              ORDER BY r.sort_order, ur.granted_at DESC
+              LIMIT 1",
+            [$userId]
+        );
+        return (int) ($id ?: 0);
+    } catch (Throwable $e) {
+        return 0;
+    }
+}
+
 function router_evaluate($channel, $direction, array $message, $sourceMessageId = null) {
     // Phase 73u — caller-controlled loop-prevention metadata is a
     // forgery surface. Without this guard, any caller of broker_send
@@ -631,9 +663,15 @@ function _router_match_filters(array $filters, array $message) {
         }
     }
 
-    // Sender role filter
+    // Sender role filter.
+    //
+    // Phase 128 (2026-07-29): `sender_role` is an RBAC **role id** now, not
+    // the legacy user.level. The `?? $message['level']` fallback is gone —
+    // the two numbering schemes overlap (level 2 = role 2 = Org Admin, not
+    // Dispatcher), so silently accepting either meant a rule could match
+    // the wrong people depending on which key the caller happened to set.
     if (!empty($filters['sender_roles'])) {
-        $senderRole = $message['sender_role'] ?? ($message['level'] ?? null);
+        $senderRole = $message['sender_role'] ?? null;
         if ($senderRole === null || !in_array((int) $senderRole, array_map('intval', $filters['sender_roles']), true)) {
             return false;
         }

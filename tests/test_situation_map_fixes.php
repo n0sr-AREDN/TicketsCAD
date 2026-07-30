@@ -1,7 +1,7 @@
 <?php
 /**
  * Situation map fixes — units-count flap (#57) + zoom-lock (#58)
- * (Eric, 2026-07-05, from live Bloomington EOC feedback)
+ * (Eric, 2026-07-05, from live your deployment EOC feedback)
  *
  * #57  Units badge flickered 10<->0 because two writers owned #cntUnits:
  *      loadUnits() (roster count) and unit-tracking.js onUpdate (units with a

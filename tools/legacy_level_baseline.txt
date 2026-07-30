@@ -1,0 +1,31 @@
+# Baseline for tools/legacy_level_audit.php
+#
+# The audit flags any api/ endpoint that makes an authorisation decision
+# from the LEGACY `user.level` column ALONE — the page/API split that let
+# a your deployment Org Admin (role_id=2, user.level=4) open reports.php and
+# then be refused by api/reports.php on every report.
+#
+# Phase 128 (2026-07-29) widened the rule and removed the escape hatch.
+# It now covers api/, page templates, inc/, tools/, proxy/, sql/ and
+# assets/js — and an RBAC check with a legacy OR-fallback NO LONGER
+# passes. A level that can still say yes is still the level concept, and
+# tolerating it as "just a fallback" is what let a never-run migration
+# masquerade as a working install. The only exempt paths are the one-time
+# v3 -> v4 migration bridge, listed in lla_is_migration_path().
+#
+# Format: one finding per line, exactly as printed by the audit:
+#     api/some-endpoint.php :: if ($userLevel > 1)
+# (whitespace-collapsed statement, so it survives reformatting).
+#
+# Before adding a line here, be sure the finding is genuinely legitimate.
+# It is NOT legitimate because:
+#   - the page uses the same legacy gate (that is two broken gates agreeing);
+#   - there is "an RBAC check right next to it" (see above);
+#   - "this install hasn't migrated yet" (login refuses on those now).
+# Legitimate looks like a level STORED as metadata or handed to an
+# RBAC-aware helper — and those are not comparisons, so the audit does
+# not flag them anyway. In practice, a new entry here means the fix was
+# skipped. Add one only WITH a comment explaining why, as with the schema
+# and api-contract baselines.
+
+# (empty — as of 2026-07-29 nothing in the tree authorises from user.level)

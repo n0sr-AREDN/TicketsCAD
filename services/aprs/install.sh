@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Install the TicketsCAD APRS-IS listener on a host (training or
-# Bloomington). Idempotent — re-running is safe.
+# your deployment). Idempotent — re-running is safe.
 #
 # What it does:
 #   1. apt install python3-pip + pip install aprslib + mysql-connector-python

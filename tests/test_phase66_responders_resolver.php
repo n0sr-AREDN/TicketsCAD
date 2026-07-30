@@ -57,6 +57,7 @@ try {
     );
 } catch (Exception $e) {
     echo "SKIP: fixture setup failed: " . $e->getMessage() . "\n";
+    echo "=== 0 passed, 0 failed ===\n";
     exit(0);
 }
 
@@ -127,6 +128,8 @@ if ($row) {
     p66(($row['last_track'] ?? null) !== null, 'last_track populated from received_at');
 }
 
-echo "Phase 66 responders-resolver tests: $passes/$tests passed\n";
 foreach ($fails as $f) echo "  FAIL: $f\n";
-if ($fails) exit(1);
+// Canonical summary — tools/test_all.php will not count a file that does
+// not print this exact shape, and errors on one that prints nothing.
+echo "Phase 66 responders-resolver — === $passes passed, " . count($fails) . " failed ===\n";
+exit($fails ? 1 : 0);

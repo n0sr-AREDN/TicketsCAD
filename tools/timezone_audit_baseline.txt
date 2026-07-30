@@ -1,0 +1,26 @@
+# Clock-consistency audit baseline — tools/timezone_audit.php
+#
+# One finding key per line. A key listed here is a KNOWN, REVIEWED case that
+# the audit should not fail on; anything not listed fails the build.
+#
+# This file is intentionally EMPTY of real entries. The 2026-07-29 sweep fixed
+# every mismatch it found rather than baselining it:
+#
+#   api/aprs-positions.php        location_reports.reported_at vs UTC_TIMESTAMP()
+#   api/mesh.php                  gmdate() into mesh_packet_log.received_at
+#   api/external/v1/_auth.php     gmdate() vs external_api_tokens.expires_at
+#   assets/js/incident-detail.js  responder.updated + 'Z'   (x3)
+#   assets/js/units.js            last_track/updated + 'Z'
+#   assets/js/chat-widget.js      toISOString() as a MySQL DATETIME (x2)
+#   owntracks-diagnostics.php     last_post + 'Z'
+#   unit-history.php              history timestamps + 'Z'
+#
+# BEFORE ADDING A KEY: this stack stores DATETIME columns as wall-clock time in
+# the install's area_timezone, and inc/db.php syncs the MySQL session time_zone
+# to PHP's, so NOW() is the correct clock nearly everywhere. A UTC comparison is
+# only legitimate when the column is genuinely WRITTEN in UTC — verify the
+# writer by reading it, not by assuming, then add the key with a comment naming
+# the writer and why it is UTC.
+#
+# Wire formats (ISO-8601 'Z', RFC HTTP dates, JWT exp/iat, TOTP time-steps) are
+# correctly UTC and are not flagged — no baseline entry is needed for those.

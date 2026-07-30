@@ -35,10 +35,27 @@
  *       Drop the per-request cache. Tests use this when flipping the
  *       session user mid-run.
  *
- * Legacy fallback: when the v2 schema isn't applied yet (fresh checkout
- * before the migration runner has been executed), _rbac_legacy_check()
- * still answers based on user.level. After migration this path is
- * unreachable; Block B5 deletes it as part of the redesign closeout.
+ *   rbac_schema_ready(): bool
+ *       True iff the RBAC v2 schema is applied. Callers use this to
+ *       REFUSE — see rbac_unmigrated_message().
+ *
+ * Phase 128 (2026-07-29) — THERE IS NO LEGACY FALLBACK ANY MORE.
+ *
+ * `_rbac_legacy_check()` used to answer permission questions from the
+ * `user.level` column whenever the v2 schema looked absent. It was
+ * written as a safety net and became the disease: it made the one-time
+ * level->role migration optional, so an install could run for months
+ * authorising against a column the role system had replaced — and nobody
+ * found out, because everything "worked". It is precisely why the level
+ * concept kept coming back after Phase 12 declared it dead.
+ *
+ * The new contract:
+ *   - rbac_can() DENIES when grants cannot be loaded. It never grants
+ *     from a legacy value, and it never grants from the absence of data.
+ *   - An install without the v2 schema is refused at LOGIN, loudly, with
+ *     the command to run. It does not silently degrade.
+ *
+ * See specs/phase-128-eliminate-legacy-levels/{spec,plan}.md.
  */
 
 declare(strict_types=1);
@@ -55,11 +72,14 @@ function rbac_can(string $permCode, array $context = []): bool {
         return true;
     }
 
-    // Legacy fallback when the v2 schema isn't present.
+    // Phase 128: no grants loadable (no session, or the v2 schema is
+    // absent) means DENY. This used to walk $_SESSION['level'] and hand
+    // out permissions from it — including a blanket `level === 0 =>
+    // true`, which authorised everything for anybody the legacy column
+    // still called "Super". An unmigrated install is refused at login
+    // (see rbac_unmigrated_message()); it is never quietly authorised.
     if ($cache === false) {
-        $level = (int) ($_SESSION['level'] ?? 99);
-        if ($level === 0) return true;
-        return _rbac_legacy_check($permCode, $level);
+        return false;
     }
 
     // Resolve aliases — both old and canonical codes work during the
@@ -450,11 +470,16 @@ function rbac_undismiss_permission(int $permissionId): bool
 }
 
 /**
- * True iff the v2 schema (scope_kind on user_roles) has been applied.
- * Cached per-request. Used by inc/auth.php's fail-closed guard so we
- * don't punish installs that haven't migrated yet.
+ * True iff the RBAC v2 schema (scope_kind on user_roles) has been applied.
+ * Cached per-request.
+ *
+ * Phase 128 inverted this function's job. It used to SOFTEN the
+ * fail-closed guard — "don't punish installs that haven't migrated yet" —
+ * which in practice meant an unmigrated install kept authorising from
+ * `user.level` forever. Now it TRIGGERS the refusal: callers use it to
+ * stop the request and print rbac_unmigrated_message().
  */
-function _rbac_v2_schema_present(): bool {
+function rbac_schema_ready(): bool {
     static $present = null;
     if ($present !== null) return $present;
     $prefix = $GLOBALS['db_prefix'] ?? '';
@@ -468,6 +493,27 @@ function _rbac_v2_schema_present(): bool {
     } catch (Throwable $e) {
         return $present = false;
     }
+}
+
+/**
+ * Historical name, kept so third-party code and tools/upgrade/smoke_test.php
+ * keep working. Prefer rbac_schema_ready().
+ */
+function _rbac_v2_schema_present(): bool {
+    return rbac_schema_ready();
+}
+
+/**
+ * The one operator-facing wording for "this install never completed the
+ * RBAC migration". Login, the API edge and the page banner all use this
+ * string so the instruction cannot drift between the three places an
+ * operator might meet it.
+ */
+function rbac_unmigrated_message(): string {
+    return 'This installation has not completed the role-based access '
+         . 'migration, so permissions cannot be evaluated. On the server, run: '
+         . 'php sql/run_migrations.php   '
+         . '(verify with: php tools/check-schema.php)';
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -659,56 +705,26 @@ function _rbac_setting(string $name): ?string {
     }
 }
 
-/**
- * Pre-v2 fallback. Removed in Block B5 once the migration is mandatory.
- * Until then it preserves login for installs that haven't run
- * `sql/run_rbac_v2.php`.
- */
-function _rbac_legacy_check(string $permCode, int $level): bool {
-    // Phase 73cc — was a blocklist (level=2 gets everything EXCEPT a
-    // 4-element deny list). That meant high-impact permissions added
-    // since the original write — screen.audit_log, screen.encryption_keys,
-    // action.manage_routing, action.manage_rbac, action.broadcast_alerts —
-    // all evaluated TRUE for level=2 on any install that hadn't completed
-    // the v2 migration. Replaced with an explicit allowlist so anything
-    // not listed is denied, full stop.
-    //
-    // This path only fires when _rbac_v2_schema_present() returns false,
-    // which on a modern install is "never" — the migration is part of
-    // the install flow. If you hit this in prod, run sql/run_rbac_v2.php.
-    if ($level <= 1) {
-        // Super-admin equivalent — still trust this; the only time it
-        // matters is the pre-migration window for a single hardcoded
-        // admin user.
-        return true;
-    }
-    // Explicit allowlists for the legacy levels. Anything not listed
-    // returns false (deny).
-    $level2Allowed = [
-        'screen.dashboard', 'screen.incidents', 'screen.incident_detail',
-        'screen.units', 'screen.unit_detail',
-        'screen.facilities', 'screen.facility_detail',
-        'screen.roster', 'screen.member_detail',
-        'screen.teams', 'screen.search', 'screen.reports',
-        'widget.map', 'widget.weather', 'widget.incidents',
-        'widget.responders', 'widget.facilities', 'widget.stats',
-        'widget.log', 'widget.controls', 'widget.comms',
-        'action.create_incident', 'action.edit_incident', 'action.close_incident',
-        'action.assign_unit', 'action.add_note',
-        'action.manage_members', 'action.manage_teams', 'action.manage_schedule',
-        'action.change_unit_status', 'action.dispatch_unit',
-        'action.send_chat', 'action.send_sms', 'action.send_email',
-        'field.view_patient', 'field.view_contact', 'field.view_address',
-        'field.view_notes',
-    ];
-    $level3Allowed = [
-        'screen.dashboard', 'screen.incidents', 'screen.incident_detail',
-        'screen.units', 'screen.unit_detail',
-        'widget.map', 'widget.incidents', 'widget.responders',
-        'widget.weather',
-    ];
-    if ($level === 2) return in_array($permCode, $level2Allowed, true);
-    if ($level === 3) return in_array($permCode, $level3Allowed, true);
-    $level4Allowed = ['screen.dashboard', 'widget.map', 'widget.weather'];
-    return in_array($permCode, $level4Allowed, true);
-}
+// ─────────────────────────────────────────────────────────────────────
+// DELETED — _rbac_legacy_check() (Phase 128, 2026-07-29)
+// ─────────────────────────────────────────────────────────────────────
+//
+// This function answered permission questions from the legacy
+// `user.level` integer whenever the RBAC v2 schema looked absent. It was
+// the last runtime consumer of the level concept, and removing it is the
+// point of Phase 128.
+//
+// Do not reintroduce it, or anything shaped like it. Its whole purpose
+// was to let the app keep running before the one-time migration had been
+// applied — and that is exactly what went wrong: sql/run_rbac_v2.php step
+// A9 raised MySQL 1054 on every install (it read a `username` column that
+// does not exist), left users with no roles, and this fallback covered
+// for it so quietly that the migration Eric asked for was never actually
+// performed anywhere. A your deployment Org Admin could not run a report on
+// 2026-07-29 because two gates disagreed about which system was real.
+//
+// The replacement is not a nicer fallback. It is a refusal:
+// rbac_can() denies, and login stops with rbac_unmigrated_message().
+//
+// tools/legacy_level_audit.php fails the build if a level comparison
+// reappears in an authorisation decision anywhere in the tree.

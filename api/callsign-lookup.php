@@ -225,9 +225,12 @@ elseif ($action === 'config') {
         ]);
     }
 
-    // POST — save config (admin only)
-    $userLevel = (int) ($_SESSION['level'] ?? 99);
-    if ($userLevel > 1) {
+    // POST — save config (admin only).
+    // 2026-07-29 — was `$_SESSION['level'] > 1` only, so a Super Admin with
+    // legacy user.level=4 could not save provider config.
+    // Phase 128 — the level fallback is gone; this is an RBAC decision.
+    require_once __DIR__ . '/../inc/rbac.php';
+    if (!is_admin() && !rbac_can('action.manage_config')) {
         json_error('Admin access required', 403);
     }
 

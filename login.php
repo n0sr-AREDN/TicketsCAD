@@ -167,11 +167,20 @@ function complete_login($row, $theme, $clientIp)
     // Set session
     $_SESSION['user_id']   = (int) $row['id'];
     $_SESSION['user']      = $row['user'];
-    // Phase 12 (2026-06-11): keep $_SESSION['level'] populated as a
-    // defensive shim for any third-party / extension code that might
-    // still read it. NewUI runtime code no longer references it for
-    // gating — is_admin() and current_role_name() drive every check.
-    $_SESSION['level']     = (int) ($row['level'] ?? 0);
+    // Phase 128 (2026-07-29): $_SESSION['level'] is NO LONGER SET.
+    //
+    // Phase 12 kept it populated "as a defensive shim for any third-party
+    // code that might still read it". Nothing did — but a session key
+    // named `level` sitting next to the real identity is an invitation,
+    // and it got taken repeatedly: api/reports.php, api/audit-log.php,
+    // settings.php and a dozen others gated on it long after levels were
+    // declared dead. The value is not published, so it cannot be reached
+    // for. Authorisation comes from $_SESSION['role_id'] / role grants
+    // via is_admin() and rbac_can(); display comes from role_name.
+    //
+    // The `user`.`level` COLUMN still exists and is untouched — it is what
+    // the one-time level->role migration reads on a v3 -> v4 upgrade.
+    unset($_SESSION['level']);
     $_SESSION['day_night'] = $theme;
     $_SESSION['login_at']  = date('Y-m-d H:i:s');
 
@@ -405,9 +414,36 @@ function complete_login($row, $theme, $clientIp)
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  RBAC MIGRATION GATE (Phase 128, 2026-07-29)
+// ═══════════════════════════════════════════════════════════════
+//
+// Refuse every login — both steps — while the RBAC v2 schema is absent,
+// and say exactly what to run. Until Phase 128 the app answered
+// permission questions from the legacy `user.level` column in this
+// situation, which let a broken / never-run migration masquerade as a
+// working install for months.
+//
+// Login is the right place for the refusal. It is the only moment where
+// stopping costs nothing that is not already lost — the operator has no
+// work in flight — and the repair is a CLI command, so locking the
+// browser out does not lock anyone out of fixing it. A dispatcher who is
+// ALREADY signed in keeps their screen (see the banner in inc/navbar.php)
+// rather than being thrown out mid-incident; rbac_can() simply denies.
+require_once __DIR__ . '/inc/rbac.php';
+$rbacUnmigrated = !rbac_schema_ready();
+if ($rbacUnmigrated) {
+    $error = rbac_unmigrated_message();
+    error_log('[TicketsCAD] Login refused: RBAC v2 schema absent. '
+            . 'Run php sql/run_migrations.php');
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  HANDLE 2FA VERIFICATION (step 2)
 // ═══════════════════════════════════════════════════════════════
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['tfa_verify'])) {
+if ($rbacUnmigrated) {
+    // No second factor either — step 1 was refused, so there is no
+    // legitimate pending verification to complete.
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['tfa_verify'])) {
     if (!csrf_verify($_POST['csrf_token'] ?? '')) {
         $error = 'Security token expired. Please try again.';
     } else {
@@ -524,7 +560,11 @@ try {
 // ═══════════════════════════════════════════════════════════════
 //  HANDLE LOGIN (step 1 — username/password)
 // ═══════════════════════════════════════════════════════════════
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST['tfa_verify'])) {
+if ($rbacUnmigrated) {
+    // Fall through to the form with the instruction shown. No
+    // credential is checked, so nothing can be authorised from a
+    // legacy value.
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST['tfa_verify'])) {
     // CSRF check
     if (!csrf_verify($_POST['csrf_token'] ?? '')) {
         $error = 'Security token expired. Please try again.';
@@ -603,7 +643,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST['tfa_verify'])) {
                 // ── 2FA check ──────────────────────────────────────────
                 $tfaSettings = tfa_get_settings();
                 $userHasTfa = tfa_is_enabled((int) $row['id']);
-                $tfaRequired = tfa_is_required_for_user((int) $row['id'], (int) $row['level']);
+                $tfaRequired = tfa_is_required_for_user((int) $row['id']);
 
                 if ($userHasTfa && $tfaSettings['tfa_enabled']) {
                     // User has 2FA enrolled — check if device is remembered

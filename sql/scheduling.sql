@@ -153,6 +153,6 @@ VALUES
 -- Seed: Demo event
 INSERT INTO `newui_events` (`name`, `event_type`, `description`, `start_date`, `end_date`, `location`, `max_participants`, `status`, `created_by`)
 VALUES
-  ('Spring Severe Weather Drill', 'drill', 'Annual spring severe weather communications drill. All Skywarn volunteers encouraged to participate.', '2026-04-15 09:00:00', '2026-04-15 17:00:00', 'Bloomington EOC', 30, 'planned', 1),
+  ('Spring Severe Weather Drill', 'drill', 'Annual spring severe weather communications drill. All Skywarn volunteers encouraged to participate.', '2026-04-15 09:00:00', '2026-04-15 17:00:00', 'Riverside EOC', 30, 'planned', 1),
   ('AUXCOMM Training Exercise', 'exercise', 'Multi-agency auxiliary communications exercise with ARES/RACES and CERT teams.', '2026-05-10 08:00:00', '2026-05-10 16:00:00', 'Hennepin County EOC', 20, 'planned', 1),
   ('Monthly ARES Net', 'meeting', 'Regularly scheduled monthly ARES net check-in on 146.820 repeater.', '2026-04-01 19:00:00', '2026-04-01 20:00:00', 'On-Air (146.820-)', NULL, 'planned', 1);

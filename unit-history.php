@@ -164,7 +164,10 @@ $rid = (int) ($_GET['responder_id'] ?? 0);
     }
     function fmt(when) {
         if (!when) return '';
-        var d = new Date(when.replace(' ', 'T') + 'Z');
+        // CLOCK: parse as LOCAL — no 'Z'. These are MySQL DATETIMEs in the
+        // install's area timezone; appending 'Z' shifted every displayed
+        // history timestamp by the UTC offset (5 h on US Central).
+        var d = new Date(when.replace(' ', 'T'));
         if (isNaN(d.getTime())) return when;
         return d.toLocaleString();
     }

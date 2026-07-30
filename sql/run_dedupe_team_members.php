@@ -3,7 +3,7 @@
  * Remove orphaned team_members rows and align member_count with reality.
  *
  * Why this exists (issue #45, 2026-07-03):
- *   On Bloomington, teams.php showed a badge like "4 members" on the
+ *   On your deployment, teams.php showed a badge like "4 members" on the
  *   Skywarn team but the members list underneath said "No members
  *   assigned to this team yet." Two things were wrong:
  *

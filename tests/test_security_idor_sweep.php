@@ -85,11 +85,17 @@ if (strpos($src, "user_can_access_entity('incident'") !== false
 } else {
     bad('reports.php IDOR checks on filters');
 }
+// 2026-07-29 — this used to assert the legacy `_currentLevel > 1` gate.
+// That gate was the bug: reports.php (the page) gates on RBAC, so an Org
+// Admin with user.level=4 passed the page and was refused here. The
+// requirement is unchanged — an UNFILTERED aggregate needs an explicit
+// permission — only the mechanism moved to the role system.
 if (strpos($src, '$isFiltered') !== false
-    && strpos($src, '_currentLevel > 1') !== false) {
-    ok('reports.php aggregate (no filter) requires admin');
+    && strpos($src, "rbac_can('action.view_reports')") !== false
+    && strpos($src, '!$_canAggregate') !== false) {
+    ok('reports.php aggregate (no filter) requires action.view_reports');
 } else {
-    bad('reports.php aggregate requires admin');
+    bad('reports.php aggregate requires action.view_reports');
 }
 
 // ── training.php (member-scoped) ──

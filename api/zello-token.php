@@ -19,7 +19,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 $prefix = $GLOBALS['db_prefix'] ?? '';
 $token  = bin2hex(random_bytes(32));
 $user   = $_SESSION['user'] ?? 'unknown';
-$level  = (int) ($_SESSION['level'] ?? 99);
+// Phase 128 (2026-07-29): diagnostic metadata only — ZelloProxyApp.php
+// logs it and never compares it. Was the legacy user.level (unmaintained
+// since Phase 12, so newer accounts logged a meaningless 0); now the RBAC
+// role id, same column, same type. See api/dmr-token.php for the twin.
+require_once __DIR__ . '/../inc/router.php';
+$level  = router_current_role_id();
 
 try {
     // Purge expired tokens (older than 2 minutes)

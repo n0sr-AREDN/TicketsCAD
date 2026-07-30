@@ -22,8 +22,14 @@ require_once __DIR__ . '/../inc/audit.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 
-// Only Super Admin and Org Admin can manage RBAC
-if ($current_level > 1 && !rbac_can('action.manage_roles')) {
+// Only Super Admin and Org Admin can manage RBAC.
+//
+// Phase 128 (2026-07-29) — was `$current_level > 1 && !rbac_can(...)`,
+// which is worse than the reports bug it resembles: a legacy level of 0
+// or 1 BYPASSED the RBAC check entirely, so the endpoint that edits roles
+// and permissions was itself gated on the system it replaced. Now the
+// role decides, on the endpoint that manages roles.
+if (!is_admin() && !rbac_can('action.manage_roles')) {
     json_error('Insufficient permissions', 403);
 }
 

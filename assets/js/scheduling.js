@@ -7,8 +7,14 @@
     // user ids; self-signup detection must use the logged-in user's MEMBER id.
     var _cmEl = document.getElementById('currentMemberId');
     var currentMemberId = _cmEl ? parseInt(_cmEl.value, 10) : 0;
-    var currentLevel = parseInt(document.getElementById('currentLevel').value, 10);
-    var isAdmin = currentLevel <= 1;
+    // Phase 128 (2026-07-29): was `parseInt(#currentLevel) <= 1` — the
+    // browser re-deriving an authorisation answer from the legacy
+    // user.level column. The server now emits the decision itself, from
+    // the same scheduling_is_admin() the API enforces with, so the UI
+    // cannot disagree with the endpoint. (Client-side gating remains an
+    // affordance only; the API is still the authority.)
+    var _iaEl = document.getElementById('currentIsAdmin');
+    var isAdmin = !!(_iaEl && _iaEl.value === '1');
 
     var DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     var DAY_FULL  = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];

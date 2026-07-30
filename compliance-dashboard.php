@@ -31,11 +31,14 @@ force_pw_change_redirect();
 
 require_once __DIR__ . '/inc/rbac.php';
 
-// Admin gate. Allow super and admin levels (0, 1) OR holders of
-// action.manage_config. Match the api/security-compliance.php check.
-$canManage = function_exists('rbac_can') && rbac_can('action.manage_config');
-$lvl = (int) ($_SESSION['level'] ?? 99);
-if (!$canManage && $lvl > 1) {
+// Admin gate. Match the api/security-compliance.php check.
+//
+// Phase 128 (2026-07-29): dropped the `|| $lvl <= 1` legacy-level escape.
+// It let anyone the legacy column still called Super/Admin past a page
+// whose API enforces action.manage_config — the page and the endpoint
+// answering to different systems is the exact defect this phase removes.
+$canManage = is_admin() || rbac_can('action.manage_config');
+if (!$canManage) {
     header('Location: index.php?err=admin_required');
     exit;
 }

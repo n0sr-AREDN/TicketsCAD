@@ -3,10 +3,12 @@
  * RBAC Integration Tests
  */
 require __DIR__ . '/../config.php';
+require_once __DIR__ . '/../tests/_test_admin.php';
+$ADMIN_UID = test_admin_user_id();
 require __DIR__ . '/../inc/rbac.php';
 
 // Simulate admin session
-$_SESSION = ['user_id' => 1, 'level' => 0, 'user' => 'admin'];
+$_SESSION = ['user_id' => $ADMIN_UID, 'level' => 0, 'user' => 'admin'];
 
 echo "=== RBAC Integration Tests ===\n\n";
 $pass = 0;
@@ -84,22 +86,32 @@ if (rbac_can('action.manage_config') && rbac_can('screen.settings') && rbac_can(
     $fail++;
 }
 
-// Test 7: rbac_can() legacy fallback for guest
-echo "[Test 7] Legacy fallback for guest (level 3)... ";
-// _rbac_legacy_check is still present in the v2 redesign during the
-// deprecation window (Block B5 deletes it). Test it directly — its
-// contract didn't change.
-if (_rbac_legacy_check('screen.dashboard', 3) && !_rbac_legacy_check('action.manage_users', 3)) {
-    echo "PASS (can view dashboard, cannot manage users)\n";
+// Test 7: the legacy fallback is GONE (Phase 128, 2026-07-29)
+echo "[Test 7] No legacy-level fallback... ";
+// This used to exercise _rbac_legacy_check() directly, on the theory that
+// the pre-v2 path deserved coverage during the deprecation window. The
+// window closed: keeping the fallback is what allowed the one-time
+// level->role migration to never actually run. The assertion is now that
+// the function does not exist, and that a level alone grants nothing.
+$savedSession = $_SESSION;
+unset($_SESSION['user_id']);
+$_SESSION['level'] = 0;                     // "Super" under the old scheme
+if (function_exists('rbac_reset_cache')) rbac_reset_cache();
+$levelGrantsNothing = !rbac_can('screen.dashboard') && !rbac_can('action.manage_users');
+$_SESSION = $savedSession;
+if (function_exists('rbac_reset_cache')) rbac_reset_cache();
+
+if (!function_exists('_rbac_legacy_check') && $levelGrantsNothing) {
+    echo "PASS (no level path; a level grants nothing on its own)\n";
     $pass++;
 } else {
-    echo "FAIL\n";
+    echo "FAIL: a legacy level can still authorise\n";
     $fail++;
 }
 
 // Test 8: User role assignment
 echo "[Test 8] User role assignment check... ";
-$_SESSION = ['user_id' => 1, 'level' => 0];
+$_SESSION = ['user_id' => $ADMIN_UID, 'level' => 0];
 $roles = rbac_user_roles();
 if (count($roles) >= 1 && $roles[0]['name'] === 'Super Admin') {
     echo "PASS (admin has Super Admin role)\n";

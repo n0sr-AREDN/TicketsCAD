@@ -1225,7 +1225,12 @@
             var ageMin = null;
             var staleMin = null;
             if (haveRespLoc && r.updated) {
-                var updMs = Date.parse(String(r.updated).replace(' ', 'T') + 'Z');
+                // CLOCK: parse as LOCAL — no 'Z'. responder.updated is a
+                // MySQL DATETIME in the install's area timezone, and nowMs is
+                // browser-local; appending 'Z' forces a UTC read and skews the
+                // age by the whole UTC offset (5 h on US Central), which shows
+                // every unit as stale. See fmtAge() in owntracks-diagnostics.php.
+                var updMs = Date.parse(String(r.updated).replace(' ', 'T'));
                 if (!isNaN(updMs)) {
                     ageMin = Math.round((nowMs - updMs) / 60000);
                     if (ageMin > stThresh) staleMin = ageMin;
@@ -1553,7 +1558,8 @@
             var dkm = (haveIncidentLoc && haveResp) ? _hav(rLat, rLng, incLat, incLng) : null;
             var ageMin = null, staleMin = null;
             if (haveResp && r.updated) {
-                var ms = Date.parse(String(r.updated).replace(' ', 'T') + 'Z');
+                // CLOCK: parse as LOCAL — no 'Z' (see note above).
+                var ms = Date.parse(String(r.updated).replace(' ', 'T'));
                 if (!isNaN(ms)) {
                     ageMin = Math.round((nowMs - ms) / 60000);
                     if (ageMin > stThresh) staleMin = ageMin;
@@ -2229,7 +2235,8 @@
             } else {
                 var staleHtml = '';
                 if (a.responder_updated) {
-                    var updMs = Date.parse(a.responder_updated.replace(' ', 'T') + 'Z');
+                    // CLOCK: parse as LOCAL — no 'Z' (see note above).
+                    var updMs = Date.parse(a.responder_updated.replace(' ', 'T'));
                     if (!isNaN(updMs)) {
                         var ageMin = (nowMs - updMs) / 60000;
                         if (ageMin > STALE_THRESHOLD_MIN) {

@@ -19,14 +19,27 @@ tcheck(preg_match('/session_regenerate_id\(true\);\s*\n[^\n]*\n[^\n]*Phase 73cc/
     'CSRF rotation happens immediately after session_regenerate_id');
 
 // ── 8. RBAC legacy fail-closed ───────────────────────────────────
+//
+// Phase 73cc tightened _rbac_legacy_check()'s level-2 rule from a
+// blocklist to an allowlist, because the blocklist implicitly granted
+// every permission added after it was written (screen.audit_log,
+// action.manage_routing, action.manage_rbac...) to any level-2 user on
+// an unmigrated install.
+//
+// Phase 128 (2026-07-29) went further and deleted the function outright,
+// which subsumes the 73cc fix completely: there is no level allowlist to
+// get stale because there is no level path at all. These assertions now
+// verify the STRONGER property — that nothing in inc/rbac.php grants a
+// permission from a level, by any list.
 $rbac = file_get_contents(__DIR__ . '/../inc/rbac.php');
-tcheck(strpos($rbac, '$level2Allowed = [') !== false,
-    'inc/rbac.php uses an explicit allowlist for level 2');
-tcheck(strpos($rbac, "// Phase 73cc — was a blocklist") !== false,
-    'Phase 73cc rationale comment in place');
-tcheck(strpos($rbac, "'action.manage_routing'") === false
-    || preg_match("/'action\.manage_routing'[^']*level2Allowed/s", $rbac) === 0,
-    'action.manage_routing not in level 2 allowlist (was implicit-allow before)');
+tcheck(!function_exists('_rbac_legacy_check')
+    && strpos($rbac, 'function _rbac_legacy_check') === false,
+    'inc/rbac.php has no level-based permission path at all (Phase 128 > 73cc)');
+tcheck(strpos($rbac, '$level2Allowed') === false
+    && strpos($rbac, '$level3Allowed') === false,
+    'the level allowlists that 73cc hardened are gone entirely');
+tcheck(preg_match("/'action\.manage_routing'[^']*level2Allowed/s", $rbac) === 0,
+    'action.manage_routing cannot be granted by a legacy level');
 
 // ── 9. TFA encryption key hard-fail ──────────────────────────────
 $tfa = file_get_contents(__DIR__ . '/../inc/tfa.php');

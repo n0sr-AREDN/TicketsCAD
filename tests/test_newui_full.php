@@ -28,9 +28,11 @@ $_SERVER['HTTP_USER_AGENT'] = 'NewUI-FullTest/1.0';
 $_SERVER['REQUEST_METHOD'] = 'GET';
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/_test_admin.php';
+$ADMIN_UID = test_admin_user_id();
 
 @session_start();
-$_SESSION = ['user_id' => 1, 'level' => 0, 'user' => 'admin'];
+$_SESSION = ['user_id' => $ADMIN_UID, 'level' => 0, 'user' => 'admin'];
 
 // Load subsystems
 $inc = __DIR__ . '/../inc/';
@@ -186,7 +188,7 @@ echo "\n── Section 2: RBAC Permission System ──\n";
 if (function_exists('rbac_can')) {
     // Super admin (level 0)
     $_SESSION['level'] = 0;
-    $_SESSION['user_id'] = 1;
+    $_SESSION['user_id'] = $ADMIN_UID;
 
     test("Super: rbac_can('screen.incidents')", rbac_can('screen.incidents'));
     test("Super: rbac_can('screen.settings')", rbac_can('screen.settings'));
@@ -214,17 +216,20 @@ if (function_exists('rbac_can')) {
     test("Admin: rbac_can('screen.incidents')", rbac_can('screen.incidents'));
     test("Admin: rbac_can('action.create_incident')", rbac_can('action.create_incident'));
 
-    // Test the legacy fallback function directly (rbac_can uses static cache
-    // which can't be reset within the same process — by design for perf)
-    if (function_exists('_rbac_legacy_check')) {
-        test("Legacy fallback: guest can view screens", _rbac_legacy_check('screen.incidents', 3));
-        test("Legacy fallback: guest blocked from config", !_rbac_legacy_check('action.manage_config', 3));
-        test("Legacy fallback: guest blocked from users", !_rbac_legacy_check('action.manage_users', 3));
-        test("Legacy fallback: operator blocked from config", !_rbac_legacy_check('action.manage_config', 2));
-        test("Legacy fallback: operator can create incident", _rbac_legacy_check('action.create_incident', 2));
-    } else {
-        test("_rbac_legacy_check available for testing", false);
-    }
+    // Phase 128 (2026-07-29): the legacy-fallback cases that lived here
+    // are gone with _rbac_legacy_check() itself. What replaces them is the
+    // stronger claim — a legacy level cannot grant anything, whatever it
+    // says. Setting $_SESSION['level'] to the old "Super" value must not
+    // move the answer for a session with no grants.
+    test("_rbac_legacy_check() is gone (Phase 128)", !function_exists('_rbac_legacy_check'));
+    $savedUid = $_SESSION['user_id'] ?? null;
+    unset($_SESSION['user_id']);
+    $_SESSION['level'] = 0;                    // "Super" under the old scheme
+    if (function_exists('rbac_reset_cache')) rbac_reset_cache();
+    test("legacy level 0 grants nothing without a role",
+        !rbac_can('action.manage_config') && !rbac_can('screen.dashboard'));
+    if ($savedUid !== null) $_SESSION['user_id'] = $savedUid;
+    if (function_exists('rbac_reset_cache')) rbac_reset_cache();
 
     // Restore super for remaining tests
     $_SESSION['level'] = 0;
@@ -450,7 +455,7 @@ if (function_exists('router_create')) {
 echo "\n── Section 7: Incident CRUD ──\n";
 
 $_SESSION['level'] = 0;
-$_SESSION['user_id'] = 1;
+$_SESSION['user_id'] = $ADMIN_UID;
 
 // Create test incident type
 db_query(

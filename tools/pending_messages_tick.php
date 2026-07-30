@@ -1,15 +1,57 @@
 <?php
 /**
- * Phase 18e — pending routed-message cron tick.
+ * Phase 18e — pending routed-message tick.
  *
- * Run every minute. Each invocation sends any pending message
- * whose scheduled_send_at has passed.
+ * Run every minute. Each invocation sends any pending message whose
+ * scheduled_send_at has passed, and expires — without sending — any whose
+ * scheduled time is more than sched_stale_cutoff_min minutes ago
+ * (Phase 127; see inc/pending-messages.php for why).
  *
- * Install on the VM:
- *   echo '* * * * * www-data /usr/bin/php /var/www/newui/tools/pending_messages_tick.php >> /var/log/pending_msg_tick.log 2>&1' > /etc/cron.d/pending_msg_tick
+ * INSTALLING THIS — CHECK THAT A SCHEDULER EXISTS FIRST
+ * -----------------------------------------------------
+ * This job was originally shipped as a /etc/cron.d drop-in. Both servers
+ * running TicketsCAD turned out to have no cron daemon installed, so it
+ * never ran once between 11 June and 29 July 2026 and nothing reported it.
+ * A file in /etc/cron.d on a host without cron fails completely silently.
+ *
+ *   systemctl is-active cron                        # "not-found" => no cron daemon
+ *   systemctl list-timers --all | grep pending-msg  # is a timer scheduled instead?
+ *   journalctl -u ticketscad-pending-msg -n 20      # what the last runs actually did
+ *
+ * /var/log/pending_msg_tick.log belonged to the cron line. The timer unit logs
+ * to the journal, so that file stays 0 bytes on a healthy host — an empty log
+ * is no longer evidence of anything.
+ *
+ * Prefer a systemd timer, which needs no extra package. Unit files and
+ * install steps: docs/MAINTENANCE-RUNBOOK.md, "Scheduled background jobs".
+ *
+ *   sudo systemctl enable --now ticketscad-pending-msg.timer
+ *
+ * Whichever you use, Settings → Status → Scheduled jobs now shows the last
+ * successful run and goes red when this job stops.
+ *
+ * Usage: php tools/pending_messages_tick.php
  */
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/pending-messages.php';
+require_once __DIR__ . '/../inc/scheduled-jobs.php';
 
-$r = pending_sweep();
-echo '[' . date('Y-m-d H:i:s') . "] pending_sweep: considered={$r['considered']} sent={$r['sent']} failed={$r['failed']}\n";
+$t0 = microtime(true);
+$ts = date('Y-m-d H:i:s');
+
+try {
+    $r = pending_sweep();
+    $detail = "considered={$r['considered']} sent={$r['sent']} failed={$r['failed']}"
+            . ' expired=' . ($r['expired'] ?? 0);
+    echo "[{$ts}] pending_sweep: {$detail}\n";
+    sched_job_record('pending_messages_tick', 'ok', $detail,
+                     (int) round((microtime(true) - $t0) * 1000));
+    exit(0);
+} catch (Throwable $e) {
+    $msg = $e->getMessage();
+    fwrite(STDERR, "[{$ts}] pending_sweep FAILED: {$msg}\n");
+    sched_job_record('pending_messages_tick', 'error', $msg,
+                     (int) round((microtime(true) - $t0) * 1000));
+    exit(1);
+}

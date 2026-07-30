@@ -353,13 +353,10 @@ try {
 
 // ═══════════════════════════════════════════════════════════════
 echo "\n=== Summary ===\n";
-echo "Passed: {$passed}\n";
-echo "Failed: {$failed}\n";
-
 if ($failed > 0) {
-    echo "\n*** SOME TESTS FAILED ***\n";
-    exit(1);
-} else {
-    echo "\nAll tests passed.\n";
-    exit(0);
+    echo "*** SOME TESTS FAILED ***\n";
 }
+// Canonical summary — tools/test_all.php will not count a file that does
+// not print this exact shape, and errors on one that prints nothing.
+echo "=== {$passed} passed, {$failed} failed ===\n";
+exit($failed > 0 ? 1 : 0);

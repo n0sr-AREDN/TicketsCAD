@@ -12,7 +12,11 @@
 
     var API = 'api/config-admin.php';
     var csrfToken = '';
-    var userLevel = 99;
+    // Phase 128 (2026-07-29): `userLevel` removed. It was read from a
+    // hidden #userLevel input and never compared to anything — a dead
+    // pipe carrying the legacy level into the browser. Authorisation is
+    // decided server-side by RBAC; pages that need a client affordance
+    // receive a server-computed boolean instead.
 
     // Tile provider URL templates — must stay in sync with
     // inc/tile-config.php :: tile_provider_templates(). See help.php
@@ -68,8 +72,6 @@
     function init() {
         var el = document.getElementById('csrfToken');
         csrfToken = el ? el.value : '';
-        var lvlEl = document.getElementById('userLevel');
-        userLevel = lvlEl ? parseInt(lvlEl.value, 10) : 99;
 
         bindSidebar();
         bindTypesPanel();

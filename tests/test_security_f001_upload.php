@@ -13,6 +13,8 @@
  */
 
 require __DIR__ . '/../config.php';
+require_once __DIR__ . '/_test_admin.php';
+$ADMIN_UID = test_admin_user_id();
 require __DIR__ . '/../inc/access.php';
 
 $prefix = $GLOBALS['db_prefix'] ?? '';
@@ -110,7 +112,7 @@ if (!function_exists('user_can_access_entity')) {
 }
 
 // 3a. Admin always allowed (level <= 1)
-$_SESSION = ['user_id' => 1, 'level' => 0, 'user' => 'admin', 'user_groups' => []];
+$_SESSION = ['user_id' => $ADMIN_UID, 'level' => 0, 'user' => 'admin', 'user_groups' => []];
 if (user_can_access_entity('incident', 999999) === true) {
     ok('admin (level 0) bypasses allocates check');
 } else {
@@ -122,7 +124,7 @@ if (user_can_access_entity('incident', 999999) === true) {
 // RBAC bypass in user_can_access_entity() (Phase 10b) doesn't find
 // any grants and falls through to the allocates check. Also force
 // the RBAC grants cache to reload — the prior 3a sub-test populated
-// it for user_id=1 (admin) and that cache persists in the same PHP
+// it for the admin user and that cache persists in the same PHP
 // process otherwise.
 $_SESSION = ['user_id' => 999998, 'level' => 4, 'user' => 'observer', 'user_groups' => []];
 if (function_exists('rbac_reset_cache')) { rbac_reset_cache(); }
@@ -138,7 +140,7 @@ if (user_can_access_entity('responder', 1) === false) {
 }
 
 // 3c. Invalid entity_id is denied
-$_SESSION = ['user_id' => 1, 'level' => 0, 'user' => 'admin'];
+$_SESSION = ['user_id' => $ADMIN_UID, 'level' => 0, 'user' => 'admin'];
 if (user_can_access_entity('incident', 0) === false) {
     ok('user_can_access_entity rejects entity_id=0');
 } else {

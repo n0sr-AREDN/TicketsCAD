@@ -16,7 +16,8 @@
  *
  * Access rules:
  *   - Members may CRUD their own entries while status='self_reported'.
- *   - Admins (level <= 1) may CRUD any entry and approve/reject.
+ *   - Admins (is_admin(), i.e. a super role or action.manage_config) may
+ *     CRUD any entry and approve/reject.
  *   - Reading another member's entries requires user_can_access_entity('member',
  *     target_id), which currently allows any authenticated user (org-wide
  *     reads). Tighten via inc/access.php when policy changes.
@@ -107,7 +108,12 @@ function te_member_for_user(int $userId): ?int {
     }
 }
 
-function te_can_modify(array $entry, int $currentUserId, int $currentLevel): bool {
+/**
+ * Phase 128 (2026-07-29): the third parameter used to be the legacy
+ * `user.level` and was the deciding term for approved entries. It is gone
+ * — the signature is (entry, currentUserId) and the decision is RBAC's.
+ */
+function te_can_modify(array $entry, int $currentUserId): bool {
     // Defer to RBAC: time_entry.edit with owner_id of the entry's
     // original submitter. Roles 1..6 all hold time_entry.edit, so the
     // outcome turns on:
@@ -122,7 +128,10 @@ function te_can_modify(array $entry, int $currentUserId, int $currentLevel): boo
     if (!$canEdit) return false;
     if (($entry['status'] ?? '') !== 'self_reported') {
         // Approved / rejected entries: still restricted to admins.
-        return $currentLevel <= 1;
+        // 2026-07-29 — was `$currentLevel <= 1` only; the legacy user.level
+        // column is noise after the Phase 12 RBAC migration, so an admin
+        // with user.level=4 could not correct an approved entry.
+        return is_admin();
     }
     return true;
 }
@@ -449,7 +458,7 @@ if (!$entry) json_error('Time entry not found', 404);
 
 // ── action=update ──
 if ($action === 'update') {
-    if (!te_can_modify($entry, $current_user_id, $current_level)) {
+    if (!te_can_modify($entry, $current_user_id)) {
         json_error('Cannot edit this entry (already approved or not yours)', 403);
     }
 
@@ -514,7 +523,7 @@ if ($action === 'update') {
 
 // ── action=delete ──
 if ($action === 'delete') {
-    if (!te_can_modify($entry, $current_user_id, $current_level)) {
+    if (!te_can_modify($entry, $current_user_id)) {
         json_error('Cannot delete this entry (already approved or not yours)', 403);
     }
     db_query("DELETE FROM `{$prefix}member_time_entries` WHERE id = ?", [$entryId]);
@@ -583,7 +592,7 @@ if ($action === 'approve' || $action === 'reject') {
 // review". We accept the action for forward-compat with UIs that expect
 // a draft/submit lifecycle, audit-log the call, and return success.
 if ($action === 'submit') {
-    if (!te_can_modify($entry, $current_user_id, $current_level)) {
+    if (!te_can_modify($entry, $current_user_id)) {
         json_error('Cannot submit this entry', 403);
     }
     audit_log('personnel', 'submit', 'time_entry', $entryId,

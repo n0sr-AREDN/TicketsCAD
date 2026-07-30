@@ -206,6 +206,78 @@ sudo chown www-data:www-data /var/log/newui-backup.log
 
 **A backup that isn't off-site isn't a backup.** Pick one of the mirror options above and configure it.
 
+### Method C2 — systemd timer (use when there is no cron daemon)
+
+Writing a file into `/etc/cron.d` does nothing at all if no cron daemon is
+installed, and it fails *silently* — no error, no log, just a job that never
+runs. Minimal Debian cloud images often ship without `cron`. Both TicketsCAD
+beta servers had `/etc/cron.d` entries for background ticks that had never
+executed once; the log files were still zero bytes weeks later.
+
+**Check first, on any host, before trusting a cron line:**
+
+```bash
+systemctl is-active cron      # "inactive" or "not-found" => nothing is scheduled
+ls -l /var/log/<your-job>.log # still 0 bytes long after its interval? it never ran
+```
+
+The log-file test above is only valid for a **cron line that redirects into that
+file**. A systemd timer written per this method logs to the journal instead, so
+its log file stays zero bytes however healthy it is — check
+`journalctl -u <unit>` and the Scheduled background jobs card on
+Settings → Status, not the file.
+
+Either install cron (`sudo apt install cron`) or use a timer, which needs no
+extra package. `/etc/systemd/system/ticketscad-backup.service`:
+
+```ini
+[Unit]
+Description=TicketsCAD automatic database backup
+After=network.target mariadb.service
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+ExecStart=/usr/bin/php /var/www/newui/tools/backup_run.php
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=3600
+```
+
+`/etc/systemd/system/ticketscad-backup.timer`:
+
+```ini
+[Unit]
+Description=Hourly tick for TicketsCAD automatic database backup
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=600
+Persistent=true
+Unit=ticketscad-backup.service
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now ticketscad-backup.timer
+systemctl list-timers ticketscad-backup.timer   # confirm a NEXT time appears
+sudo systemctl start ticketscad-backup.service  # run once now
+sudo journalctl -u ticketscad-backup.service -n 20
+```
+
+The timer ticks hourly; **the interval setting decides whether a backup is
+actually taken**, so an hourly tick with a 24 h interval still means one backup
+a day. `Persistent=true` matters for this audience: a laptop or Raspberry Pi
+that was switched off at the scheduled hour backs up at next boot instead of
+skipping the day silently.
+
+With a real scheduler in place you can turn *Run without a scheduler* off in
+Settings → Backup / Maintenance, so a dump is never started by a page load.
+
 ---
 
 ## Off-site checklist

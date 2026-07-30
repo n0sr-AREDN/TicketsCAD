@@ -30,9 +30,15 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     json_error('GET required', 405);
 }
 
-// Require admin level
-$userLevel = (int) ($_SESSION['level'] ?? 99);
-if ($userLevel > 1) {
+// Require admin, or an explicit grant of action.view_audit.
+// 2026-07-29 — was `$_SESSION['level'] > 1` only, so a Super Admin whose
+// legacy user.level happened to be 4 was refused while action.view_audit
+// (which Org Admin holds) was never consulted.
+// Phase 128 — the `|| $userLevel <= 1` fallback that briefly replaced it
+// is gone too: login now refuses outright on an unmigrated install, so a
+// level fallback here could only ever grant access from stale data.
+require_once __DIR__ . '/../inc/rbac.php';
+if (!is_admin() && !rbac_can('action.view_audit')) {
     json_error('Admin access required', 403);
 }
 

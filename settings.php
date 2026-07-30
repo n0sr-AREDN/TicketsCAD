@@ -33,19 +33,32 @@ require_once __DIR__ . '/inc/force-pw-change.php';
 force_pw_change_redirect();
 
 
-// Require admin (level <= 1 means Super or Admin)
-$userLevel = (int) ($_SESSION['level'] ?? 99);
-if ($userLevel > 1) {
+// Settings is administrative. Gate it on an administrative PERMISSION.
+//
+// Phase 128 (2026-07-29), Eric's decision: this was the last page still
+// gated purely on the legacy `user.level` ("level <= 1"), which is the
+// same defect that stopped a your deployment Org Admin running reports — her
+// role said Org Admin, the column said 4, and the column won.
+//
+// `screen.settings` is deliberately NOT the permission used here: Operator
+// holds it, and widening the gate to make an error go away is how the
+// admin surface gets quietly opened up. action.manage_config is held by
+// Super Admin and Org Admin and not by Operator, which is exactly the
+// population "level <= 1" used to admit. If an Operator-facing settings
+// surface is ever wanted, it gets its own page with its own weaker check
+// rather than a softer gate on this one.
+require_once __DIR__ . '/inc/rbac.php';
+if (!is_admin() && !rbac_can('action.manage_config')) {
     http_response_code(403);
     // Themed Access-Denied card (specs/rbac-enforcement-2026-06) — consistent
     // with rbac_require_screen()'s denial used by every other gated screen.
-    $GLOBALS['__denied_perm'] = 'screen.settings';
+    $GLOBALS['__denied_perm'] = 'action.manage_config';
     require_once __DIR__ . '/inc/denied.php';
     exit;
 }
 
 $user     = e($_SESSION['user']);
-$level    = get_level_text($userLevel);
+$level    = current_role_name();
 $theme    = $_SESSION['day_night'] ?? 'Day';
 $bs_theme = ($theme === 'Night') ? 'dark' : 'light';
 $csrf     = csrf_token();
@@ -5707,7 +5720,7 @@ foreach ($personnelSections as $sec) {
                     <div class="row g-2 mb-2">
                         <div class="col-md-4">
                             <label class="form-label form-label-sm mb-0">Name <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control form-control-sm" id="orgName" placeholder="e.g. Bloomington AUXCOMM">
+                            <input type="text" class="form-control form-control-sm" id="orgName" placeholder="e.g. Riverside County ARES">
                         </div>
                         <div class="col-md-2">
                             <label class="form-label form-label-sm mb-0">Short Name</label>
@@ -6432,13 +6445,26 @@ foreach ($personnelSections as $sec) {
                                             </div>
                                             <div class="col-md-4">
                                                 <label class="form-label form-label-sm">Sender Roles</label>
+                                                <?php
+                                                // Phase 128 (2026-07-29): these were hardcoded legacy
+                                                // LEVELS (0..5), matched against $_SESSION['level'].
+                                                // They were wrong twice over: the labels disagreed with
+                                                // the canonical level->role map (3 is Read-Only, not
+                                                // Operator), and user.level has not been written since
+                                                // Phase 12, so every newer account read as 0 = "Super
+                                                // Admin" and matched a Super-Admin-only rule. Now the
+                                                // list is the live roles table and the value is a role id.
+                                                $routeRoles = [];
+                                                try {
+                                                    $routeRoles = db_fetch_all(
+                                                        "SELECT id, name FROM " . db_table('roles')
+                                                        . " ORDER BY sort_order, id");
+                                                } catch (Throwable $e) { $routeRoles = []; }
+                                                ?>
                                                 <select class="form-select form-select-sm" id="filterSenderRoles" multiple size="3">
-                                                    <option value="0">Super Admin</option>
-                                                    <option value="1">Administrator</option>
-                                                    <option value="2">Dispatcher</option>
-                                                    <option value="3">Operator</option>
-                                                    <option value="4">Read-Only</option>
-                                                    <option value="5">Field Unit</option>
+                                                    <?php foreach ($routeRoles as $rr): ?>
+                                                    <option value="<?php echo (int) $rr['id']; ?>"><?php echo e($rr['name']); ?></option>
+                                                    <?php endforeach; ?>
                                                 </select>
                                             </div>
                                         </div>
@@ -9333,8 +9359,12 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
 
 <!-- CSRF token for JS -->
 <input type="hidden" id="csrfToken" value="<?php echo e($csrf); ?>">
-<!-- User level for JS permission checks -->
-<input type="hidden" id="userLevel" value="<?php echo $userLevel; ?>">
+<!-- Phase 128 (2026-07-29): the #userLevel hidden input is gone. It was
+     labelled "user level for JS permission checks", but config.js only
+     ever assigned it to a variable it never compared — a dead conduit for
+     the legacy level into the browser. Client-side gating, where it is
+     needed at all, reads a server-computed RBAC boolean (see
+     scheduling.php's #currentIsAdmin). -->
 <!-- Phase 10c (2026-06-11): current admin's user_id, exposed so the
      User Accounts edit form can detect "editing self" vs. "editing
      another user" and conditionally require the reason field. -->

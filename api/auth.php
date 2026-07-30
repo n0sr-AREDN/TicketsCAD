@@ -112,15 +112,23 @@ if (!empty($_SESSION['must_change_password'])) {
     // Fall through for the enrollment endpoints. RBAC check still
     // runs for these (they require an authenticated user with a role).
 } else {
-    // RBAC v2 fail-closed (specs/rbac-redesign-2026-05/plan.md §B5):
-    // once the v2 schema is in place, an authenticated user with zero
-    // active role grants is denied at the API edge. We deliberately do
-    // not reach for _rbac_legacy_check here — that path only fires when
-    // the v2 schema is absent, in which case rbac_user_roles() returns
-    // [] for everyone and we'd lock the whole site out. Only enforce
-    // fail-closed when the v2 columns exist.
+    // RBAC fail-closed at the API edge.
+    //
+    // Phase 128 (2026-07-29): the two branches below used to be one
+    // lenient check. When the v2 schema was absent we let every request
+    // through, because rbac_can() would answer from `user.level` — that
+    // fallback is gone, so "schema absent" is now a 503 naming the
+    // migration, not a silent pass. An authenticated session that
+    // predates the breakage cannot act on stale authority.
     require_once __DIR__ . '/../inc/rbac.php';
-    if (_rbac_v2_schema_present() && empty(rbac_user_roles())) {
+    if (!rbac_schema_ready()) {
+        if (function_exists('audit_log')) {
+            audit_log('auth', 'rbac_unmigrated', 'user', (int) ($_SESSION['user_id'] ?? 0),
+                'API call blocked — RBAC v2 schema absent', null, AUDIT_HIGH);
+        }
+        json_error(rbac_unmigrated_message(), 503);
+    }
+    if (empty(rbac_user_roles())) {
         if (function_exists('audit_log')) {
             audit_log('auth', 'no_roles', 'user', (int) $_SESSION['user_id'],
                 'Authenticated user has zero active grants — denied');
@@ -132,6 +140,12 @@ if (!empty($_SESSION['must_change_password'])) {
 // Convenience variables available to any endpoint that includes this file
 $current_user_id  = (int) $_SESSION['user_id'];
 $current_user     = $_SESSION['user'] ?? '';
-$current_level    = (int) ($_SESSION['level'] ?? 0);
+// Phase 128 (2026-07-29): `$current_level` is gone. Every endpoint that
+// used it for an access decision now calls is_admin() / rbac_can(). It is
+// deliberately NOT left defined-but-unused: a convenience global named
+// like an authority is an invitation to gate on it again, and
+// tools/legacy_level_audit.php would fail the build the moment someone
+// does. The column still exists in the database, read only by the
+// one-time level->role migration.
 $current_member_id = isset($_SESSION['member_id']) ? (int) $_SESSION['member_id'] : null;
 $current_org_id    = isset($_SESSION['active_org_id']) ? (int) $_SESSION['active_org_id'] : null;

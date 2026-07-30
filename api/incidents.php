@@ -187,7 +187,7 @@ if ($func === 0) {
 // RBAC and the legacy group filter is bypassed. Without this bypass,
 // newly-created Operator/Dispatcher users with no allocates rows see
 // an empty dashboard even though their RBAC role grants the view.
-// Caught by Eric on your-server.example.com 2026-05-26 — user 'shoreas'
+// Caught in beta on 2026-05-26 — a demo user
 // with Read-Only RBAC role saw zero incidents.
 //
 // This is the narrow first step of the row-level filter consolidation

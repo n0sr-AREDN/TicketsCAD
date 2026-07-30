@@ -151,7 +151,7 @@ function handleEventGet() {
 }
 
 function handleEventPost() {
-    global $current_user_id, $current_level;
+    global $current_user_id;
     $input = json_decode(file_get_contents('php://input'), true);
     if (!$input) json_error('Invalid JSON body');
 

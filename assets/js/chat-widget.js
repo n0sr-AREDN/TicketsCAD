@@ -35,6 +35,23 @@
 
     // ── Helpers ──────────────────────────────────────────────────
 
+    /**
+     * "YYYY-MM-DD HH:MM:SS" in the BROWSER's local wall clock.
+     *
+     * CLOCK: this must match what the server sends back. Chat rows carry a
+     * MySQL DATETIME in the install's area timezone, and formatTime() reads
+     * them as local. Building the optimistic echo with
+     * new Date().toISOString() produced a UTC wall clock in the same shape,
+     * so a message you just sent rendered one UTC offset off (5 h on US
+     * Central) until the next poll replaced it with the server's value.
+     */
+    function localSqlNow() {
+        var d = new Date();
+        function p(n) { return (n < 10 ? '0' : '') + n; }
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+             + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    }
+
     function getCsrf() {
         var meta = document.querySelector('meta[name="csrf-token"]');
         return meta ? meta.getAttribute('content') : '';
@@ -564,7 +581,7 @@
                     body:       payload.body,
                     msg_type:   payload.type,
                     priority:   payload.priority,
-                    created_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+                    created_at: localSqlNow(),
                 });
                 scrollToBottom();
             }
@@ -589,7 +606,7 @@
             body: text,
             msg_type: 'system',
             priority: 'normal',
-            created_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+            created_at: localSqlNow(),
         });
         scrollToBottom();
     }

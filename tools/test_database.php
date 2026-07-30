@@ -8,6 +8,8 @@
  * Usage: php tools/test_database.php
  */
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../tests/_test_admin.php';
+$ADMIN_UID = test_admin_user_id();
 
 echo "=== Database Integrity Tests ===\n\n";
 $pass = 0;
@@ -322,13 +324,13 @@ try {
     $ur = db_fetch_one(
         "SELECT r.name FROM `{$prefix}user_roles` ur
          JOIN `{$prefix}roles` r ON ur.role_id = r.id
-         WHERE ur.user_id = 1 AND r.name = 'Super Admin'"
+         WHERE ur.user_id = ? AND r.name = 'Super Admin'", [$ADMIN_UID]
     );
     if ($ur) {
         echo "[PASS]\n";
         $pass++;
     } else {
-        echo "[FAIL] no Super Admin role for user 1\n";
+        echo "[FAIL] no Super Admin role for admin user #{$ADMIN_UID}\n";
         $fail++;
     }
 } catch (Exception $e) {
