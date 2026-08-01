@@ -29,6 +29,7 @@ A channel is a transport: a way messages get delivered. TicketsCAD has 10+ regis
 | `local_chat` | both | In-app chat broker, always on |
 | `push` | outbound | Web push notifications to browser/mobile (per-user) |
 | `slack` | outbound | Slack workspace via incoming webhook or bot token |
+| `telegram` | outbound | Telegram group via a bot ([setup guide](TELEGRAM-SETUP-GUIDE.md)) |
 | `sms` | outbound | Generic REST / Twilio / BulkVS / Pushbullet |
 | `smtp` | outbound | Email via SMTP |
 | `email` | outbound | Alias for smtp |

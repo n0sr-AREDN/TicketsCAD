@@ -3049,6 +3049,34 @@
                 showAlert('Telegram settings saved.');
             }).catch(function (err) { showAlert(err.message, 'danger'); });
         });
+
+        // The panel has shipped a "Send Test" button with nothing bound to it.
+        // Mirrors the #btnTestSlack handler below; api/chat.php's test_channel
+        // is admin-gated and CSRF-checked server-side.
+        var testBtn = document.getElementById('btnTestTelegram');
+        if (testBtn && !testBtn._bound) {
+            testBtn._bound = true;
+            testBtn.addEventListener('click', function () {
+                testBtn.disabled = true;
+                fetch('api/chat.php', {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    body: JSON.stringify({ action: 'test_channel', channel: 'telegram', body: 'Test message from TicketsCAD Telegram integration', csrf_token: csrfToken })
+                })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    testBtn.disabled = false;
+                    if (data.error) { showAlert('Telegram test error: ' + data.error, 'danger'); return; }
+                    var result = data.result || null;
+                    if (result && result.success) {
+                        showAlert('Test message sent to Telegram.', 'success');
+                    } else {
+                        showAlert('Telegram failed: ' + ((result && result.error) || 'not configured'), 'danger');
+                    }
+                })
+                .catch(function (err) { testBtn.disabled = false; showAlert(err.message, 'danger'); });
+            });
+        }
     }
 
     // ── Slack Config ──
