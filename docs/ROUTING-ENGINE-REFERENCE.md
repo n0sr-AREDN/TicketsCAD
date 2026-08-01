@@ -233,6 +233,7 @@ The `dest_channel` of a route must correspond to a [broker](GLOSSARY.md#broker) 
 | `email` | [`inc/channels/email.php`](../inc/channels/email.php) | Alias for `smtp` |
 | `sms` | [`inc/channels/sms.php`](../inc/channels/sms.php) | Production (Twilio / BulkVS / Pushbullet) |
 | `slack` | [`inc/channels/slack.php`](../inc/channels/slack.php) | Production (Slack incoming webhook) |
+| `telegram` | [`inc/channels/telegram.php`](../inc/channels/telegram.php) | Production (Bot API `sendMessage`; outbound only) |
 | `meshtastic` | [`inc/channels/meshtastic.php`](../inc/channels/meshtastic.php) | Production (mesh bridge VM running) |
 | `dmr` | [`inc/channels/dmr.php`](../inc/channels/dmr.php) | Stub — basic shape, real implementation via DVSwitch bridge |
 | `zello` | `inc/channel_registry.php` (stub) | Stub — registered, awaiting Zello Work API impl |
