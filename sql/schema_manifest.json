@@ -1236,6 +1236,7 @@
         ],
         "webhook_deliveries": [
             "attempt",
+            "delivery_uid",
             "duration_ms",
             "error",
             "event_type",
@@ -1463,7 +1464,7 @@
         "generated_by": "tools/gen_schema_manifest.php",
         "purpose": "columns this code writes to + tables it references; checked by inc/schema-verify.php",
         "tables": 131,
-        "columns": 1023,
+        "columns": 1024,
         "required_tables": 171
     }
 }

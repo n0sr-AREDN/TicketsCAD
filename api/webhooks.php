@@ -224,13 +224,24 @@ if ($method === 'POST') {
 
         // Create the fresh delivery row, linked back to the original
         $body = $orig['payload'];
-        $signature = hash_hmac('sha256', $body, $orig['hmac_secret']);
+        require_once __DIR__ . '/../inc/webhooks.php';
+
+        // Reuse the original delivery uid. An operator-initiated replay is
+        // a redelivery of the SAME logical event, so the receiver should be
+        // able to recognise it — if it already processed this uid it can
+        // safely skip, and if it never did (the usual case, since replay
+        // targets dead-lettered deliveries that never landed) it processes
+        // it normally. Signing happens inside _webhook_send with a fresh
+        // timestamp, so the replay is not itself stale.
+        $uid = (string) ($orig['delivery_uid'] ?? '');
+        if ($uid === '') $uid = webhook_new_delivery_uid();
+
         try {
             db_query(
                 "INSERT INTO `{$prefix}webhook_deliveries`
-                 (`subscription_id`, `event_type`, `payload`, `attempt`, `status`, `replayed_from_id`)
-                 VALUES (?, ?, ?, 1, 'pending', ?)",
-                [$orig['subscription_id'], $orig['event_type'], $body, $deliveryId]
+                 (`subscription_id`, `event_type`, `payload`, `attempt`, `status`, `replayed_from_id`, `delivery_uid`)
+                 VALUES (?, ?, ?, 1, 'pending', ?, ?)",
+                [$orig['subscription_id'], $orig['event_type'], $body, $deliveryId, $uid]
             );
             $newId = (int) db_insert_id();
         } catch (Exception $e) {
@@ -238,10 +249,9 @@ if ($method === 'POST') {
         }
 
         // Fire (calls back into webhooks.php internal _webhook_send)
-        require_once __DIR__ . '/../inc/webhooks.php';
         _webhook_send(
             ['id' => $orig['subscription_id'], 'target_url' => $orig['target_url'], 'hmac_secret' => $orig['hmac_secret']],
-            $body, $signature, $newId, 1
+            $body, $orig['event_type'], $uid, $newId, 1
         );
 
         // Re-fetch to surface the post-send status

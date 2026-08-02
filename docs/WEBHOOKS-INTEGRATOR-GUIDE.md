@@ -38,14 +38,18 @@ Here's a 30-line PHP receiver that verifies signatures and logs payloads.
 $SECRET = 'paste-the-secret-from-tcad-here';
 
 $raw = file_get_contents('php://input');
-$sig = $_SERVER['HTTP_X_WEBHOOK_SIGNATURE'] ?? '';
+$sig = $_SERVER['HTTP_X_WEBHOOK_SIGNATURE_V2'] ?? '';
 $ts  = $_SERVER['HTTP_X_WEBHOOK_TIMESTAMP'] ?? '';
 
-// Reject if timestamp is more than 5 minutes old (replay protection).
-if (abs(time() - (int)$ts) > 300) {
+// Reject if the timestamp is more than 5 minutes from now (replay
+// protection). abs() also rejects stamps implausibly far in the future.
+if ($ts === '' || !ctype_digit($ts) || abs(time() - (int)$ts) > 300) {
     http_response_code(401);
     exit('stale');
 }
+
+// The signature arrives as "sha256=<hex>". Strip the prefix first.
+if (stripos($sig, 'sha256=') === 0) $sig = substr($sig, 7);
 
 // HMAC over "<timestamp>.<raw body>".
 $expected = hash_hmac('sha256', $ts . '.' . $raw, $SECRET);
@@ -54,29 +58,41 @@ if (!hash_equals($expected, $sig)) {
     exit('bad sig');
 }
 
-// Genuine: process it.
+// Genuine: process it. Dedupe on the delivery id — retries of the same
+// logical delivery re-present the SAME value.
+$deliveryId = $_SERVER['HTTP_X_WEBHOOK_DELIVERY'] ?? '';
+// if (already_seen($deliveryId)) { http_response_code(200); exit('dup'); }
+
 $evt = json_decode($raw, true);
-error_log('TicketsCAD webhook: ' . $evt['event_type'] . ' for ' . $evt['entity_id']);
+error_log('TicketsCAD webhook: ' . $evt['event_type']
+          . ' data=' . json_encode($evt['data']));
 
 // Respond 2xx within 5 s to acknowledge.
 http_response_code(200);
 echo 'ok';
 ```
 
+> **Upgrading from before v4.2.3?** Deliveries used to be signed over the
+> body alone, with no timestamp and no delivery id, and the header to read
+> was `X-Webhook-Signature`. That header is still sent so existing
+> receivers keep working, but it offers **no replay protection** — a
+> captured delivery replayed later verifies against it forever. Move to
+> `X-Webhook-Signature-V2` as shown above. See
+> [Signature verification](#signature-verification).
+
 Save, expose via your web server, register the URL in TicketsCAD.
 
 ### 3. Trigger a test delivery
 
-In the webhook row, click **Send Test**. TicketsCAD sends a `test.ping` event:
+In the webhook row, click **Send Test**. TicketsCAD sends a `test` event, signed and headed exactly like a real delivery:
 
 ```json
 {
-  "event_type": "test.ping",
-  "delivered_at": "2026-06-15T10:00:00Z",
-  "entity_type": null,
-  "entity_id": null,
-  "payload": {
-    "message": "This is a test from TicketsCAD"
+  "event_type": "test",
+  "timestamp": "2026-06-15T10:00:00Z",
+  "data": {
+    "message": "This is a test webhook from TicketsCAD NewUI.",
+    "version": "4.0"
   }
 }
 ```
@@ -84,6 +100,30 @@ In the webhook row, click **Send Test**. TicketsCAD sends a `test.ping` event:
 Check your receiver's log + check the **Delivery Log** tab in TicketsCAD. Both should show success.
 
 If you see `failed` → see [Troubleshooting](#troubleshooting) below.
+
+### 4. Testing against a receiver on your own network
+
+TicketsCAD refuses to deliver to loopback, link-local or RFC1918 addresses
+by default — an SSRF guard, so that a compromised admin account can't point
+a webhook at `169.254.169.254` and harvest cloud metadata credentials.
+
+**Do not work around this by pointing a real webhook at a public capture
+service** (webhook.site and friends). The URL is the only access control on
+those, and anyone who learns it sees your full delivery bodies *and* the
+signature header — which is exactly how an attacker obtains the valid
+delivery they need in order to replay one.
+
+Instead, allow your own host explicitly. An admin adds the hostname suffix
+to the `webhook_url_allowlist` setting (newline-separated):
+
+```
+localhost
+dev.internal.example.org
+```
+
+Deliveries to matching hosts are then permitted, and everything else stays
+blocked. Remove the entry when you're done. See
+[EXTERNAL-API.md §10](EXTERNAL-API.md) for the full rule set.
 
 ---
 
@@ -95,14 +135,23 @@ If you see `failed` → see [Troubleshooting](#troubleshooting) below.
 POST /your-path HTTP/1.1
 Host: hooks.example.com
 Content-Type: application/json
-User-Agent: TicketsCAD-Webhook/1.0
-X-Webhook-Signature: <hex>
-X-Webhook-Timestamp: <unix epoch seconds>
+User-Agent: TicketsCAD-Webhook/4.0
 X-Webhook-Event: incident.created
+X-Webhook-Timestamp: <unix epoch seconds>
 X-Webhook-Delivery: <uuid>
+X-Webhook-Signature-V2: sha256=<hex>
+X-Webhook-Signature: sha256=<hex>
 
 {...JSON body...}
 ```
+
+| Header | Purpose |
+|---|---|
+| `X-Webhook-Event` | Dotted-namespace event identifier. Same as the body's `event_type`. |
+| `X-Webhook-Timestamp` | Unix epoch seconds at which **this transmission** was signed. A retry carries the retry's own time, not the original's. Covered by the signature. |
+| `X-Webhook-Delivery` | Delivery uid. **The idempotency key** — every retry and operator replay of one logical delivery repeats the same value. |
+| `X-Webhook-Signature-V2` | `sha256=` + `HMAC-SHA256(secret, "<timestamp>.<raw_body>")`, hex. **Verify this one.** |
+| `X-Webhook-Signature` | Legacy `sha256=` + `HMAC-SHA256(secret, raw_body)`, hex. No replay protection; kept only so pre-v4.2.3 receivers keep working. An admin can disable it with the `webhook_legacy_signature` setting. |
 
 ### JSON body shape
 
@@ -111,13 +160,8 @@ Every event has the same envelope:
 ```json
 {
   "event_type": "incident.created",
-  "delivered_at": "2026-06-15T10:00:00Z",
-  "entity_type": "incident",
-  "entity_id": 12345,
-  "delivery_id": "550e8400-e29b-41d4-a716-446655440000",
-  "tcad_version": "4.0.0-dev",
-  "tcad_install": "cad.example.org",
-  "payload": {
+  "timestamp": "2026-06-15T10:00:00Z",
+  "data": {
     // event-specific contents
   }
 }
@@ -125,14 +169,11 @@ Every event has the same envelope:
 
 | Field | Purpose |
 |---|---|
-| `event_type` | Dotted-namespace event identifier. Same as `X-Webhook-Event` header. |
-| `delivered_at` | RFC 3339 timestamp when TicketsCAD generated the delivery. |
-| `entity_type` | The resource this event is about (`incident`, `responder`, `user`, etc.). |
-| `entity_id` | Numeric primary key of the resource. |
-| `delivery_id` | UUID. Use this for idempotency — if you've seen this delivery id before, skip. |
-| `tcad_version` | TicketsCAD version that produced the event. |
-| `tcad_install` | Hostname of the install. Useful when you receive from multiple deployments. |
-| `payload` | Event-specific data. See [event catalogue](#event-catalogue). |
+| `event_type` | Dotted-namespace event identifier. Same as the `X-Webhook-Event` header. |
+| `timestamp` | RFC 3339 time at which TicketsCAD **generated** the event. On a retry this is still the ORIGINAL generation time, so do **not** use it for freshness checks — use the `X-Webhook-Timestamp` header, which is stamped per transmission. |
+| `data` | Event-specific contents. See [event catalogue](#event-catalogue). |
+
+The delivery id lives in the `X-Webhook-Delivery` **header**, not in the body.
 
 ---
 
@@ -140,13 +181,28 @@ Every event has the same envelope:
 
 ### The scheme
 
-`X-Webhook-Signature` = `HMAC-SHA256(timestamp + "." + raw_body, secret)` — hex-encoded.
+`X-Webhook-Signature-V2` = `sha256=` + `HMAC-SHA256(timestamp + "." + raw_body, secret)` — hex-encoded.
 
-Where `timestamp` is the `X-Webhook-Timestamp` header value (string), and `raw_body` is the literal request body bytes.
+Where `timestamp` is the `X-Webhook-Timestamp` header value (string), and `raw_body` is the literal request body bytes. **Strip the `sha256=` prefix before comparing.**
 
 ### Why include the timestamp?
 
 Without it, an attacker who captured one valid delivery could replay it forever. The timestamp lets you reject deliveries older than ~5 min, limiting replay attacks to a small window.
+
+Because the timestamp is *inside* the signed material, an attacker cannot simply re-stamp a captured delivery to get past your freshness check — changing the timestamp invalidates the signature.
+
+The window TicketsCAD advertises is configurable per install via the `webhook_replay_tolerance_sec` setting (default `300`, clamped to 30–86400). Pick a value on your side that matches, allowing for clock skew; run NTP on both ends.
+
+### Two signature headers, and which to use
+
+| Header | Signed material | Replay-safe | Use it? |
+|---|---|---|---|
+| `X-Webhook-Signature-V2` | `"<timestamp>.<raw_body>"` | Yes | **Yes** |
+| `X-Webhook-Signature` | `raw_body` only | **No** | Only until you have migrated |
+
+Before v4.2.3 only the second existed, and the timestamped scheme this guide describes was documented but **not implemented** — a receiver written from that version of this page could not verify anything. If you built one and gave up on verification, this is why; please re-enable it against `-V2`. Reported by Ron Jones (@rjonesbsink).
+
+Once every receiver on your install reads `-V2`, an admin can stop the legacy header being sent by setting `webhook_legacy_signature` to `0`.
 
 ### Reference implementations
 
@@ -162,18 +218,25 @@ app = Flask(__name__)
 @app.post('/tcad-events')
 def receive():
     raw = request.get_data()  # raw bytes, NOT request.json which re-encodes
-    sig = request.headers.get('X-Webhook-Signature', '')
+    sig = request.headers.get('X-Webhook-Signature-V2', '')
     ts  = request.headers.get('X-Webhook-Timestamp', '')
 
-    if abs(time.time() - int(ts)) > 300:
+    if not ts.isdigit() or abs(time.time() - int(ts)) > 300:
         abort(401, 'stale')
+
+    # The signature arrives as "sha256=<hex>".
+    if sig.startswith('sha256='):
+        sig = sig[7:]
 
     expected = hmac.new(SECRET, f'{ts}.'.encode() + raw, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, sig):
         abort(401, 'bad sig')
 
+    # Dedupe key — retries repeat this value.
+    delivery_id = request.headers.get('X-Webhook-Delivery', '')
+
     evt = json.loads(raw)
-    print(f"event: {evt['event_type']} entity_id={evt['entity_id']}")
+    print(f"event: {evt['event_type']} data={evt['data']} delivery={delivery_id}")
     return 'ok', 200
 ```
 
@@ -189,12 +252,15 @@ const app = express();
 app.use('/tcad-events', express.raw({ type: 'application/json' }));
 
 app.post('/tcad-events', (req, res) => {
-    const sig = req.get('X-Webhook-Signature') || '';
+    let sig   = req.get('X-Webhook-Signature-V2') || '';
     const ts  = req.get('X-Webhook-Timestamp') || '';
 
-    if (Math.abs(Date.now()/1000 - Number(ts)) > 300) {
+    if (!/^\d+$/.test(ts) || Math.abs(Date.now()/1000 - Number(ts)) > 300) {
         return res.status(401).send('stale');
     }
+
+    // The signature arrives as "sha256=<hex>".
+    if (sig.startsWith('sha256=')) sig = sig.slice(7);
 
     const expected = crypto.createHmac('sha256', SECRET)
         .update(`${ts}.`).update(req.body).digest('hex');
@@ -207,8 +273,11 @@ app.post('/tcad-events', (req, res) => {
         return res.status(401).send('bad sig');
     }
 
+    // Dedupe key — retries repeat this value.
+    const deliveryId = req.get('X-Webhook-Delivery') || '';
+
     const evt = JSON.parse(req.body.toString());
-    console.log(`event: ${evt.event_type} entity_id=${evt.entity_id}`);
+    console.log(`event: ${evt.event_type} delivery=${deliveryId}`, evt.data);
     res.send('ok');
 });
 
@@ -230,6 +299,9 @@ echo "$SIG"
 1. **Reparsing the body before HMAC.** Frameworks that auto-decode JSON give you a re-encoded body, which won't match the bytes we signed. Always sign / verify against the literal request bytes.
 2. **Constant-time comparison.** Don't use `==`. Use `hash_equals` (PHP), `hmac.compare_digest` (Python), `crypto.timingSafeEqual` (Node).
 3. **Forgetting the `.`** between timestamp and body. The format is `<ts>.<body>` not `<ts><body>`.
+4. **Leaving the `sha256=` prefix on.** The header value is `sha256=<hex>`; compare only the hex part.
+5. **Reading the wrong header.** `X-Webhook-Signature` (no `-V2`) is the legacy body-only digest and will never match a `<ts>.<body>` computation.
+6. **Checking freshness against the body's `timestamp`.** That is the event's *generation* time and does not change on a retry, so a legitimate retry looks stale. Use the `X-Webhook-Timestamp` header.
 
 ---
 
@@ -237,8 +309,8 @@ echo "$SIG"
 
 ### What we guarantee
 
-- **At-least-once delivery.** If we can't reach you, we retry. You may get the same delivery twice (deduplicate on `delivery_id`).
-- **In-order within a delivery_id.** A single retried delivery is delivered in order, but TWO different events (different delivery_ids) may arrive out of order.
+- **At-least-once delivery.** If we can't reach you, we retry. You may get the same delivery twice (deduplicate on the `X-Webhook-Delivery` header).
+- **In-order within a delivery id.** A single retried delivery is delivered in order, but TWO different events (different delivery ids) may arrive out of order.
 - **2xx = accepted.** Any 2xx response (200, 201, 202, 204) is treated as "you got it, we're done".
 - **Non-2xx = retry.** 4xx (except 410) and 5xx + timeouts trigger retry.
 
@@ -400,12 +472,12 @@ Filtering is server-side (we don't waste a network round-trip if you're not subs
 
 ## Idempotency
 
-You WILL get duplicate deliveries occasionally. Dedupe on `delivery_id`.
+You WILL get duplicate deliveries occasionally. Dedupe on the `X-Webhook-Delivery` header — every retry and operator replay of one logical delivery repeats the same value.
 
 Simple PHP example:
 
 ```php
-$deliveryId = json_decode($raw, true)['delivery_id'] ?? null;
+$deliveryId = $_SERVER['HTTP_X_WEBHOOK_DELIVERY'] ?? null;
 if ($deliveryId && already_processed($deliveryId)) {
     http_response_code(200);
     exit('duplicate-ok');
@@ -440,7 +512,7 @@ Every attempt (success and failure) writes a row to `webhook_deliveries`:
 | `id` | PK |
 | `webhook_id` | FK to `webhooks` |
 | `event_type` | The event name |
-| `delivery_id` | UUID shared across retries |
+| `delivery_uid` | UUID shared across retries and operator replays; sent as `X-Webhook-Delivery` |
 | `attempt_number` | 1, 2, 3, … up to 7 |
 | `request_body` | The JSON we sent |
 | `response_status` | HTTP code we got back |
@@ -481,8 +553,9 @@ The delivery log itself is retained according to `webhook_delivery_log_retention
 | Delivery log shows `failed: timeout` | Receiver is too slow | Have receiver return 200 immediately, process async |
 | Delivery log shows `failed: 401 bad sig` | HMAC computed wrong (very common!) | Verify you're signing `<ts>.<raw_body>`, not just the body. Use constant-time compare. |
 | Delivery log shows `failed: 410 gone` | Webhook auto-disabled | Receiver returned 410; admin must re-enable |
-| Every delivery is duplicated | Receiver isn't returning 2xx in time, so TicketsCAD retries | Speed up receiver OR dedupe on `delivery_id` |
-| Receiver gets event that doesn't match `entity_id` | Stale dedupe cache returning old data | Clear receiver dedup cache; check delivery_id matches |
+| Every delivery is duplicated | Receiver isn't returning 2xx in time, so TicketsCAD retries | Speed up receiver OR dedupe on `X-Webhook-Delivery` |
+| Receiver rejects every delivery as `bad sig` | Reading `X-Webhook-Signature` (legacy, body-only) against a `<ts>.<body>` computation, or leaving the `sha256=` prefix on the value | Read `X-Webhook-Signature-V2` and strip `sha256=` before comparing |
+| Receiver rejects every delivery as `stale` | Checking freshness against the body's `timestamp` (generation time, unchanged on retries) instead of the `X-Webhook-Timestamp` header | Use the header; also check clock sync on both ends |
 
 See also [TROUBLESHOOTING.md § webhook-failed](TROUBLESHOOTING.md#webhook-failed).
 
@@ -496,7 +569,7 @@ For each webhook receiver:
 - [ ] Verify the HMAC signature on every request (never trust unsigned traffic)
 - [ ] Reject deliveries with stale timestamps (≥ 5 min)
 - [ ] Use constant-time comparison for the signature
-- [ ] Treat `delivery_id` as the dedup key
+- [ ] Treat `X-Webhook-Delivery` as the dedup key
 - [ ] Log every received delivery on YOUR side too (defence in depth)
 - [ ] Don't echo the payload back in the response body (avoid mirroring untrusted data)
 - [ ] Rotate the secret periodically (admin UI → Rotate Secret; receiver swaps secret)

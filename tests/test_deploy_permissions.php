@@ -295,18 +295,35 @@ function dp_run(array $argv, ?string $cwd = null): array {
     return ['code' => proc_close($p), 'out' => (string) $out, 'err' => (string) $err];
 }
 
-$deploySh = (string) @file_get_contents($root . '/tools/deploy.sh');
-test('tools/deploy.sh is readable', $deploySh !== '');
+// `tools/deploy.sh` is the maintainer's own deployment script and is
+// deliberately EXCLUDED from the public release snapshot — a released copy of
+// TicketsCAD has no such file. So its absence is a legitimate state, not a
+// failure: this section can only run where the script exists.
+//
+// It failed the v4.2.3 public CI run by asserting the file was readable on a
+// tree that is not supposed to contain it. A test that cannot run must SKIP
+// with a reason, never fail — otherwise the release gate reports a defect that
+// does not exist and blocks a security release for no reason.
+$deployShPath = $root . '/tools/deploy.sh';
+$deploySh     = is_readable($deployShPath)
+    ? (string) @file_get_contents($deployShPath)
+    : '';
 
-// Take the extract command out of the script rather than restating it here, so
-// this exercises what the deploy actually runs.
 $extract = null;
-if (preg_match('/^\s*sudo tar\s+(.+)$/m', $deploySh, $m)) {
-    $extract = preg_split('/\s+/', trim($m[1]));
+if ($deploySh === '') {
+    skip('the deploy\'s tar extract command could be read out of the script',
+        'tools/deploy.sh is not present — expected on a public release snapshot, '
+        . 'which excludes the maintainer deployment script');
+} else {
+    // Take the extract command out of the script rather than restating it here,
+    // so this exercises what the deploy actually runs.
+    if (preg_match('/^\s*sudo tar\s+(.+)$/m', $deploySh, $m)) {
+        $extract = preg_split('/\s+/', trim($m[1]));
+    }
+    test('the deploy\'s tar extract command could be read out of the script',
+        is_array($extract) && in_array('-C', $extract, true),
+        'looked for a "sudo tar … -C …" line');
 }
-test('the deploy\'s tar extract command could be read out of the script',
-    is_array($extract) && in_array('-C', $extract, true),
-    'looked for a "sudo tar … -C …" line');
 
 if (!$scratchReady || !is_array($extract)) {
     skip('extraction followed by repair', !$isPosix

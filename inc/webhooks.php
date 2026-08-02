@@ -34,6 +34,227 @@
  * admin UI (Stage 6) for manual replay.
  */
 
+/* ────────────────────────────────────────────────────────────────────
+ * Signing, replay protection and the reference verifier
+ * ────────────────────────────────────────────────────────────────────
+ *
+ * Reported privately by Ron Jones (@rjonesbsink) on 2026-08-02 and
+ * confirmed against a live capture on the same day.
+ *
+ * WHAT WAS WRONG
+ *
+ * Deliveries were signed `hash_hmac('sha256', $body, $secret)` — the body
+ * and nothing else. No timestamp, no nonce, no delivery id, in the
+ * headers or the body. A captured delivery could therefore be re-POSTed
+ * unchanged at any later time and would verify as authentic forever,
+ * because the signature had no time-varying input that could go stale.
+ *
+ * This is an OUTBOUND concern: TicketsCAD is the sender, so the party
+ * that has to reject a replay is the receiver. The sender cannot reject a
+ * replay of its own message — all it can do is put material on the wire
+ * that lets the receiver make the decision. That is what this block adds.
+ *
+ * The signing expression was copy-pasted at FOUR call sites (fire, test,
+ * retry, and the admin replay in api/webhooks.php). That duplication is
+ * why the wire format and docs/WEBHOOKS-INTEGRATOR-GUIDE.md were free to
+ * drift apart for as long as they did — there was no single definition
+ * either could be checked against. There is now exactly one signer and
+ * one header builder, and every send path goes through them. Callers no
+ * longer pass a precomputed signature; they cannot, which is the point.
+ *
+ * THE WIRE FORMAT
+ *
+ *   X-Webhook-Timestamp     unix seconds, stamped per TRANSMISSION
+ *   X-Webhook-Delivery      stable uid — the idempotency key
+ *   X-Webhook-Event         event type
+ *   X-Webhook-Signature-V2  sha256=HMAC(secret, "<timestamp>.<body>")
+ *   X-Webhook-Signature     sha256=HMAC(secret, body)   [legacy, optional]
+ *
+ * Why the timestamp is per-transmission and not the `timestamp` already
+ * inside the body: webhook_process_retries() re-sends the ORIGINAL stored
+ * body, so the body's timestamp is the time of the FIRST attempt. A
+ * receiver enforcing a freshness window against it would reject every
+ * legitimate retry that arrived after the window. The signed timestamp
+ * has to describe this attempt.
+ *
+ * Why the delivery uid is not simply webhook_deliveries.id: retries
+ * INSERT a new delivery row and therefore get a new id, so the row id
+ * changes across attempts and is useless as a dedupe key. The uid is
+ * minted once for the logical delivery and carried across every retry
+ * and admin replay of it — which is what the integrator guide has always
+ * promised ("UUID shared across retries").
+ *
+ * WHY THE LEGACY HEADER IS STILL SENT BY DEFAULT
+ *
+ * Every receiver that works TODAY reverse-engineered the body-only
+ * scheme, because a receiver written from the guide could never verify
+ * anything (the guide documented a timestamped scheme that was not
+ * implemented). Silently changing what X-Webhook-Signature means would
+ * therefore break exactly the integrations that currently work, and in a
+ * dispatch system a webhook that stops verifying can be a station that
+ * stops getting alerted. So the new scheme arrives in a NEW header and
+ * the old one keeps its meaning; `webhook_legacy_signature` lets an
+ * admin switch the old header off once their receivers have moved.
+ */
+
+/**
+ * Freshness window, in seconds, that receivers should apply to
+ * X-Webhook-Timestamp. Configurable via the `webhook_replay_tolerance_sec`
+ * setting; advertised in the integrator guide and used by
+ * webhook_verify_signature().
+ *
+ * Clamped to 30 s … 86400 s. The floor exists because a tolerance of 0
+ * would make every delivery unverifiable and the natural "fix" for that
+ * is to stop checking; the ceiling keeps a typo from widening the replay
+ * window to something meaningless.
+ */
+function webhook_replay_tolerance(): int {
+    $v = function_exists('get_variable') ? get_variable('webhook_replay_tolerance_sec') : false;
+    if ($v === false || $v === null || trim((string) $v) === '') return 300;
+    $n = (int) $v;
+    if ($n < 30)    return 30;
+    if ($n > 86400) return 86400;
+    return $n;
+}
+
+/**
+ * Whether to keep emitting the legacy body-only X-Webhook-Signature
+ * header alongside the timestamped one. Default ON so an upgrade breaks
+ * nothing; set `webhook_legacy_signature` to 0 once every receiver has
+ * moved to X-Webhook-Signature-V2.
+ */
+function webhook_legacy_signature_enabled(): bool {
+    $v = function_exists('get_variable') ? get_variable('webhook_legacy_signature') : false;
+    if ($v === false || $v === null || trim((string) $v) === '') return true; // default on
+    return !in_array(strtolower(trim((string) $v)), ['0', 'no', 'off', 'false'], true);
+}
+
+/**
+ * THE canonical signature. Binds the delivery to a point in time by
+ * signing "<timestamp>.<body>" — matching what the integrator guide has
+ * documented all along.
+ */
+function webhook_sign(string $timestamp, string $body, string $secret): string {
+    return hash_hmac('sha256', $timestamp . '.' . $body, $secret);
+}
+
+/**
+ * The pre-2026-08-02 signature: body only, no time input. Kept solely so
+ * receivers built against the old undocumented format keep working
+ * during migration. It offers NO replay protection — that is the defect
+ * this change exists to fix — so nothing new should adopt it.
+ */
+function webhook_sign_legacy(string $body, string $secret): string {
+    return hash_hmac('sha256', $body, $secret);
+}
+
+/**
+ * Mint a delivery uid (UUIDv4). One per logical delivery; reused by every
+ * retry and admin replay of that delivery so receivers can deduplicate.
+ */
+function webhook_new_delivery_uid(): string {
+    try {
+        $b = random_bytes(16);
+    } catch (Throwable $e) {
+        // Non-cryptographic fallback. The uid is a dedupe key, not a
+        // secret — it is never trusted for authentication — so a weaker
+        // source degrades uniqueness, not security.
+        $b = pack('N4', mt_rand(), mt_rand(), mt_rand(), mt_rand());
+    }
+    $b[6] = chr((ord($b[6]) & 0x0f) | 0x40);
+    $b[8] = chr((ord($b[8]) & 0x3f) | 0x80);
+    return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($b), 4));
+}
+
+/**
+ * Build the outbound header list. THE single place headers are made, so
+ * every delivery path — fire, test, retry, admin replay — is identical on
+ * the wire by construction rather than by four people remembering.
+ *
+ * @param string      $body       Raw JSON body (signed verbatim)
+ * @param string      $secret     Subscription HMAC secret
+ * @param string      $eventType  Dotted event type
+ * @param string      $uid        Stable delivery uid
+ * @param int|null    $timestamp  Unix seconds; defaults to now
+ * @return array                  cURL-style "Header: value" strings
+ */
+function webhook_build_headers(string $body, string $secret, string $eventType,
+                               string $uid, ?int $timestamp = null): array {
+    $ts = (string) ($timestamp ?? time());
+
+    $headers = [
+        'Content-Type: application/json',
+        'User-Agent: TicketsCAD-Webhook/4.0',
+        'X-Webhook-Event: ' . $eventType,
+        'X-Webhook-Timestamp: ' . $ts,
+        'X-Webhook-Delivery: ' . $uid,
+        'X-Webhook-Signature-V2: sha256=' . webhook_sign($ts, $body, $secret),
+    ];
+
+    if (webhook_legacy_signature_enabled()) {
+        $headers[] = 'X-Webhook-Signature: sha256=' . webhook_sign_legacy($body, $secret);
+    }
+
+    return $headers;
+}
+
+/**
+ * Reference verifier — the receiver side of the contract.
+ *
+ * Shipped, and exercised by tests/test_webhook_replay_protection.php,
+ * because the most damaging half of Ron's report was not the replay
+ * window: it was that a receiver written from the documentation could
+ * not verify ANY delivery, and the path of least resistance when
+ * verification cannot be made to work is to switch verification off.
+ * That turns the receiver into an endpoint that acts on any POST from
+ * anyone who learns the URL — worse than the replay issue it was meant
+ * to avoid. Integrators can now copy code that is known to work.
+ *
+ * Accepts the signature with or without the `sha256=` prefix, because
+ * the prefix was undocumented and receivers in the field handle it
+ * inconsistently.
+ *
+ * @param string   $body       Raw request body bytes, exactly as received
+ * @param string   $signature  X-Webhook-Signature-V2 header value
+ * @param string   $timestamp  X-Webhook-Timestamp header value
+ * @param string   $secret     Shared secret
+ * @param int|null $tolerance  Seconds; defaults to webhook_replay_tolerance()
+ * @param int|null $now        Current unix time; injectable for testing
+ * @return array               ['valid' => bool, 'reason' => string]
+ */
+function webhook_verify_signature(string $body, string $signature, string $timestamp,
+                                  string $secret, ?int $tolerance = null,
+                                  ?int $now = null): array {
+    $signature = trim($signature);
+    $timestamp = trim($timestamp);
+
+    if ($signature === '') return ['valid' => false, 'reason' => 'missing_signature'];
+    if ($timestamp === '') return ['valid' => false, 'reason' => 'missing_timestamp'];
+    if (!preg_match('/^\d+$/', $timestamp)) {
+        return ['valid' => false, 'reason' => 'bad_timestamp'];
+    }
+
+    $tolerance = $tolerance ?? webhook_replay_tolerance();
+    $now       = $now ?? time();
+
+    // Freshness first: a stale delivery is rejected even if the signature
+    // is perfect, which is precisely what stops a captured-and-replayed
+    // request. abs() also rejects timestamps implausibly far in the
+    // future, so a forged far-future stamp cannot buy an unlimited window.
+    if (abs($now - (int) $timestamp) > $tolerance) {
+        return ['valid' => false, 'reason' => 'stale'];
+    }
+
+    if (stripos($signature, 'sha256=') === 0) $signature = substr($signature, 7);
+
+    $expected = webhook_sign($timestamp, $body, $secret);
+    if (!hash_equals($expected, $signature)) {
+        return ['valid' => false, 'reason' => 'bad_signature'];
+    }
+
+    return ['valid' => true, 'reason' => 'ok'];
+}
+
 /**
  * Fire all active subscriptions that subscribe to the given event type.
  *
@@ -102,12 +323,13 @@ function webhook_fire($eventType, array $payload = []) {
             'data'       => $payload
         ]);
 
-        // Compute HMAC-SHA256 signature
-        $signature = hash_hmac('sha256', $body, $sub['hmac_secret']);
+        // Mint the stable delivery uid. Retries and admin replays of this
+        // delivery carry the SAME uid so a receiver can deduplicate them.
+        $uid = webhook_new_delivery_uid();
 
         // Log the pending delivery
         $deliveryId = _webhook_log_delivery(
-            $sub['id'], $eventType, $body, 1, 'pending'
+            $sub['id'], $eventType, $body, 1, 'pending', $uid
         );
 
         // Out of budget. Leave the remaining subscriptions as 'pending'
@@ -122,7 +344,7 @@ function webhook_fire($eventType, array $payload = []) {
         // Fire HTTP POST (bounded; see _webhook_send for the budget clamp)
         $sent = _webhook_send(
             ['id' => $sub['id'], 'target_url' => $sub['target_url'], 'hmac_secret' => $sub['hmac_secret']],
-            $body, $signature, $deliveryId, 1
+            $body, $eventType, $uid, $deliveryId, 1
         );
         $fired++;
         if ($sent) $delivered++; else $failedCount++;
@@ -237,8 +459,10 @@ function webhook_test($url, $secret) {
         ]
     ]);
 
-    $signature = hash_hmac('sha256', $body, $secret);
-
+    // The test delivery is signed and headed exactly like a real one —
+    // it is what an integrator points their receiver at while building
+    // it, so if it differed from production traffic in any way it would
+    // be actively misleading.
     $start = microtime(true);
     $ch = curl_init($url);
     curl_setopt_array($ch, [
@@ -247,11 +471,9 @@ function webhook_test($url, $secret) {
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT        => 10,
         CURLOPT_CONNECTTIMEOUT => 5,
-        CURLOPT_HTTPHEADER     => [
-            'Content-Type: application/json',
-            'X-Webhook-Signature: sha256=' . $signature,
-            'User-Agent: TicketsCAD-Webhook/4.0'
-        ],
+        CURLOPT_HTTPHEADER     => webhook_build_headers(
+            $body, $secret, 'test', webhook_new_delivery_uid()
+        ),
         CURLOPT_SSL_VERIFYPEER => true
     ]);
 
@@ -309,17 +531,24 @@ function webhook_process_retries() {
         if ((int) $row['attempt'] >= $maxAttempts) continue; // dead-letter pass below will catch this
 
         $body = $row['payload'];
-        $signature = hash_hmac('sha256', $body, $row['hmac_secret']);
         $attempt = (int) $row['attempt'] + 1;
+
+        // Carry the ORIGINAL delivery uid forward. The retry is the same
+        // logical delivery, so the receiver must see the same idempotency
+        // key and be able to recognise it as one it may already have
+        // processed. Pre-upgrade rows have no uid — mint one so the retry
+        // is still well-formed.
+        $uid = (string) ($row['delivery_uid'] ?? '');
+        if ($uid === '') $uid = webhook_new_delivery_uid();
 
         // Create a new delivery record for this retry attempt
         $deliveryId = _webhook_log_delivery(
-            $row['subscription_id'], $row['event_type'], $body, $attempt, 'pending'
+            $row['subscription_id'], $row['event_type'], $body, $attempt, 'pending', $uid
         );
 
         _webhook_send(
             ['id' => $row['subscription_id'], 'target_url' => $row['target_url'], 'hmac_secret' => $row['hmac_secret']],
-            $body, $signature, $deliveryId, $attempt
+            $body, $row['event_type'], $uid, $deliveryId, $attempt
         );
 
         // Mark the old delivery as superseded
@@ -375,7 +604,7 @@ function webhook_process_retries() {
  * subscription's stamps give operators an at-a-glance health signal
  * without scanning the deliveries table.
  */
-function _webhook_send($sub, $body, $signature, $deliveryId, $attempt) {
+function _webhook_send($sub, $body, $eventType, $uid, $deliveryId, $attempt) {
     $prefix = $GLOBALS['db_prefix'] ?? '';
 
     // 2026-06-28 security fix #4 — SSRF guard. This call was added to
@@ -418,11 +647,13 @@ function _webhook_send($sub, $body, $signature, $deliveryId, $attempt) {
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT        => $_whTimeout,
         CURLOPT_CONNECTTIMEOUT => $_whConnect,
-        CURLOPT_HTTPHEADER     => [
-            'Content-Type: application/json',
-            'X-Webhook-Signature: sha256=' . $signature,
-            'User-Agent: TicketsCAD-Webhook/4.0'
-        ],
+        // Signed HERE, at the moment of transmission, so X-Webhook-Timestamp
+        // describes THIS attempt. A retry of a delivery stored an hour ago
+        // is signed with the retry's own clock and stays inside the
+        // receiver's freshness window.
+        CURLOPT_HTTPHEADER     => webhook_build_headers(
+            $body, $sub['hmac_secret'], (string) $eventType, (string) $uid
+        ),
         CURLOPT_SSL_VERIFYPEER => true,
         // 2026-06-28: pin protocols + disable redirects so a 302 to
         // file:// / gopher:// can't sneak past the SSRF guard
@@ -495,8 +726,42 @@ function _webhook_send($sub, $body, $signature, $deliveryId, $attempt) {
  * @param string $status          'pending', 'success', 'failed', 'retried', 'dead_letter'
  * @return int   Delivery ID
  */
-function _webhook_log_delivery($subscriptionId, $eventType, $payload, $attempt, $status) {
+function _webhook_log_delivery($subscriptionId, $eventType, $payload, $attempt, $status, $uid = null) {
     $prefix = $GLOBALS['db_prefix'] ?? '';
+
+    // delivery_uid arrived 2026-08-02 (sql/run_webhook_replay_protection.php).
+    // An install that has not run migrations yet still delivers — it just
+    // cannot persist the uid, so retries of a delivery made in that window
+    // mint a fresh one. Checked once per request, not per delivery.
+    static $hasUid = null;
+    if ($hasUid === null) {
+        try {
+            $hasUid = (int) db_fetch_value(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+                    AND COLUMN_NAME = 'delivery_uid'",
+                [$prefix . 'webhook_deliveries']
+            ) > 0;
+        } catch (Exception $e) {
+            $hasUid = false;
+        }
+    }
+
+    if ($hasUid && $uid !== null && $uid !== '') {
+        try {
+            db_query(
+                "INSERT INTO `{$prefix}webhook_deliveries`
+                 (`webhook_id`, `subscription_id`, `event_type`, `payload`, `attempt`, `status`, `delivery_uid`)
+                 VALUES (NULL, ?, ?, ?, ?, ?, ?)",
+                [$subscriptionId, $eventType, $payload, $attempt, $status, $uid]
+            );
+            return (int) db_insert_id();
+        } catch (Exception $e) {
+            // Fall through to the uid-less paths below rather than losing
+            // the delivery entirely.
+            error_log('[webhooks] delivery INSERT with delivery_uid failed, retrying without: ' . $e->getMessage());
+        }
+    }
 
     // 2026-06-28 reliability fix — explicitly set webhook_id = NULL.
     // Pre-2026-06-28, webhook_deliveries.webhook_id was a legacy

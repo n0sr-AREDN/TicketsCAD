@@ -48,10 +48,12 @@ try {
         `attempt`      TINYINT     NOT NULL DEFAULT 1,
         `status`       VARCHAR(16) NOT NULL DEFAULT 'pending',
         `error`        VARCHAR(512) DEFAULT NULL,
+        `delivery_uid` VARCHAR(36)  DEFAULT NULL,
         `created_at`   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
         KEY `idx_wd_webhook_id` (`webhook_id`),
         KEY `idx_wd_event_type` (`event_type`),
         KEY `idx_wd_status` (`status`),
+        KEY `idx_wd_delivery_uid` (`delivery_uid`),
         KEY `idx_wd_created_at` (`created_at`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     echo "[OK] webhook_deliveries table\n";

@@ -72,6 +72,25 @@ answer on **Settings → Status**, in the *Web exposure* row.
   operator switched on reported success while doing nothing, so integrations
   were configured over plain HTTP and kept working. Reported privately by
   [@rjonesbsink](https://github.com/rjonesbsink). See GHSA-984v-rw78-3223.
+- **Outbound webhook deliveries now carry replay protection, and the
+  integrator guide now matches the wire.** Deliveries were signed over the
+  request body alone, with no timestamp, nonce or delivery id anywhere in the
+  request — so a captured delivery re-sent unchanged at any later time still
+  verified as authentic, and nothing in it could justify rejection. Deliveries
+  now carry `X-Webhook-Timestamp` inside the signed material and
+  `X-Webhook-Delivery` as a stable idempotency key.
+
+  **This does not break existing receivers.** The new scheme arrives as
+  `X-Webhook-Signature-V2`; `X-Webhook-Signature` keeps exactly its current
+  meaning until you set `webhook_legacy_signature` off. `webhook_replay_
+  tolerance_sec` (default 300) sets the advertised freshness window.
+
+  **If you build a receiver, re-read the guide.** It previously described a
+  timestamped scheme, a `delivery_id` and a JSON envelope that were never
+  implemented, and omitted the `sha256=` prefix the code actually sends — so a
+  receiver written from it computed the wrong digest *and* compared it against
+  the wrong string, and rejected every genuine delivery. `docs/WEBHOOKS-
+  INTEGRATOR-GUIDE.md` now describes what is actually sent.
 - **Saving a Settings panel wiped the stored secret it never showed you.** The
   panels mask secrets on display, then wrote the mask back on save, silently
   destroying the stored value.
