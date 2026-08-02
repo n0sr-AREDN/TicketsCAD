@@ -12,6 +12,9 @@
  * The owntracks provider must be enabled for the resolver (lp.enabled=1); the
  * test flips it on and restores the original state in teardown.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/db.php';
 require_once __DIR__ . '/../inc/unit_owntracks.php';

@@ -102,31 +102,68 @@ function sched_expiry_reason(string $scheduledAt, int $dueTs, ?int $now = null, 
 // ─────────────────────────────────────────────────────────────────────────
 
 /**
+ * Is this install running on Windows?
+ *
+ * GH openises/TicketsCAD#18 — everything this file said about running the
+ * background jobs was systemd, and a Windows/IIS install has no systemd. The
+ * Status page correctly reported "PAR scheduler — never run, CRITICAL" and
+ * then told the admin to run `systemctl`, which is a dead end from the one
+ * screen that had correctly identified the problem.
+ */
+function sched_is_windows(): bool {
+    return defined('PHP_OS_FAMILY')
+        ? PHP_OS_FAMILY === 'Windows'
+        : stripos(PHP_OS, 'WIN') === 0;
+}
+
+/**
  * The background jobs this install expects something to be running.
  *
  * 'interval_s'  how often it should run.
  * 'grace_mult'  how many intervals may pass before we call it overdue.
  *               Generous, because a 60s job that is 3 minutes late is not
  *               news; one that is a day late is.
- * 'unit'        the systemd unit that runs it (what an admin needs to type).
+ * 'unit'        what an admin needs to type to check on it — a systemd unit
+ *               on Linux, a Task Scheduler task name on Windows. Naming a
+ *               systemd timer to a Windows admin is worse than saying
+ *               nothing, so this is platform-derived rather than fixed.
+ * 'unit_kind'   'systemd' | 'schtasks' — what 'unit' IS, so a consumer can
+ *               render the right verb around it.
+ * 'command'     the underlying command, path-separated for this platform.
+ *
+ * On Windows both ticks are driven by a single Task Scheduler entry running
+ * tools\run-scheduled-jobs.bat every minute: Windows' minimum repeat interval
+ * is one minute, which matches both jobs' interval_s, and one task is less to
+ * get wrong than two. So both rows legitimately name the same task.
  */
 function sched_job_registry(): array {
+    $win = sched_is_windows();
+
     return [
         'par_tick' => [
             'label'      => 'PAR scheduler',
             'interval_s' => 60,
             'grace_mult' => 15,
-            'unit'       => 'ticketscad-par-tick.timer',
-            'command'    => 'php tools/par_tick.php',
+            'unit'       => $win ? 'TicketsCAD Background Jobs' : 'ticketscad-par-tick.timer',
+            'unit_kind'  => $win ? 'schtasks' : 'systemd',
+            'command'    => $win ? 'php tools\\par_tick.php' : 'php tools/par_tick.php',
             'purpose'    => 'Initiates due PAR cycles and marks unanswered units missed',
         ],
         'pending_messages_tick' => [
-            'label'      => 'Pending message sweep',
+            'label'      => 'Notification + pending message sweep',
             'interval_s' => 60,
             'grace_mult' => 15,
-            'unit'       => 'ticketscad-pending-msg.timer',
-            'command'    => 'php tools/pending_messages_tick.php',
-            'purpose'    => 'Delivers routed messages held for their security-label kill window',
+            'unit'       => $win ? 'TicketsCAD Background Jobs' : 'ticketscad-pending-msg.timer',
+            'unit_kind'  => $win ? 'schtasks' : 'systemd',
+            'command'    => $win ? 'php tools\\pending_messages_tick.php' : 'php tools/pending_messages_tick.php',
+            // Since 2026-07-31 this job carries the outbound notifications
+            // too: push, webhooks, SMS, e-mail and Slack were moved off the
+            // dispatch request path, where they cost 21 seconds per action
+            // during an outage. If this job is not running, notifications
+            // queue instead of going out — which is why the check below
+            // turns critical the moment anything is waiting.
+            'purpose'    => 'Sends queued notifications (push, webhooks, SMS, e-mail, Slack) '
+                          . 'and messages held for a security label\'s kill window',
         ],
     ];
 }
@@ -237,11 +274,42 @@ function sched_job_required(string $jobKey): array {
         // critically broken before an administrator had done anything at
         // all. Shipped default configuration is not usage. A queued
         // message is, and it appears exactly when it starts to matter.
+        // Loaded lazily: this file is required by inc/notify-fanout.php, so a
+        // top-level require here would be a load-time cycle. By the time this
+        // function runs, both files are fully defined.
+        if (!function_exists('notify_queue_depth') && is_file(__DIR__ . '/notify-fanout.php')) {
+            require_once __DIR__ . '/notify-fanout.php';
+        }
         try {
             $n = (int) db_fetch_value(
                 "SELECT COUNT(*) FROM `{$prefix}pending_routed_messages` WHERE status = 'pending'");
             if ($n > 0) {
-                return ['required' => true, 'why' => "{$n} message(s) waiting in the send queue"];
+                // Say WHICH kind is backing up. "3 messages waiting" and
+                // "3 notifications nobody is sending" call for different
+                // actions, and a dispatcher's callouts not going out is the
+                // one an operator has to hear about.
+                $why = "{$n} item(s) waiting in the send queue";
+                if (function_exists('notify_queue_depth')) {
+                    $q = notify_queue_depth();
+                    if ($q['pending'] > 0) {
+                        $why = $q['pending'] . ' notification(s) queued and undelivered';
+                        if ($q['oldest_age_s'] !== null && $q['oldest_age_s'] > 120) {
+                            $why .= ', oldest ' . _sched_ago((int) $q['oldest_age_s']) . ' old';
+                        }
+                        if ($n > $q['pending']) {
+                            $why .= '; ' . ($n - $q['pending']) . ' held message(s) as well';
+                        }
+                    }
+                }
+                if (function_exists('notify_breaker_status')) {
+                    $b = notify_breaker_status();
+                    if (!empty($b['open'])) {
+                        $why .= '. Outbound delivery is paused for ' . (int) $b['retry_in']
+                              . 's after ' . (int) $b['fails'] . ' consecutive failures'
+                              . ($b['last_error'] !== '' ? ' (' . $b['last_error'] . ')' : '');
+                    }
+                }
+                return ['required' => true, 'why' => $why];
             }
         } catch (Exception $e) {}
         return ['required' => false, 'why' => 'Nothing is waiting in the send queue'];
@@ -303,6 +371,7 @@ function sched_jobs_status(?int $now = null): array {
             'label'        => $def['label'],
             'purpose'      => $def['purpose'],
             'unit'         => $def['unit'],
+            'unit_kind'    => $def['unit_kind'] ?? 'systemd',
             'command'      => $def['command'],
             'interval_s'   => (int) $def['interval_s'],
             'overdue_after_s' => $overdueS,
@@ -321,15 +390,36 @@ function sched_jobs_status(?int $now = null): array {
         ];
     }
 
+    // The outbound-notification queue, reported separately from the job that
+    // drains it. A dispatcher's callouts silently piling up is the thing an
+    // operator most needs to see, and it is not the same fact as "a timer is
+    // late" — the queue can be backing up with the timer running perfectly,
+    // because the internet is down.
+    $notify = null;
+    if (function_exists('notify_queue_depth')) {
+        $notify = notify_queue_depth($now);
+        if (function_exists('notify_breaker_status')) {
+            $notify['breaker'] = notify_breaker_status($now);
+        }
+    }
+
     return [
         'checked'  => true,
         'has_table' => $haveTable,
         'cutoff_min' => sched_stale_cutoff_min(),
         'jobs'     => $out,
+        'notifications' => $notify,
         'severity' => $worst,
-        'remedy'   => 'A job that has never run usually means no scheduler is installed. '
-                    . 'Check with: systemctl is-active cron — "not-found" means nothing is '
-                    . 'scheduled. See docs/MAINTENANCE-RUNBOOK.md for the systemd timer units.',
+        'platform' => sched_is_windows() ? 'windows' : 'unix',
+        'remedy'   => sched_is_windows()
+            ? 'A job that has never run usually means nothing is scheduled to run it. '
+            . 'Windows has no systemd — these jobs need a Task Scheduler entry. Check with: '
+            . 'schtasks /Query /TN "TicketsCAD Background Jobs" — "cannot find the file specified" '
+            . 'means nothing is scheduled. See docs/INSTALL-WINDOWS-IIS.md, '
+            . '"The background jobs need Task Scheduler", for the one command that creates it.'
+            : 'A job that has never run usually means no scheduler is installed. '
+            . 'Check with: systemctl is-active cron — "not-found" means nothing is '
+            . 'scheduled. See docs/MAINTENANCE-RUNBOOK.md for the systemd timer units.',
     ];
 }
 

@@ -371,7 +371,7 @@ $pageTitle = $editId > 0
                                         </select>
                                     </div>
                                     <div class="col-md-2">
-                                        <button class="btn btn-sm btn-outline-primary w-100" id="btnAssignPersonnelEdit" disabled>
+                                        <button type="button" class="btn btn-sm btn-outline-primary w-100" id="btnAssignPersonnelEdit" disabled>
                                             <i class="bi bi-person-plus me-1"></i>Assign
                                         </button>
                                     </div>
@@ -486,7 +486,7 @@ $pageTitle = $editId > 0
                                                value="50" min="1" max="200">
                                     </div>
                                     <div class="col-md-2">
-                                        <button class="btn btn-sm btn-outline-primary w-100" id="btnAddSource">
+                                        <button type="button" class="btn btn-sm btn-outline-primary w-100" id="btnAddSource">
                                             <i class="bi bi-plus-lg me-1"></i>Add
                                         </button>
                                     </div>

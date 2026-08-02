@@ -33,6 +33,9 @@
  * Safe to re-run. No data migration; new column defaults NULL, table is
  * CREATE TABLE IF NOT EXISTS.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase D — route sub-address + zello_outbox\n";

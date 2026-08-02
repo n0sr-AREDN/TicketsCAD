@@ -471,6 +471,26 @@ Each integration has its own admin guide. None are required for basic dispatch.
 
 Before you let anyone real log in:
 
+- [ ] **The private directories are not published.** Run these three; anything
+      answering `200` must be fixed before this install faces a network:
+
+      ```bash
+      curl -s -o /dev/null -w 'backups %{http_code}\n' https://your-site/backups/
+      curl -s -o /dev/null -w 'sql     %{http_code}\n' https://your-site/sql/run_migrations.php
+      curl -s -o /dev/null -w 'tools   %{http_code}\n' https://your-site/tools/
+      ```
+
+      **Which file protects you depends on your web server.** Apache reads the
+      shipped `.htaccess` (only when `AllowOverride` is `All`/`FileInfo`);
+      **nginx never reads it and needs
+      [`nginx/ticketscad-hardening.conf`](nginx/ticketscad-hardening.conf)**; IIS
+      needs `web.config` / hidden segments. See
+      [WEB-SERVER-HARDENING.md](WEB-SERVER-HARDENING.md). Settings → Status runs
+      the same probes and shows the result under "Web exposure".
+- [ ] **Backups are outside the web root.** The default is `../backups` (a
+      sibling of the install directory, like `keys/`). If you upgraded from
+      before v4.2.3, move any archives out of the old in-tree `backups/` folder —
+      each one is a complete copy of your database.
 - [ ] **Backups configured.** [BACKUP-RECOVERY-RUNBOOK.md](BACKUP-RECOVERY-RUNBOOK.md). Verify a restore on a separate VM before you trust it.
 - [ ] **Password policy set** to your org's standard. Settings → Identity & Security → Password Policy.
 - [ ] **2FA required** for at least admin + dispatcher roles. Settings → Identity & Security → Two-Factor Authentication → Required Roles.

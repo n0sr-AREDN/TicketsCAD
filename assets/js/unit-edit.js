@@ -369,18 +369,25 @@
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
 
-        fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(query) + '&limit=1&countrycodes=us')
-            .then(function (r) { return r.json(); })
-            .then(function (results) {
+        Geocode.search({ q: query, limit: 1, countrycodes: 'us' })
+            .then(function (res) {
+                // Restore the button FIRST, on every path. It used to be
+                // restored in two places and a third path (a non-JSON reply)
+                // reached neither, leaving the Lookup button disabled with a
+                // spinner until the page was reloaded.
                 btn.disabled = false;
                 btn.innerHTML = '<i class="bi bi-search"></i> Lookup';
 
-                if (!results || results.length === 0) {
+                if (!res.ok) {
+                    showAlert(res.message, 'warning');
+                    return;
+                }
+                if (res.results.length === 0) {
                     showAlert('No results found for that address', 'warning');
                     return;
                 }
 
-                var result = results[0];
+                var result = res.results[0];
                 var lat = parseFloat(result.lat);
                 var lng = parseFloat(result.lon);
 
@@ -389,20 +396,14 @@
                 setMapMarker(lat, lng);
 
                 showAlert('Location found: ' + escHtml(result.display_name), 'success');
-            })
-            .catch(function (err) {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="bi bi-search"></i> Lookup';
-                showAlert('Geocoding failed: ' + escHtml(err.message), 'danger');
             });
     }
 
     function reverseGeocode(lat, lng) {
-        fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng)
-            .then(function (r) { return r.json(); })
-            .then(function (result) {
-                if (!result || !result.address) return;
-                var addr = result.address;
+        Geocode.reverse(lat, lng)
+            .then(function (res) {
+                if (!res.ok || !res.results.length) return;
+                var addr = res.results[0].address;
 
                 if (addr.road || addr.house_number) {
                     var streetVal = (addr.house_number ? addr.house_number + ' ' : '') + (addr.road || '');
@@ -419,8 +420,10 @@
                     }
                     setField('state', stateVal);
                 }
-            })
-            .catch(function () {});
+            });
+        // No .catch — Geocode.reverse() resolves with { ok:false, message }
+        // rather than rejecting, so an empty catch here would only swallow a
+        // real bug in the handler above.
     }
 
     // ── Save ──

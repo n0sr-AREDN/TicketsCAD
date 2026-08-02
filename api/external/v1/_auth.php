@@ -24,6 +24,7 @@ api_guard_install();
 require_once __DIR__ . '/../../../config.php';
 require_once __DIR__ . '/../../../inc/db.php';
 require_once __DIR__ . '/../../../inc/client-ip.php';
+require_once __DIR__ . '/../../../inc/https.php';
 require_once __DIR__ . '/../../../inc/external-auth.php';
 
 // Suppress display_errors so we never leak PHP warnings/notices into a
@@ -42,8 +43,27 @@ if (file_exists(__DIR__ . '/../../../inc/security-headers.php')) {
 $clientIp = function_exists('client_ip') ? client_ip() : ($_SERVER['REMOTE_ADDR'] ?? '127.0.0.1');
 
 // ── 1. HTTPS gate ────────────────────────────────────────────────
-if (ext_api_require_tls() && empty($_SERVER['HTTPS']) && ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') !== 'https') {
-    ext_api_error('https_required', 426);
+// Reported by Ron Jones (@rjonesbsink) 2026-08-02. This test used to be
+// `empty($_SERVER['HTTPS'])`, which is FALSE on IIS over plain HTTP —
+// IIS sets HTTPS to the string "off" rather than leaving it unset, and
+// empty("off") is false. The gate therefore never fired on IIS: with
+// external_api_require_tls=1 a plain-HTTP request bearing a valid token
+// returned 200 and a full incident list.
+//
+// The same line also trusted X-Forwarded-Proto from anyone, so
+// `curl -H 'X-Forwarded-Proto: https'` walked through the gate on EVERY
+// platform, Apache and nginx included. is_https_verified() honours that
+// header only from a peer in `trusted_proxies` — the allow-list
+// client_ip() already uses. An operator behind Cloudflare/NPM/ARR who
+// has not configured that list gets told so below, rather than a bare
+// refusal they cannot diagnose.
+if (ext_api_require_tls() && !is_https_verified()) {
+    $why = https_verification_failure_reason();
+    ext_api_error('https_required', 426, $why === 'untrusted_proxy' ? [
+        'detail' => 'A forwarded-protocol header claimed HTTPS, but this '
+                  . 'request did not arrive from a trusted proxy. Add the '
+                  . 'proxy to the trusted_proxies setting.',
+    ] : []);
 }
 
 // ── 2. Bearer extract ────────────────────────────────────────────

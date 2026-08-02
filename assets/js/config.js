@@ -85,6 +85,7 @@
         bindFacilitiesPanel();
         bindSettingsPanel();
         bindApiKeysPanel();
+        bindGeocodePanel();
         bindMapDefaultsPanel();
         bindTileProviderPanel();
         bindUsersPanel();
@@ -100,6 +101,7 @@
         bindSecurityLabelsPanel();
         bindPendingMessagesPanel();
         bindPARConfigPanel();
+        bindNetCheckinPanel();
         bindWebhooksPanel();
         bindChatSettingsPanel();
         bindExternalApiTokensPanel();
@@ -371,6 +373,7 @@
         else if (tab === 'telegram')         loadTelegramConfig();
         else if (tab === 'incident-numbers') loadIncidentNumbers();
         else if (tab === 'par-checks')       loadPARConfig();
+        else if (tab === 'net-checkins')     loadNetCheckinConfig();
         else if (tab === 'security-labels')  loadSecurityLabels();
         else if (tab === 'pending-messages') loadPendingMessages();
         else if (tab === 'road-conditions')  loadRoadConditions();
@@ -801,11 +804,13 @@
                             def_lng:        document.getElementById('regionLng').value,
                             def_zoom:       document.getElementById('regionZoom').value
                         };
-                        fetchJSON('api/config-admin.php?section=regions', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                        }).then(function () {
+                        // apiPost(), not fetchJSON(): apiPost is what attaches
+                        // csrf_token, and api/config-admin.php reads the token
+                        // only from the JSON body or the query string. Posting
+                        // raw made every Regions write fail with "Invalid CSRF
+                        // token" — the section was read-only in practice
+                        // (GH TicketsCAD#15).
+                        apiPost('regions', payload).then(function () {
                             loadRegions();
                         }).catch(function (err) {
                             showAlert('Save failed: ' + err.message, 'danger');
@@ -839,10 +844,9 @@
                     (function (btn) {
                         btn.addEventListener('click', function () {
                             if (!confirm('Delete region "' + btn.getAttribute('data-name') + '"?')) return;
-                            fetchJSON('api/config-admin.php?section=regions', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ action: 'delete', id: parseInt(btn.getAttribute('data-id'), 10) })
+                            apiPost('regions', {
+                                action: 'delete',
+                                id: parseInt(btn.getAttribute('data-id'), 10)
                             }).then(function () {
                                 loadRegions();
                             }).catch(function (err) {
@@ -3032,19 +3036,16 @@
     function loadTelegramConfig() {
         var form = document.getElementById('telegramConfigForm');
         if (!form) return;
+        // Load + save through the shared data-key helpers. The hand-built
+        // version posted the bot-token box verbatim, and that box is ALWAYS
+        // empty (the server masks the value), so saving a changed Chat ID wiped
+        // the token. See openises/TicketsCAD#7.
         apiGet('settings').then(function (data) {
-            var s = data.settings || {};
-            var bt = document.getElementById('setTelegramToken');
-            var ci = document.getElementById('setTelegramChat');
-            if (bt && s.telegram_bot_token) bt.value = s.telegram_bot_token;
-            if (ci && s.telegram_chat_id) ci.value = s.telegram_chat_id;
+            applySettingsToForm(form, data.settings || {});
         });
         form.addEventListener('submit', function (e) {
             e.preventDefault();
-            var pairs = {
-                telegram_bot_token: document.getElementById('setTelegramToken').value,
-                telegram_chat_id: document.getElementById('setTelegramChat').value
-            };
+            var pairs = collectSettingsFromForm(form);
             apiPost('settings', { settings: pairs }).then(function (data) {
                 showAlert('Telegram settings saved.');
             }).catch(function (err) { showAlert(err.message, 'danger'); });
@@ -5661,22 +5662,60 @@
         }
     }
 
+    // Rendered in a secret field's PLACEHOLDER (never its value) when the
+    // server reports the credential is stored. Keeping .value empty is the
+    // whole point: an empty box is what makes the save omit the key.
+    var SECRET_STORED_PLACEHOLDER = '••••••••  stored — leave blank to keep';
+
+    /**
+     * Show "stored" vs "not set" for a masked field WITHOUT putting anything in
+     * .value. The server sends `<key>_set`, never the credential, so there is
+     * nothing to display — but an empty box with no hint reads as "not
+     * configured" and admins re-type keys they already have, or conclude the
+     * feature is broken (openises/TicketsCAD#7).
+     */
+    function markSecretFieldState(el, isSet) {
+        if (!el) return;
+        el.value = '';
+        if (!el.hasAttribute('data-placeholder-unset')) {
+            el.setAttribute('data-placeholder-unset', el.getAttribute('placeholder') || '');
+        }
+        el.placeholder = isSet
+            ? SECRET_STORED_PLACEHOLDER
+            : el.getAttribute('data-placeholder-unset');
+    }
+
     /** Collect data-key inputs from a form, skipping duplicate color pickers */
     function collectSettingsFromForm(form) {
         var inputs = form.querySelectorAll('[data-key]');
         var pairs = {};
         for (var i = 0; i < inputs.length; i++) {
-            var key = inputs[i].getAttribute('data-key');
-            if (inputs[i].type === 'color') continue; // text input has same key
+            var el = inputs[i];
+            var key = el.getAttribute('data-key');
+            if (el.type === 'color') continue; // text input has same key
             // BUG 1 (a beta tester, 2026-06-25): never overwrite a stored
             // secret with an empty string. A data-secret field left blank
             // means "keep the stored value" — omit the key entirely so the
             // upsert never runs for it. Typing a new value still saves.
-            if (inputs[i].getAttribute('data-secret') === '1' &&
-                (inputs[i].value || '') === '') {
+            if (el.getAttribute('data-secret') === '1' &&
+                (el.value || '') === '') {
                 continue;
             }
-            pairs[key] = inputs[i].value;
+            // A checkbox's .value is its value ATTRIBUTE ("on" by default), not
+            // its state — reading it here posted "on" for both checked and
+            // unchecked, and every consumer tests `=== '1'`, so the setting read
+            // as OFF whichever way the admin left the switch. Panels that knew
+            // this re-walked the checkboxes after calling us; those loops now
+            // just agree with what we already returned.
+            if (el.type === 'checkbox') {
+                pairs[key] = el.checked ? '1' : '0';
+                continue;
+            }
+            if (el.type === 'radio') {
+                if (el.checked) pairs[key] = el.value;
+                continue;
+            }
+            pairs[key] = el.value;
         }
         return pairs;
     }
@@ -5694,9 +5733,21 @@
     function applySettingsToForm(form, settings) {
         var inputs = form.querySelectorAll('[data-key]');
         for (var i = 0; i < inputs.length; i++) {
-            var key = inputs[i].getAttribute('data-key');
+            var el = inputs[i];
+            var key = el.getAttribute('data-key');
+            // A secret never arrives as a value — the server sends `<key>_set`.
+            // Reflect that state in the placeholder and leave the box empty, so
+            // saving without retyping omits the key and the stored value lives.
+            if (el.getAttribute('data-secret') === '1') {
+                markSecretFieldState(el, settings[key + '_set'] === true);
+                continue;
+            }
+            if (el.type === 'checkbox') {
+                el.checked = (settings[key] === '1');
+                continue;
+            }
             if (settings[key] !== undefined) {
-                inputs[i].value = settings[key];
+                el.value = settings[key];
             }
         }
     }
@@ -6054,6 +6105,10 @@
             var pairs = collectSettingsFromForm(form);
             apiPost('settings', { settings: pairs }).then(function (data) {
                 showAlert('API keys saved (' + data.saved + ' updated)');
+                // A key present in this payload is now stored server-side; one
+                // omitted (blank box) means the stored key was left untouched.
+                // Either way the feed has a key from here on.
+                if (pairs.feed_api_key) _feedKeyStored = true;
                 updateFeedKeyBanner();
             }).catch(function (err) {
                 showAlert(err.message, 'danger');
@@ -6097,25 +6152,202 @@
         return s;
     }
 
+    // Whether the server reports a feed_api_key is already stored. The box
+    // itself is always empty — the value is masked out of `GET settings` — so
+    // the banner cannot be driven from it, or a correctly-configured install is
+    // told its feed is disabled and the admin turns off a working feature
+    // (openises/TicketsCAD#7).
+    var _feedKeyStored = false;
+
     function updateFeedKeyBanner() {
         var input = document.getElementById('setFeedApiKey');
         var banner = document.getElementById('feedKeyMissingBanner');
         if (!input || !banner) return;
-        if (input.value.trim() === '') {
-            banner.classList.remove('d-none');
-        } else {
+        // Configured = stored server-side, or freshly typed/generated and
+        // pending Save.
+        var configured = _feedKeyStored || input.value.trim() !== '';
+        if (configured) {
             banner.classList.add('d-none');
+        } else {
+            banner.classList.remove('d-none');
         }
     }
 
     function loadApiKeys() {
         apiGet('settings').then(function (data) {
             var settings = data.settings || {};
+            _feedKeyStored = (settings.feed_api_key_set === true);
             applySettingsToForm(document.getElementById('apiKeysForm'), settings);
             updateFeedKeyBanner();
+            syncGeocodeFields();
+            loadGeocodeStatus();
         }).catch(function (err) {
             showAlert('Failed to load API keys: ' + err.message, 'danger');
         });
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  GEOCODING (address lookup)
+    //
+    //  The provider dropdown here used to be decorative: nothing read
+    //  geocoding_provider or geocoding_api_key, and every lookup went from the
+    //  dispatcher's browser straight to nominatim.openstreetmap.org. These
+    //  helpers are the UI half of making it real — the important part is not
+    //  the extra fields but the Test button and the policy panel, because an
+    //  admin should be able to CONFIRM the setting does something rather than
+    //  trust a select box. That trust is exactly what was misplaced before.
+    // ═══════════════════════════════════════════════════════════════
+
+    /** Show only the fields the selected provider actually uses. */
+    function syncGeocodeFields() {
+        var sel = document.getElementById('setGeoProvider');
+        if (!sel) return;
+        var p = sel.value || 'nominatim';
+        var needsUrl = (p === 'nominatim_self' || p === 'photon');
+        var needsKey = (p === 'locationiq' || p === 'geoapify' || p === 'google' || p === 'here');
+        var urlWrap = document.getElementById('geoUrlWrap');
+        var keyWrap = document.getElementById('geoKeyWrap');
+        if (urlWrap) urlWrap.classList.toggle('d-none', !needsUrl);
+        if (keyWrap) keyWrap.classList.toggle('d-none', !needsKey);
+    }
+
+    /**
+     * Current geocoding state: the mode ACTUALLY in force (which is not always
+     * the one selected), the provider's terms, and whether the lookup path is
+     * currently failing.
+     */
+    function loadGeocodeStatus() {
+        var host = document.getElementById('geocodeStatus');
+        if (!host) return;
+        host.innerHTML = '<div class="text-body-secondary small">Loading address-lookup status…</div>';
+
+        fetch('api/geocode.php?action=status', { credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) {
+                if (!d || !d.ok) {
+                    host.innerHTML = '<div class="text-body-secondary small">Address-lookup status unavailable.</div>';
+                    return;
+                }
+                var cfg = d.config || {};
+                var pol = (d.providers || {})[cfg.provider] || {};
+                var h = '';
+
+                // The mode actually in force. Saying "direct" in the dropdown
+                // while the server silently uses server mode would be the same
+                // class of lie this whole change removes, so when the two
+                // differ we say so, with the reason.
+                var modeLabel = cfg.mode === 'off' ? 'Off — no address lookup'
+                              : (cfg.mode === 'direct' ? 'Direct from each browser' : 'Through this server');
+                var modeClass = cfg.mode === 'off' ? 'bg-secondary'
+                              : (cfg.mode === 'direct' ? 'bg-warning text-dark' : 'bg-success');
+                h += '<div class="mb-2"><span class="badge ' + modeClass + '">' + esc(modeLabel) + '</span>';
+                h += ' <span class="small text-body-secondary">using ' + esc(cfg.label || cfg.provider) + '</span></div>';
+
+                if (cfg.requested && cfg.requested !== cfg.mode && cfg.reason) {
+                    h += '<div class="alert alert-warning py-2 small mb-2">' +
+                         '<i class="bi bi-info-circle me-1"></i>' +
+                         'You selected <strong>' + esc(cfg.requested) + '</strong>, but ' +
+                         esc(cfg.reason) + '</div>';
+                }
+
+                if (pol.verified === 'documented') {
+                    h += '<div class="alert alert-secondary py-2 small mb-2">' +
+                         '<i class="bi bi-clipboard-check me-1"></i>' +
+                         'This provider\'s adapter was written from its published response format and is ' +
+                         'covered by tests, but has not been exercised against a live account here. ' +
+                         'Press <strong>Test address lookup</strong> to confirm it works with your key ' +
+                         'before relying on it.</div>';
+                }
+
+                if (d.breaker && d.breaker.open) {
+                    h += '<div class="alert alert-danger py-2 small mb-2">' +
+                         '<i class="bi bi-exclamation-triangle me-1"></i>' +
+                         'Address lookup is paused after ' + (d.breaker.fails || 0) +
+                         ' consecutive failures — retrying in ' + (d.breaker.retry_in || 0) + 's.' +
+                         (d.breaker.last_error ? ' Last error: ' + esc(d.breaker.last_error) : '') +
+                         '</div>';
+                }
+
+                var c = d.cache || {};
+                h += '<div class="small text-body-secondary mb-2">' +
+                     'Cached results: <strong>' + (c.entries || 0) + '</strong>' +
+                     ' (kept ' + (d.cache_ttl_hours || 0) + 'h) &middot; ' +
+                     'minimum gap ' + (d.throttle_ms || 0) + 'ms &middot; ' +
+                     'identifying as <code>' + esc(d.user_agent || '') + '</code></div>';
+
+                if (pol.policy) {
+                    h += '<div class="small mb-1"><strong>Terms and limits</strong></div>';
+                    h += '<div class="small text-body-secondary">' + esc(pol.policy);
+                    if (pol.caveat) {
+                        h += '<div class="text-warning-emphasis mt-1"><i class="bi bi-info-circle me-1"></i>' +
+                             esc(pol.caveat) + '</div>';
+                    }
+                    if (pol.source && pol.source.indexOf('http') === 0) {
+                        h += '<div class="mt-1"><a href="' + esc(pol.source) + '" target="_blank" rel="noopener">source</a></div>';
+                    }
+                    h += '</div>';
+                }
+                if (pol.unsupported && pol.unsupported.length) {
+                    var missing = [];
+                    for (var mi = 0; mi < pol.unsupported.length; mi++) {
+                        missing.push('<code>' + esc(pol.unsupported[mi]) + '</code>');
+                    }
+                    h += '<div class="small text-body-secondary mt-2">' +
+                         'This provider does not supply: ' + missing.join(', ') +
+                         '. Those form fields stay blank; that is expected, not a fault.</div>';
+                }
+                host.innerHTML = h;
+            })
+            .catch(function () {
+                host.innerHTML = '<div class="text-body-secondary small">Address-lookup status unavailable.</div>';
+            });
+    }
+
+    function bindGeocodePanel() {
+        var sel = document.getElementById('setGeoProvider');
+        if (sel) sel.addEventListener('change', syncGeocodeFields);
+
+        var testBtn = document.getElementById('btnGeoTest');
+        if (testBtn) {
+            testBtn.addEventListener('click', function () {
+                var host = document.getElementById('geocodeStatus');
+                testBtn.disabled = true;
+                testBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Testing…';
+                apiPostDirect('geocode', { action: 'test' })
+                    .then(function (d) {
+                        if (d && d.ok) {
+                            showAlert('Address lookup works — ' + d.count + ' result(s) in ' + d.ms +
+                                      'ms via ' + d.provider + ' (' + d.source + ').', 'success');
+                        } else {
+                            showAlert('Address lookup failed: ' + ((d && d.message) || 'no answer'), 'danger');
+                        }
+                    })
+                    .catch(function (err) {
+                        showAlert('Address lookup test failed: ' + err.message, 'danger');
+                    })
+                    .then(function () {
+                        // Always restores the button, on every path.
+                        testBtn.disabled = false;
+                        testBtn.innerHTML = '<i class="bi bi-play-circle me-1"></i>Test address lookup';
+                        if (host) loadGeocodeStatus();
+                    });
+            });
+        }
+
+        var clearBtn = document.getElementById('btnGeoClearCache');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function () {
+                if (!confirm('Delete every cached address-lookup result?\n\n'
+                           + 'Lookups will be slower until the cache refills, and each one will '
+                           + 'reach the provider again.')) return;
+                apiPostDirect('geocode', { action: 'clear_cache' })
+                    .then(function (d) {
+                        showAlert('Cleared ' + ((d && d.removed) || 0) + ' cached result(s).', 'success');
+                        loadGeocodeStatus();
+                    })
+                    .catch(function (err) { showAlert(err.message, 'danger'); });
+            });
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -6281,6 +6513,14 @@
             testBtn.addEventListener('click', updateTilePreview);
         }
 
+        // Administrator default for map layer visibility. Its own button, and
+        // its own endpoint — it is not part of the tile settings form and must
+        // not ride along on that save.
+        var mlpBtn = document.getElementById('btnSaveMapLayerDefaults');
+        if (mlpBtn) {
+            mlpBtn.addEventListener('click', saveMapLayerDefaults);
+        }
+
         form.addEventListener('submit', function (e) {
             e.preventDefault();
             var pairs = collectSettingsFromForm(form);
@@ -6413,6 +6653,177 @@
         }).catch(function (err) {
             showAlert('Failed to load tile settings: ' + err.message, 'danger');
         });
+        loadTileProxyStatus();
+        loadMapLayerDefaults();
+    }
+
+    /**
+     * Administrator default for map LAYER VISIBILITY.
+     *
+     * Which overlays a map starts with for a user who has never customised
+     * them. A default, not a policy: every user can override any of these for
+     * themselves (stored per user in user_screen_prefs), and saving here never
+     * touches an existing user override.
+     *
+     * Kept clearly apart from the tile provider/mode settings above — those
+     * decide where basemap bytes come from, this decides which overlays are on.
+     */
+    function loadMapLayerDefaults() {
+        var host = document.getElementById('mapLayerDefaultsList');
+        if (!host) return;
+
+        fetch('api/map-layer-prefs.php', { credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) {
+                if (!d || !d.ok || !d.prefs || !d.prefs.layers) {
+                    host.innerHTML = '<div class="col-12 text-body-secondary small">Layer defaults unavailable.</div>';
+                    return;
+                }
+                var layers = d.prefs.layers;
+                // Group them the way the catalog does, so the list reads as
+                // Operational / Weather / Reference rather than one long run.
+                var groups = {};
+                var order = [];
+                for (var i = 0; i < layers.length; i++) {
+                    var g = layers[i].group || 'Other';
+                    if (!groups[g]) { groups[g] = []; order.push(g); }
+                    groups[g].push(layers[i]);
+                }
+                var h = '';
+                for (var gi = 0; gi < order.length; gi++) {
+                    var gname = order[gi];
+                    h += '<div class="col-md-4">';
+                    h += '<div class="fw-semibold small mb-1">' + escHtml(gname) + '</div>';
+                    for (var li = 0; li < groups[gname].length; li++) {
+                        var L2 = groups[gname][li];
+                        h += '<div class="form-check form-switch">' +
+                             '<input class="form-check-input mlp-default" type="checkbox" ' +
+                             'id="mlpDef-' + escHtml(L2.id) + '" data-layer-id="' + escHtml(L2.id) + '"' +
+                             (L2['default'] ? ' checked' : '') + '>' +
+                             '<label class="form-check-label small" for="mlpDef-' + escHtml(L2.id) + '">' +
+                             escHtml(L2.label) + '</label></div>';
+                    }
+                    h += '</div>';
+                }
+                host.innerHTML = h;
+            })
+            .catch(function () {
+                host.innerHTML = '<div class="col-12 text-body-secondary small">Layer defaults unavailable.</div>';
+            });
+    }
+
+    function saveMapLayerDefaults() {
+        var status = document.getElementById('mapLayerDefaultsStatus');
+        var boxes = document.querySelectorAll('.mlp-default');
+        if (!boxes.length) return;
+        var payload = {};
+        for (var i = 0; i < boxes.length; i++) {
+            payload[boxes[i].getAttribute('data-layer-id')] = boxes[i].checked;
+        }
+        if (status) status.textContent = 'Saving…';
+        fetch('api/map-layer-prefs.php', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ admin_defaults: payload, csrf_token: csrfToken })
+        }).then(function (r) { return r.json(); })
+          .then(function (d) {
+              if (d && d.ok) {
+                  if (status) status.textContent = 'Saved.';
+                  showAlert('Default map layer visibility saved.', 'success');
+              } else {
+                  if (status) status.textContent = '';
+                  showAlert('Could not save layer defaults' +
+                            (d && d.error ? ': ' + d.error : '.'), 'danger');
+              }
+          })
+          .catch(function () {
+              if (status) status.textContent = '';
+              showAlert('Could not save layer defaults.', 'danger');
+          });
+    }
+
+    /**
+     * Cache usage + the per-provider proxy policy.
+     *
+     * Rendering the policy matters as much as the numbers do: "Tile Mode:
+     * proxy" on its own is what the old UI showed, and it was wrong for every
+     * provider (there was no proxy at all) and is still only true for SOME
+     * providers now. An admin should be able to see which of their maps this
+     * setting actually changes, rather than inferring it.
+     */
+    function loadTileProxyStatus() {
+        var host = document.getElementById('tileProxyStatus');
+        if (!host) return;
+        host.innerHTML = '<div class="text-body-secondary small">Loading tile cache status…</div>';
+
+        fetch('api/tile-proxy.php?action=status', { credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) {
+                if (!d || !d.ok) {
+                    host.innerHTML = '<div class="text-body-secondary small">Tile cache status unavailable.</div>';
+                    return;
+                }
+                var c = d.cache || {};
+                var barClass = c.pct_used >= 90 ? 'bg-danger'
+                             : (c.pct_used >= 70 ? 'bg-warning' : 'bg-success');
+
+                var h = '<div class="settings-group-title">Cache Status</div>';
+                h += '<div class="row g-2 align-items-center mb-2">';
+                h += '<div class="col-md-6">';
+                h += '<div class="d-flex justify-content-between small mb-1">' +
+                     '<span>' + esc(c.bytes_human || '0 B') + ' of ' + esc(c.max_human || '') + ' used' +
+                     ' <span class="text-body-secondary">(' + (c.files || 0) + ' tiles)</span></span>' +
+                     '<span class="text-body-secondary">' + (c.pct_used || 0) + '%</span></div>';
+                h += '<div class="progress" style="height:8px"><div class="progress-bar ' + barClass +
+                     '" style="width:' + Math.max(2, c.pct_used || 0) + '%"></div></div>';
+                h += '</div>';
+                h += '<div class="col-md-6 small">';
+                h += '<div>Disk free: <strong>' + esc(c.free_human || 'unknown') + '</strong>' +
+                     ' <span class="text-body-secondary">(reserve ' + esc(c.min_free_human || '') + ')</span></div>';
+                if (c.reserve_ok === false) {
+                    h += '<div class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>' +
+                         'Below the reserve — new tiles are being served but not cached.</div>';
+                }
+                h += '<div class="text-body-secondary">Identifying as <code>' + esc(d.user_agent || '') + '</code>' +
+                     (d.ua_is_default ? ' (automatic)' : '') + '</div>';
+                h += '</div></div>';
+
+                // Per-provider policy table.
+                h += '<div class="settings-group-title mt-3">Which providers can be proxied</div>';
+                h += '<div class="small text-body-secondary mb-2">' +
+                     'Proxy mode routes tiles through this server only where the provider\'s terms allow ' +
+                     'caching and re-serving. Where they do not, the browser fetches those tiles directly ' +
+                     'and the map area is visible to that provider — TicketsCAD will not quietly breach ' +
+                     'someone\'s terms on your behalf.</div>';
+                h += '<div class="table-responsive"><table class="table table-sm align-middle small mb-0">';
+                h += '<thead><tr><th>Provider</th><th style="width:7rem">Proxy</th><th>Why</th></tr></thead><tbody>';
+
+                var pol = d.policy || {};
+                var keys = Object.keys(pol).sort();
+                for (var i = 0; i < keys.length; i++) {
+                    var k = keys[i];
+                    var p = pol[k];
+                    var badge = p.proxy
+                        ? '<span class="badge bg-success">Permitted</span>'
+                        : '<span class="badge bg-secondary">Direct only</span>';
+                    h += '<tr><td><code>' + esc(k) + '</code></td><td>' + badge + '</td><td>' +
+                         esc(p.reason || '');
+                    if (p.caveat) {
+                        h += '<div class="text-warning-emphasis mt-1"><i class="bi bi-info-circle me-1"></i>' +
+                             esc(p.caveat) + '</div>';
+                    }
+                    if (p.source && p.source.indexOf('http') === 0) {
+                        h += '<div class="mt-1"><a href="' + esc(p.source) + '" target="_blank" rel="noopener">terms</a></div>';
+                    }
+                    h += '</td></tr>';
+                }
+                h += '</tbody></table></div>';
+                host.innerHTML = h;
+            })
+            .catch(function () {
+                host.innerHTML = '<div class="text-body-secondary small">Tile cache status unavailable.</div>';
+            });
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -7220,13 +7631,10 @@
     }
 
     function reverseGeocodeWarnLoc(lat, lng) {
-        var url = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng;
-
-        fetch(url)
-            .then(function (r) { return r.json(); })
-            .then(function (result) {
-                if (!result || !result.address) return;
-                var addr = result.address;
+        Geocode.reverse(lat, lng)
+            .then(function (res) {
+                if (!res.ok || !res.results.length) return;
+                var addr = res.results[0].address;
 
                 // Street
                 var num  = addr.house_number || '';
@@ -7249,10 +7657,10 @@
                 } else {
                     document.getElementById('warnLocState').value = stateVal;
                 }
-            })
-            .catch(function () {
-                // Reverse geocode is best-effort — silent fail
             });
+        // Reverse geocode is best-effort — the pin is already placed. No
+        // .catch: Geocode.reverse() resolves with { ok:false } rather than
+        // rejecting, so one would only swallow a bug in the handler above.
     }
 
     // Forward geocode — type an address, click Lookup, place the pin
@@ -7268,15 +7676,6 @@
         }
 
         var query = [street, city, state].filter(Boolean).join(', ');
-        var url = 'https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=1&q=' + encodeURIComponent(query);
-
-        // Bias results toward the current map view
-        if (warnLocMap) {
-            var bounds = warnLocMap.getBounds();
-            url += '&viewbox=' + bounds.getWest().toFixed(4) + ',' + bounds.getNorth().toFixed(4) +
-                   ',' + bounds.getEast().toFixed(4) + ',' + bounds.getSouth().toFixed(4);
-            url += '&bounded=0';
-        }
 
         // Visual feedback — disable button while fetching
         if (btn) {
@@ -7284,14 +7683,18 @@
             btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Looking up...';
         }
 
-        fetch(url)
-            .then(function (r) { return r.json(); })
-            .then(function (results) {
-                if (results.length === 0) {
+        // Bias results toward the current map view.
+        Geocode.search({ q: query, limit: 1, viewbox: Geocode.viewboxFromMap(warnLocMap) })
+            .then(function (res) {
+                if (!res.ok) {
+                    showAlert(res.message, 'warning');
+                    return;
+                }
+                if (res.results.length === 0) {
                     showAlert('Address not found. Try a different format or click the map directly.', 'warning');
                     return;
                 }
-                var r = results[0];
+                var r = res.results[0];
                 var lat = parseFloat(r.lat);
                 var lng = parseFloat(r.lon);
 
@@ -7317,11 +7720,9 @@
                     }
                 }
             })
-            .catch(function () {
-                showAlert('Geocoding failed. Click the map to set location manually.', 'warning');
-            })
             .then(function () {
-                // Restore button
+                // Restore the button on EVERY path. Geocode.search() never
+                // rejects, so this always runs.
                 if (btn) {
                     btn.disabled = false;
                     btn.innerHTML = '<i class="bi bi-search me-1"></i>Lookup Address';
@@ -10984,23 +11385,11 @@
         // Load current APRS settings
         apiGet('settings').then(function (data) {
             var settings = data.settings || {};
-            var keyInput = form.querySelector('[data-key="aprs_fi_api_key"]');
-            var intervalInput = form.querySelector('[data-key="aprs_poll_interval"]');
-            var enabledCheck = form.querySelector('[data-key="aprs_enabled"]');
-
-            if (keyInput && settings.aprs_fi_api_key) keyInput.value = settings.aprs_fi_api_key;
-            if (intervalInput && settings.aprs_poll_interval) intervalInput.value = settings.aprs_poll_interval;
-            if (enabledCheck) enabledCheck.checked = settings.aprs_enabled === '1';
-
-            // Phase 99a #14 (2026-06-28) — APRS-IS send settings.
-            var sendCallInput = form.querySelector('[data-key="aprs_send_callsign"]');
-            var sendPassInput = form.querySelector('[data-key="aprs_send_passcode"]');
-            var serverInput = form.querySelector('[data-key="aprs_is_server"]');
-            var portInput = form.querySelector('[data-key="aprs_is_port"]');
-            if (sendCallInput && settings.aprs_send_callsign) sendCallInput.value = settings.aprs_send_callsign;
-            if (sendPassInput && settings.aprs_send_passcode) sendPassInput.value = settings.aprs_send_passcode;
-            if (serverInput && settings.aprs_is_server) serverInput.value = settings.aprs_is_server;
-            if (portInput && settings.aprs_is_port) portInput.value = settings.aprs_is_port;
+            // Every input in this form already carries data-key, so the shared
+            // helper covers the polling fields, the Phase 99a #14 APRS-IS send
+            // fields and the receive filter in one pass — and renders the
+            // aprs.fi key as "stored" rather than as an empty box.
+            applySettingsToForm(form, settings);
 
             // Phase 99a #14 follow-on (2026-06-28) — FCC license attestation gate.
             // Show gate vs accepted-confirmation based on prior acceptance.
@@ -11012,26 +11401,22 @@
             // Settings not available yet
         });
 
-        // Save handler
+        // Save handler. Was hand-built, which posted the always-empty aprs.fi
+        // key box over the stored one and stopped APRS polling silently
+        // (openises/TicketsCAD#7) — and, because it enumerated fields by hand,
+        // never saved aprs_recv_filter at all despite the markup promising that
+        // Save "persists every data-key input". Collecting from the form fixes
+        // both; the normalizations below are applied afterwards.
         form.addEventListener('submit', function (e) {
             e.preventDefault();
-            var keyInput = form.querySelector('[data-key="aprs_fi_api_key"]');
-            var intervalInput = form.querySelector('[data-key="aprs_poll_interval"]');
-            var enabledCheck = form.querySelector('[data-key="aprs_enabled"]');
-            // Phase 99a #14 — send settings
-            var sendCallInput = form.querySelector('[data-key="aprs_send_callsign"]');
-            var sendPassInput = form.querySelector('[data-key="aprs_send_passcode"]');
-            var serverInput = form.querySelector('[data-key="aprs_is_server"]');
-            var portInput = form.querySelector('[data-key="aprs_is_port"]');
+            var pairs = collectSettingsFromForm(form);
 
-            var pairs = {};
-            if (keyInput) pairs.aprs_fi_api_key = keyInput.value;
-            if (intervalInput) pairs.aprs_poll_interval = intervalInput.value || '5';
-            if (enabledCheck) pairs.aprs_enabled = enabledCheck.checked ? '1' : '0';
-            if (sendCallInput) pairs.aprs_send_callsign = sendCallInput.value.trim().toUpperCase();
-            if (sendPassInput) pairs.aprs_send_passcode = sendPassInput.value;
-            if (serverInput)   pairs.aprs_is_server     = serverInput.value || 'rotate.aprs2.net';
-            if (portInput)     pairs.aprs_is_port       = portInput.value || '14580';
+            if (!pairs.aprs_poll_interval) pairs.aprs_poll_interval = '5';
+            if (!pairs.aprs_is_server)     pairs.aprs_is_server     = 'rotate.aprs2.net';
+            if (!pairs.aprs_is_port)       pairs.aprs_is_port       = '14580';
+            if (pairs.aprs_send_callsign) {
+                pairs.aprs_send_callsign = pairs.aprs_send_callsign.trim().toUpperCase();
+            }
 
             apiPost('settings', { settings: pairs }).then(function (data) {
                 showAlert('APRS settings saved (' + data.saved + ' updated)');
@@ -11668,27 +12053,24 @@
         function loadIngestSettings() {
             apiGet('settings').then(function (data) {
                 var s = data.settings || {};
-                var requireT = form.querySelector('#setLocIngestRequireToken');
-                var nullI    = form.querySelector('#setLocIngestNullIsland');
-                var secret   = form.querySelector('#setLocIngestSecret');
-                var rate     = form.querySelector('#setLocIngestRateLimit');
-                if (requireT) requireT.checked = (s.location_ingest_require_token === '1');
-                if (nullI)    nullI.checked    = (s.location_ingest_allow_null_island === '1');
-                if (secret)   secret.value     = s.location_ingest_secret || '';
-                if (rate)     rate.value       = s.location_ingest_rate_limit_per_min || '600';
+                applySettingsToForm(form, s);
+                // Shipped default when the row has never been written.
+                var rate = form.querySelector('#setLocIngestRateLimit');
+                if (rate && !rate.value) rate.value = '600';
             }).catch(function () {});
         }
         loadIngestSettings();
 
         // ── Save settings ───────────────────────────────────────
+        // Save. The hand-built payload posted the always-empty secret box over
+        // location_ingest_secret, after which every device report was rejected
+        // 401 and tracking stopped silently (openises/TicketsCAD#7).
         form.addEventListener('submit', function (e) {
             e.preventDefault();
-            var pairs = {
-                location_ingest_require_token:      form.querySelector('#setLocIngestRequireToken').checked ? '1' : '0',
-                location_ingest_allow_null_island:  form.querySelector('#setLocIngestNullIsland').checked ? '1' : '0',
-                location_ingest_secret:             form.querySelector('#setLocIngestSecret').value || '',
-                location_ingest_rate_limit_per_min: form.querySelector('#setLocIngestRateLimit').value || '600'
-            };
+            var pairs = collectSettingsFromForm(form);
+            if (!pairs.location_ingest_rate_limit_per_min) {
+                pairs.location_ingest_rate_limit_per_min = '600';
+            }
             apiPost('settings', { settings: pairs }).then(function (data) {
                 showAlert('Ingest auth settings saved (' + data.saved + ' updated)');
             }).catch(function (err) {
@@ -11929,15 +12311,11 @@
         var form = document.getElementById('otAuthForm');
         if (!form) return;
 
-        // Initial load — populate from current settings
+        // Initial load — every field here already carries data-key/data-secret,
+        // so the shared helper handles the switches AND renders the secret as
+        // "stored" instead of an empty box.
         apiGet('settings').then(function (data) {
-            var s = data.settings || {};
-            var req = form.querySelector('#setOtRequireToken');
-            var anon = form.querySelector('#setOtAllowAnonymous');
-            var sec = form.querySelector('#setOtSecret');
-            if (req)  req.checked  = (s.owntracks_require_token === '1');
-            if (anon) anon.checked = (s.owntracks_allow_anonymous === '1');
-            if (sec)  sec.value    = s.owntracks_secret || '';
+            applySettingsToForm(form, data.settings || {});
         }).catch(function () {});
 
         // Generate-secret button — same UX as the Phase 89 Location Ingest panel
@@ -11952,14 +12330,13 @@
             });
         }
 
-        // Save
+        // Save. Previously hand-built, which posted the always-empty secret box
+        // straight over owntracks_secret: api/location.php then rejected every
+        // device with 403 no-auth and units froze on the map at their last
+        // position, with nothing shown in the UI (openises/TicketsCAD#7).
         form.addEventListener('submit', function (e) {
             e.preventDefault();
-            var pairs = {
-                owntracks_require_token:    form.querySelector('#setOtRequireToken').checked ? '1' : '0',
-                owntracks_allow_anonymous:  form.querySelector('#setOtAllowAnonymous').checked ? '1' : '0',
-                owntracks_secret:           form.querySelector('#setOtSecret').value || ''
-            };
+            var pairs = collectSettingsFromForm(form);
             apiPost('settings', { settings: pairs }).then(function (data) {
                 showAlert('OwnTracks auth settings saved (' + data.saved + ' updated)');
             }).catch(function (err) {
@@ -14393,6 +14770,51 @@
             }).catch(function (err) {
                 showAlert('PAR save network error: ' + err.message, 'danger');
             });
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  NET-CONTROL CHECK-INS (Phase 131, 2026-07-31)
+    // ═══════════════════════════════════════════════════════════════
+    //
+    // Plain `settings`-table keys, so this uses the generic data-key path:
+    // collectSettingsFromForm() + apiPost('settings', ...) writes through
+    // api/config-admin.php?section=settings, which is the store get_variable()
+    // reads. Writing anywhere else (the separate `config` table behind
+    // get_setting()) would make every toggle here read as its default forever
+    // and the panel would appear to do nothing (GH #79).
+    function bindNetCheckinPanel() {
+        var form = document.getElementById('netCheckinForm');
+        if (!form) return;
+
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var pairs = collectSettingsFromForm(form);
+
+            // Guard the separator client-side too, so a bad value is rejected
+            // where the admin can see why rather than silently reverting to
+            // '/' server-side.
+            var sep = pairs.net_checkin_separator || '';
+            if (sep.length !== 1 || /[\s0-9]/.test(sep)) {
+                showAlert('The entry separator must be a single character, and not a digit or a space.', 'danger');
+                return;
+            }
+
+            apiPost('settings', { settings: pairs }).then(function (data) {
+                showAlert('Check-in settings saved (' + data.saved + ' updated)');
+            }).catch(function (err) {
+                showAlert(err.message, 'danger');
+            });
+        });
+    }
+
+    function loadNetCheckinConfig() {
+        apiGet('settings').then(function (data) {
+            var form = document.getElementById('netCheckinForm');
+            if (!form) return;
+            applySettingsToForm(form, data.settings || {});
+        }).catch(function (err) {
+            showAlert('Failed to load check-in settings: ' + err.message, 'danger');
         });
     }
 

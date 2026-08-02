@@ -55,6 +55,7 @@ use Ratchet\WebSocket\WsServer;
 use React\EventLoop\Loop;
 
 // Make these classes findable without composer autoload entries
+require_once __DIR__ . '/../inc/dmr_token.php';
 require_once __DIR__ . '/DmrProxyApp.php';
 require_once __DIR__ . '/DmrUpstream.php';
 
@@ -134,6 +135,16 @@ try {
     );
     $stmt->execute();
     foreach ($stmt->fetchAll() as $row) {
+        // Phase 129 — the value DmrUpstream presents to the bridge must be
+        // the one the bridge compares against DMR_BEARER_TOKEN. A token
+        // stored by an older version is a SHA-256 digest of it, so it can
+        // only ever 401; say so at startup instead of failing per-PTT.
+        $usable = dmr_bridge_token($row);
+        if ($usable === '') {
+            plog("[WARN] channel #{$row['id']} ({$row['label']}): "
+                 . dmr_token_missing_reason($row));
+        }
+        $row['bridge_token'] = $usable;
         $channels[(int) $row['id']] = $row;
     }
 } catch (PDOException $e) {

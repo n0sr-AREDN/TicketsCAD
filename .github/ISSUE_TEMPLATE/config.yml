@@ -1,0 +1,38 @@
+# Routing for the "New issue" screen.
+#
+# Blank issues are turned off so that every report arrives with the fields a
+# maintainer needs to act on it, and — more importantly — so that a security
+# vulnerability has a signposted private route instead of being typed into a
+# public box. The question template below means there is always somewhere to go
+# for anything the other templates do not cover.
+blank_issues_enabled: false
+
+contact_links:
+  - name: Report a security vulnerability (private)
+    url: https://github.com/openises/TicketsCAD/security/advisories/new
+    about: >-
+      Do NOT open a public issue for a vulnerability. This opens a private
+      security advisory visible only to the maintainer. Email
+      ejosterberg@gmail.com with the subject "[TicketsCAD security]" if you
+      prefer, or if this form is unavailable to you. See SECURITY.md for scope,
+      what to include, and what to expect.
+
+  - name: Security policy, supported versions, and what leaves your network
+    url: https://github.com/openises/TicketsCAD/blob/main/SECURITY.md
+    about: >-
+      Which releases get fixes, how to report a vulnerability, and a full
+      account of the external services TicketsCAD can contact — including the
+      optional AI features, which are off by default.
+
+  - name: Installing, upgrading, and administering TicketsCAD
+    url: https://github.com/openises/TicketsCAD/blob/main/docs/INDEX.md
+    about: >-
+      Install guides, the upgrade checklist, Docker deployment, backup and
+      recovery, and the administrator reference. Worth a look before filing —
+      most setup questions are answered here.
+
+  - name: How to contribute
+    url: https://github.com/openises/TicketsCAD/blob/main/CONTRIBUTING.md
+    about: >-
+      What kinds of contribution are welcome, how changes are reviewed, and how
+      a patch actually reaches a release.

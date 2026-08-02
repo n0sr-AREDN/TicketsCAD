@@ -9,6 +9,9 @@
  * that _broker_get_enabled_channels() reads back correctly, and that
  * local_chat is always present.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require __DIR__ . '/../config.php';
 require __DIR__ . '/../inc/sse.php';
 require __DIR__ . '/../inc/broker.php';

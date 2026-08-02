@@ -47,6 +47,7 @@ test('docker-entrypoint.sh exists', $entry !== '');
 // ever moves, this test follows it to the new place.
 require_once $root . '/inc/backup.php';
 require_once $root . '/inc/field-encrypt.php';
+require_once $root . '/inc/tile-proxy.php';
 
 $norm = function (string $p): string {
     return rtrim(str_replace('\\', '/', $p), '/');
@@ -70,10 +71,11 @@ $toContainer = function (string $abs) use ($norm, $rootN): ?string {
 };
 
 $writePaths = [
-    'uploads'                => $root . '/uploads',
-    'cache'                  => $root . '/cache',
-    'backups (BACKUP_DIR)'   => BACKUP_DIR,
-    'keys (FE_KEYS_DIR)'     => FE_KEYS_DIR,
+    'uploads'                    => $root . '/uploads',
+    'cache'                      => $root . '/cache',
+    'backups (BACKUP_DIR)'       => BACKUP_DIR,
+    'keys (FE_KEYS_DIR)'         => FE_KEYS_DIR,
+    'tiles (TILE_CACHE_DIR)'     => TILE_CACHE_DIR,
 ];
 
 // Container paths mounted by the `app` service.
@@ -121,8 +123,14 @@ foreach (['db_data', 'app_uploads', 'app_cache', 'app_backups', 'app_keys'] as $
 
 // ── The entrypoint must create + own the mounted dirs ─────────
 echo "\n-- Entrypoint prepares the mounted dirs --\n";
-test('entrypoint creates/chowns backups/', strpos($entry, '$APP/backups') !== false,
+// v4.2.3 moved backups OUT of the web root ($APP is the DocumentRoot), so the
+// path the entrypoint prepares moved with it. Asserted against BACKUP_DIR's own
+// shape rather than a literal, so it keeps following the constant.
+test('entrypoint creates/chowns the backups dir', strpos($entry, '$APP/../backups') !== false,
     'a fresh named volume mounts in root-owned; www-data could not write there');
+test('the backups dir the entrypoint prepares is OUTSIDE the DocumentRoot',
+    strpos($entry, '$APP/backups"') === false && strpos($entry, "\$APP/backups'") === false,
+    'inside /var/www/html, an archive is downloadable by anyone who guesses the filename');
 test('entrypoint still handles uploads/cache/keys',
     strpos($entry, '$APP/uploads') !== false
     && strpos($entry, '$APP/cache') !== false

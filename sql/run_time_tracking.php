@@ -18,6 +18,9 @@ declare(strict_types=1);
 // Standalone bootstrap — when run from CLI directly, pull in config.php
 // and define the helpers we need. When included from install_fresh.php,
 // these are already defined and we no-op.
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 if (!function_exists('db_query')) {
     require_once __DIR__ . '/../config.php';
 }

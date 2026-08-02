@@ -131,4 +131,3 @@ The `with_session_user($userId, $orgId, callable)` helper in the test suite swap
 - `inc/rbac_grant.php` — `rbac_grant_role()`, `rbac_revoke_grant()`, `rbac_can_grant()`, `rbac_expire_due_grants()`.
 - `sql/run_rbac_v2.php` — schema + seed runner. Add new permissions here.
 - `tests/test_rbac_v2.php` — comprehensive regression suite; reading the test names is the fastest way to absorb the contract.
-- `specs/rbac-redesign-2026-05/` — spec, plan, decisions, handoff.

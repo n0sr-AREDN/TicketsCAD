@@ -25,6 +25,8 @@
  * staging on completion).
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 $opts = [
@@ -51,12 +53,30 @@ function _run(string $cmd) {
     return $rc === 0;
 }
 
+/**
+ * The curl flags every download here uses.
+ *
+ * `--max-time` and `--connect-timeout` are the point (see
+ * docs/OFFLINE-OPERATION.md D8): without them, curl waits FOREVER on a mirror
+ * that accepts the connection and then stalls. This is operator-run from a
+ * terminal so it cannot wedge a dispatcher, but "I left it running overnight
+ * and it never finished or failed" is not an acceptable answer either — an
+ * operator needs to know the download is dead so they can retry or pick a
+ * different time.
+ *
+ * The FCC's complete amateur licence archive is a few hundred megabytes, so
+ * the total budget is generous on purpose: 30s to establish a connection,
+ * 3600s for the whole transfer. `--retry` covers a mirror that drops mid-file,
+ * which is the common failure rather than a hard refusal.
+ */
+const CURL_BOUNDS = '--connect-timeout 30 --max-time 3600 --retry 2 --retry-delay 5';
+
 if ($opts['zip']) {
     _log("==> Refreshing US zip codes (GeoNames)");
     $url  = 'https://download.geonames.org/export/zip/US.zip';
     $zip  = "{$dataDir}/US.zip";
     $txt  = "{$dataDir}/US.txt";
-    if (!_run("curl -sSfL -o " . escapeshellarg($zip) . " " . escapeshellarg($url))) {
+    if (!_run("curl -sSfL " . CURL_BOUNDS . " -o " . escapeshellarg($zip) . " " . escapeshellarg($url))) {
         _log("[ERR] zip download failed");
     } elseif (!_run("unzip -qo " . escapeshellarg($zip) . " -d " . escapeshellarg($dataDir))) {
         _log("[ERR] zip extract failed");
@@ -76,7 +96,7 @@ foreach ([['amateur', 'l_amat.zip'], ['gmrs', 'l_gmrs.zip']] as $pair) {
     $url = "https://data.fcc.gov/download/pub/uls/complete/{$file}";
     $zip = "{$dataDir}/{$file}";
     $ext = "{$dataDir}/l_" . ($type === 'amateur' ? 'amat' : 'gmrs');
-    if (!_run("curl -sSfL -o " . escapeshellarg($zip) . " " . escapeshellarg($url))) {
+    if (!_run("curl -sSfL " . CURL_BOUNDS . " -o " . escapeshellarg($zip) . " " . escapeshellarg($url))) {
         _log("[ERR] {$type} download failed");
         continue;
     }

@@ -4,6 +4,44 @@ TicketsCAD v4 is used by emergency-communications volunteer groups; we
 take security seriously. Thank you for taking the time to report
 problems responsibly.
 
+## Supported versions
+
+TicketsCAD is maintained by one volunteer. The support model below is
+deliberately modest, because a modest policy that is actually met beats an
+ambitious one that is not: **one supported line at a time, and that line is the
+newest release.**
+
+| Release line | Status |
+|---|---|
+| **v4.2.x** (current) | **Supported.** Security fixes and bug fixes land here. |
+| v4.0.x – v4.1.x | Not supported. Fixes are published in the next v4.2.x release — upgrade to the newest tag. |
+| **v3.44.x** (legacy, [`openises/tickets`](https://github.com/openises/tickets)) | **Security and bug fixes only.** No new features; v4 is where development happens. |
+| v3.43.x and earlier | End of life. No fixes of any kind. |
+
+**There are no backports and no long-term-support branch.** A fix ships as a new
+tag on the current line; it is not applied to an older one. One person cannot
+maintain parallel branches honestly, so we do not claim to.
+
+**How a version reaches end of life:** the moment a newer version is tagged. In
+practice that is less abrupt than it sounds — releases are small and frequent,
+and for a git install the upgrade is `git pull` (see
+[`docs/UPDATE-CHECKLIST.md`](docs/UPDATE-CHECKLIST.md)). It does mean that "I am
+on 4.1.0 and X is broken" is answered with "please upgrade and tell us whether it
+is still broken."
+
+**How to tell what you are running:** Help → About shows the running version. It
+reads the git-tracked `VERSION` file, so `git pull` moves it. Compare it against
+https://github.com/openises/TicketsCAD/releases — `CHANGELOG.md` carries a dated
+section for every release.
+
+**Release cadence:** none is promised. Releases go out when there is something
+worth shipping, which has meant several in a week and also nothing for a while.
+Watch the repository on GitHub if you want to be told when one lands.
+
+**Security issues in the legacy v3.44 line** go to the private channels below,
+not to a public issue on `openises/tickets`. That repository has no security
+policy of its own; the channels here cover both.
+
 ## Reporting a vulnerability
 
 **Do not open a public issue.** Use one of the following private
@@ -26,6 +64,44 @@ a remediation timeline within **10 business days**. Critical issues
 (authentication bypass, RCE, data loss, mass account takeover) are
 prioritized for same-week patches.
 
+## Reports produced with AI assistance or automated tooling
+
+**AI-assisted reports are welcome. Unverified AI output is not.**
+
+Automated and model-assisted vulnerability discovery has made it very easy to
+generate a large number of plausible-looking reports, and a small volunteer
+project is exactly the kind of maintainer that gets buried by them. So this
+policy states the expectation up front rather than after the fact.
+
+**Send it if you have done this much:**
+
+- **You reproduced it against a running instance** and can say what you did and
+  what happened. A finding that only exists as a model's reading of the source
+  is a hypothesis, not a report.
+- **The affected file and line are real** — quote them. Tools routinely cite
+  functions and parameters that do not exist in this codebase.
+- **The impact is stated concretely**: what can an attacker do, as which role,
+  against which endpoint.
+- **You say that tooling was involved, and which.** This is not held against
+  you. It tells the triage where to look first and is genuinely useful.
+
+**What will be closed without a detailed reply**, because triage time is the
+scarcest thing here:
+
+- Raw scanner or model output pasted in with no reproduction and no analysis.
+- Findings against code that is not ours — `vendor/` and `assets/vendor/` are
+  third-party (see Scope below).
+- Reports whose file, line, function or parameter does not exist in the version
+  named. This is the most common failure mode of generated reports.
+- "Best practice" observations with no exploitable consequence — a missing
+  header on an endpoint that returns no sensitive data, for example.
+- Bulk submissions of many low-quality findings at once. A single verified issue
+  is worth more than thirty speculative ones and will be treated accordingly.
+
+None of this changes the response commitments above for a report that meets the
+bar. It is also not a judgement about the tools: several genuine issues in this
+project were found with automated help. The line is verification, not authorship.
+
 ## Scope
 
 In scope:
@@ -38,7 +114,9 @@ In scope:
 
 Out of scope:
 
-- The legacy `openises/tickets` v3.x codebase — file those reports there
+- The legacy `openises/tickets` v3.x codebase, for *functional* bugs — file
+  those on that repository. **Security** reports for v3.44 come here instead,
+  through the private channels above; see "Supported versions".
 - Vulnerabilities **in the upstream code** of third-party libraries under
   `vendor/` and `assets/vendor/` — file those with the upstream project.
   Every one of those libraries is enumerated with its version in our
@@ -58,6 +136,200 @@ Out of scope:
 - Coordinated disclosure — we ask for **45 days** to patch + ship before
   public disclosure, longer for issues that require schema changes
 - Credit in the audit doc and release notes if you want it
+
+## What TicketsCAD sends outside your network
+
+Your dispatch data is not exported anywhere by default, and **there is no
+telemetry, usage reporting, analytics, or update check of any kind** — nothing
+in TicketsCAD contacts this project or reports on your installation. A number of
+optional features do talk to third parties, and one of them is an AI feature
+that can send amateur-radio transcripts to a commercial API. All of it is listed
+here so that none of it is a surprise.
+
+### AI features
+
+TicketsCAD **uses** AI services; it does not ship AI models. No model weights are
+in this repository.
+
+#### Radio AI — the one feature that sends content to a hosted LLM
+
+**Off by default.** `radio_ai_enabled` is seeded to `0`
+(`sql/run_phase85f_radio_ai.php`), and **four** separate things must all be true
+before a single byte leaves your server:
+
+1. `radio_ai_enabled` is set to `1`.
+2. An Anthropic API key exists at `/etc/ticketscad/anthropic.env`. It is never
+   shipped, and no installer creates it — you create it by hand.
+3. The `inc/radio_ai_listener.php` daemon is running as a separate process.
+4. A DMR radio bridge with speech-to-text is installed and feeding it transcripts.
+
+Miss any one of the four and the feature does nothing at all.
+
+**What is sent when it is switched on** — to `https://api.anthropic.com/v1/messages`,
+model `claude-sonnet-4-6` (`inc/radio_ai_client.php`):
+
+- the speech-to-text transcript of the amateur-radio transmission that contained
+  the wake word (`claude` by default);
+- the caller's amateur callsign and DMR radio ID;
+- up to five previous exchanges with that same callsign within a 30-minute window;
+- a fixed system prompt containing the operator's callsign and the server's local
+  date and time.
+
+**What is never sent: anything from the CAD side.** No incidents, no roster or
+personnel records, no patient information, no facilities, no locations, no user
+accounts, no database content of any kind. The feature reads amateur-radio
+transcripts out of `dmr_messages` and nothing else.
+
+**One thing to be explicit about:** the request enables Anthropic's server-side
+`web_search` and `web_fetch` tools, capped at three searches per question. So
+Anthropic's servers may perform web searches derived from the caller's question.
+That is a second, indirect path off your network, and an egress review should
+account for it.
+
+**An operator stays in the loop.** Generated replies are queued as drafts and a
+licensed operator approves each one before it is transmitted. Nothing goes over
+the air automatically unless an operator deliberately enables the auto-approve
+toggle.
+
+**How to keep it off, or turn it off:** nothing — it ships off. On an install
+where it was switched on, set `radio_ai_enabled` to `0`, stop the listener
+daemon, and delete `/etc/ticketscad/anthropic.env`. Any one of those three stops
+it; all three make it unambiguous. Operator documentation:
+[`docs/RADIO-AI-ADMIN-GUIDE.md`](docs/RADIO-AI-ADMIN-GUIDE.md).
+
+#### Speech-to-text — runs locally
+
+Transcription runs **on your own server**. Both supported engines — Vosk (the
+default) and faster-whisper — load a local model and run in-process. No audio and
+no transcript is sent anywhere for recognition. The model files are downloaded
+once when you install the radio bridge (faster-whisper pulls from Hugging Face;
+Vosk models you stage yourself). After that, recognition needs no network.
+
+#### Text-to-speech — local by default
+
+The default engine, and the bottom of every fallback ladder, is **Piper**, which
+runs a local binary against a local voice model and opens no network connection.
+`sql/run_tts_engines.php` seeds exactly one engine — `piper-default` — and points
+every speech application at it.
+
+Two optional drivers can send text to a third party. Neither exists until an
+administrator creates it:
+
+| Driver | Sends to | What leaves |
+|---|---|---|
+| `deepgram` | `https://api.deepgram.com/v1/speak` | the text to be spoken |
+| `openai_compat` | whatever endpoint you configure — documented for a local server such as Kokoro, but it will accept `https://api.openai.com/v1` | the text to be spoken |
+
+Each needs you to add an engine row **and** place an API key file under
+`keys/tts/`. Neither is seeded, so a stock install synthesises speech entirely
+offline.
+
+### Other services TicketsCAD can contact
+
+| Feature | Contacts | What leaves | Default |
+|---|---|---|---|
+| **Map tiles** | OpenStreetMap tile servers, or the provider you configure | Tile coordinates — which implies the area a dispatcher is looking at. **Requested by your server** for providers that permit proxying, and by the dispatcher's browser for the rest. See [Map tiles: proxy vs direct](#map-tiles-proxy-vs-direct) below. | **On** — OpenStreetMap is the fallback basemap when no provider is configured |
+| **Address lookup (geocoding)** | `nominatim.openstreetmap.org` | The address a dispatcher types into an incident, unit or facility form, or the coordinates of a map click. **Requested by the browser, directly — geocoding is not proxied.** | **On** wherever a "Lookup" button appears |
+| **Radar / weather overlays** | RainViewer, NOAA, Iowa State Mesonet | The map viewport | On when an operator enables the radar layer |
+| **NWS weather alerts** | `api.weather.gov` | Your state or zone codes, plus the contact string you configure in the User-Agent (the National Weather Service requires one) | **Off** (`weather_alerts_enabled` = `0`) |
+| **OpenWeatherMap overlay** | `*.openweathermap.org`, proxied by your server so the key never reaches the browser | Tile coordinates and your API key | **Off** — needs an API key |
+| **Callsign lookup** | `opencallbook.com` (default), `callook.info`, or a self-hosted FCC ULS service | The callsign. By default the User-Agent also discloses this install's hostname — set `lookup_ua_detail` to `minimal` to stop that. | On when someone runs a lookup |
+| **DMR ID lookup** | `database.radioid.net` | A DMR radio ID or a callsign, only for IDs not already cached locally | On, cache-first |
+| **Email, SMS, Slack, webhooks, Web Push** | Your SMTP server; Twilio, BulkVS or Pushbullet; Slack; the webhook URLs you register; your users' browser push services | Only what you configure each to carry | **All off** — unconfigured out of the box |
+| **Amateur radio networks** | APRS-IS, BrandMeister/DMR, Zello | Radio traffic. These are public networks by design — anything sent to them is public. | **All off** — unconfigured, and each needs credentials |
+
+### Map tiles: proxy vs direct
+
+Map tiles are the highest-volume outbound request TicketsCAD makes, and the one
+that runs continuously. Each tile request tells the provider which patch of
+ground is on screen; over a shift, that is a running account of where this
+agency's incidents are.
+
+**Settings → Maps → Tile Providers → Tile Mode** controls this, and as of
+v4.2.3 it does something. (It did not before: the setting was stored, defaulted
+to `proxy`, and read by nothing — every install fetched tiles directly from the
+browser regardless of what the setting said. If you set it to `proxy` on an
+older release, nothing happened.)
+
+| Mode | Who fetches the tile | What the provider sees |
+|---|---|---|
+| `proxy` (default) | Your server, via `api/tile-proxy.php`, with an on-disk cache | Your server's IP and the User-Agent you configure. One request per tile per cache period, however many dispatchers view it. |
+| `direct` | Each dispatcher's browser | Each dispatcher's IP, browser User-Agent, `Referer`, and every tile they pan across |
+
+**What proxy mode does and does not achieve.** It stops the provider seeing
+individual dispatchers — their IP addresses, browser fingerprints and
+moment-to-moment panning — and the cache means a tile fetched once is not
+fetched again. It does **not** make the map area private: your server still
+requests tiles for the areas being viewed, so a provider can still infer roughly
+where this install operates. The only way to keep map viewports entirely inside
+your network is a tile server inside your network (`tile_provider` = custom).
+
+**Not every provider can be proxied**, because not every provider's terms allow
+a third party to cache and re-serve their tiles. TicketsCAD refuses rather than
+breaching them on your behalf:
+
+| Provider | Proxy | Basis |
+|---|---|---|
+| OpenStreetMap, OSM Humanitarian | **Yes** | OSMF tile policy permits caching proxies that cache, honour cache headers, identify themselves, and do not pre-fetch |
+| USGS National Map (topo, imagery) | **Yes** | US federal public domain, no access constraints |
+| OpenTopoMap | **Yes** | CC-BY-SA; the project asks for caching |
+| Your own / custom tile URL | **Yes** | Your infrastructure, your call |
+| CARTO (Light, Dark basemaps) | No — direct | Free use is scoped to CARTO grantees; no re-serving grant found |
+| Esri ArcGIS Online (incl. Satellite) | No — direct | Master Agreement bars storing Data or offering it on behalf of third parties |
+| Mapbox | No — direct | Product Terms forbid distributing tiles from a cache or by proxying |
+| Google, Bing | No — direct | Terms forbid caching and non-SDK access; both are also unlicensed or retired for this use — migrate away |
+
+Practical consequence: the **Dark**, **Light** and **Satellite** basemaps come
+from CARTO and Esri, so those still contact their provider from the browser even
+with proxy mode on. **Street** (OpenStreetMap) and **Terrain** (OpenTopoMap) are
+proxied. An install that wants tiles never to reach a third party from a
+dispatcher's browser should standardise on Street/Terrain, or configure USGS or
+an internal tile server. Settings → Tile Providers shows the live per-provider
+verdict and the current cache usage.
+
+**Disk.** The cache is bounded: `tile_cache_max_mb` (default 512 MB) with
+least-recently-used eviction, and `tile_cache_min_free_mb` (default 1 GB) of
+free space that must remain — below it the proxy keeps serving maps but stops
+writing new tiles. It never grows without limit.
+
+**Where the cache lives.** `../tile-cache`, a sibling of the application
+directory and **outside the web root** — the same treatment backups got in
+v4.2.3. The cache is a record of which map areas this install has viewed; inside
+the web root it would be readable by anyone who could guess a tile path, which
+would disclose the very thing proxy mode conceals. No web-server configuration
+is needed to keep it private. On Docker it is the `app_tile_cache` volume.
+
+**Identify yourself.** OpenStreetMap blocks generic User-Agents. Leave
+`tile_proxy_user_agent` blank for an automatic value naming this application and
+your host, or set a contactable one such as
+`Metro ARES CAD (dispatch@example.org)`.
+
+**Geocoding is still direct.** The "Lookup" buttons send the typed address from
+the browser to `nominatim.openstreetmap.org`. Tile mode does not affect that,
+and it remains the outbound path most likely to carry an actual incident
+address.
+
+### Running fully offline or air-gapped
+
+Several TicketsCAD deployments run disconnected by requirement. The core of the
+product — incidents, units, roster, assignments, ICS forms, messaging, audit and
+RBAC — needs no internet at all. Because there is no telemetry and no update
+check, an isolated install does not silently retry, nag, or stall waiting for
+something it cannot reach.
+
+Two things do reach out by default, and on an isolated network they simply fail:
+
+- **Map tiles** — the map renders but stays blank. In the default proxy mode the
+  failing request is your *server's*, and the map degrades to blank tiles rather
+  than breaking the page; markers, units and overlays keep drawing. Point
+  `tile_provider` at a tile server inside your network if you have one.
+- **Address lookup** — the "Lookup" buttons return nothing. Enter coordinates
+  directly instead; nothing else depends on the geocoder.
+
+Everything else is either local (speech-to-text, Piper text-to-speech) or off
+until you configure it (Radio AI, weather, messaging, lookups, radio networks).
+Stage your speech models while you still have connectivity and there is nothing
+further to disable.
 
 ## Software Bill of Materials (SBOM)
 
@@ -168,6 +440,31 @@ php tests/test_pre_release_fixes.php             # regression bundle
 
 ## Operator hardening checklist
 
+- **Confirm your web server does not publish the private directories.** This is
+  the first item on the list for a reason: on 2026-07-30 an unauthenticated
+  `GET /backups/<archive>.zip` returned a complete 110 MB database dump from a
+  live install, because the web root is the application root and nothing had
+  told the server otherwise. Check yours in one minute — anything answering
+  `200` is a problem:
+
+  ```bash
+  curl -s -o /dev/null -w 'backups %{http_code}\n' https://your-site/backups/
+  curl -s -o /dev/null -w 'sql     %{http_code}\n' https://your-site/sql/run_migrations.php
+  curl -s -o /dev/null -w 'tools   %{http_code}\n' https://your-site/tools/
+  ```
+
+  TicketsCAD runs the same probes against itself and reports them on
+  Settings → Status ("Web exposure"). **Which file protects you depends on your
+  web server:** Apache reads the shipped `.htaccess` (only when `AllowOverride`
+  is `All` or `FileInfo`); **nginx never reads `.htaccess` and needs
+  [`docs/nginx/ticketscad-hardening.conf`](docs/nginx/ticketscad-hardening.conf)**;
+  IIS needs `web.config` / hidden segments. Full instructions:
+  [`docs/WEB-SERVER-HARDENING.md`](docs/WEB-SERVER-HARDENING.md). Background:
+  [`docs/security/advisory-2026-07-30-exposed-directories.md`](docs/security/advisory-2026-07-30-exposed-directories.md).
+- Keep database backups **outside** the webroot. v4.2.3 changed the default to
+  `../backups` (a sibling of the install directory, like `keys/`); if you are
+  upgrading, move any archives out of the old in-tree `backups/` folder and
+  delete the originals. The Status page reports how many are still there.
 - Run `php tools/install_fresh.php` after every upgrade — the migration
   ships schema fixes alongside code.
 - Set a non-empty `feed_api_key` in Settings → API Keys before exposing

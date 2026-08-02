@@ -161,6 +161,7 @@
             "bridge_host",
             "bridge_port",
             "bridge_token",
+            "bridge_token_format",
             "chat_channel",
             "created_by",
             "enabled",
@@ -168,6 +169,7 @@
             "link_mode",
             "network",
             "talkgroup",
+            "updated_at",
             "usrp_listen_port",
             "usrp_send_port"
         ],
@@ -646,6 +648,10 @@
             "description",
             "icon",
             "sort_order"
+        ],
+        "net_checkins": [
+            "priority",
+            "updated_at"
         ],
         "newui_audit_log": [
             "activity",
@@ -1366,6 +1372,7 @@
         "mileage_log",
         "mmarkup",
         "mmarkup_cats",
+        "net_checkins",
         "newui_audit_log",
         "newui_equipment",
         "newui_equipment_log",
@@ -1455,8 +1462,8 @@
     "_meta": {
         "generated_by": "tools/gen_schema_manifest.php",
         "purpose": "columns this code writes to + tables it references; checked by inc/schema-verify.php",
-        "tables": 130,
-        "columns": 1019,
-        "required_tables": 170
+        "tables": 131,
+        "columns": 1023,
+        "required_tables": 171
     }
 }

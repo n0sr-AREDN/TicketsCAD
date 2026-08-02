@@ -10,6 +10,9 @@
  *           Safe to run repeatedly.
  * Output:   [OK]/[WARN] status for each table and seed operation.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Captions / i18n Schema Setup\n";

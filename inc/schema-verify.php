@@ -262,7 +262,16 @@ function schema_drift_note(Throwable $e): void
     if (!in_array($col, $store['columns'], true)) {
         $store['columns'][] = $col;
     }
-    error_log('schema drift: missing column ' . $col . ' — ' . schema_verify_repair_hint());
+    // Say the same thing in the log that the API body will say. Logging
+    // "run --repair" for a column no migration creates is how GH TicketsCAD#14
+    // sent its reporter round in a circle.
+    if (schema_verify_manifest() !== [] && !schema_drift_column_is_declared($col)) {
+        error_log('schema drift: column ' . $col . ' is not declared anywhere in this '
+                . 'version — no migration creates it; this is a code bug, not an '
+                . 'out-of-date database');
+    } else {
+        error_log('schema drift: missing column ' . $col . ' — ' . schema_verify_repair_hint());
+    }
 }
 
 function schema_drift_seen(): bool
@@ -272,12 +281,81 @@ function schema_drift_seen(): bool
 }
 
 /**
+ * Is this column name declared anywhere in this version's schema manifest?
+ *
+ * The 1054 message names the column but not the table, so this asks the
+ * question the manifest CAN answer: does any table in this version declare a
+ * column by that name? If none does, no migration creates it, and telling the
+ * operator to run `--repair` sends them in a circle (GH TicketsCAD#14 — the
+ * repair tool correctly reported "Schema OK" while the export kept failing).
+ */
+function schema_drift_column_is_declared(string $col): bool
+{
+    // schema_verify_manifest() returns the table => columns map directly,
+    // already lowercased — not the raw {"tables": …} document.
+    $col = strtolower($col);
+    foreach (schema_verify_manifest() as $cols) {
+        if (in_array($col, (array) $cols, true)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * Payload describing the drift, for an API error body.
+ *
+ * Two different faults produce the same MySQL 1054, and they need opposite
+ * advice:
+ *   - a column the manifest DECLARES is missing  → the database is behind the
+ *     code; re-running the migrations is the repair.
+ *   - a column NOTHING declares                  → the code asked for a column
+ *     this version does not have. Migrations cannot create it, and saying
+ *     "your database structure is behind the code" is backwards.
  */
 function schema_drift_payload(): array
 {
     $store = &_schema_drift_store();
-    $cols = $store['columns'];
+    $cols  = $store['columns'];
+
+    // If the manifest cannot be read, every column looks undeclared and we
+    // would confidently tell every operator their install is fine. Absent
+    // evidence is not evidence — fall back to the migration advice, which is
+    // the safe answer when we cannot tell the two faults apart.
+    $undeclared = [];
+    if (schema_verify_manifest() !== []) {
+        foreach ($cols as $c) {
+            if (!schema_drift_column_is_declared($c)) {
+                $undeclared[] = $c;
+            }
+        }
+    }
+
+    // Any undeclared column makes the migration advice wrong, so lead with the
+    // fault that repair cannot fix rather than burying it.
+    if ($undeclared) {
+        $isOne = count($undeclared) === 1;
+        return [
+            'error'      => 'schema_column_undeclared',
+            'message'    => 'A query asked for '
+                          . ($isOne ? 'a column' : 'columns')
+                          . ' this version of TicketsCAD does not define: '
+                          . implode(', ', $undeclared)
+                          . '. Your data is intact and your database is not behind — '
+                          . ($isOne ? 'this column is' : 'these columns are')
+                          . ' not declared anywhere in this version, so re-running the '
+                          . 'migrations will not create '
+                          . ($isOne ? 'it' : 'them') . '. This is a bug in the code, '
+                          . 'not a problem with your install — please report it.',
+            'columns'    => $cols,
+            'undeclared' => $undeclared,
+            'repair'     => 'Nothing to repair locally. Report at '
+                          . 'https://github.com/openises/TicketsCAD/issues '
+                          . 'with the column name(s) above.',
+            'doc'        => 'docs/TROUBLESHOOTING.md#schema-out-of-date',
+        ];
+    }
+
     return [
         'error'    => 'schema_out_of_date',
         'message'  => 'This database is missing '

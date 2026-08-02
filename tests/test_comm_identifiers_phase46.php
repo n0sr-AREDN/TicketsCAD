@@ -334,15 +334,59 @@ p46_assert(
     isset($manifest['scope']),
     'scope missing — PWA boundary undefined, install may misbehave'
 );
+// Assert the INVARIANT, not a position. This used to read
+// `$manifest['icons'][0]['sizes'] === '600x600'`, which pinned the first entry
+// to the 600x600 logo — so adding proper 192/512 PWA icons ahead of it, which
+// is an improvement, failed the test. A positional assertion also could not
+// have caught the original bug at any other index.
+//
+// What actually matters is what Chrome checks: every declared size must match
+// the real PNG. That is now measured per entry rather than assumed for one.
+$iconMismatch = [];
+foreach (($manifest['icons'] ?? []) as $icon) {
+    $src = $icon['src'] ?? '';
+    $declared = $icon['sizes'] ?? '';
+    if ($src === '' || $declared === '' || $declared === 'any') {
+        continue;
+    }
+    $path = __DIR__ . '/../' . ltrim($src, '/');
+    if (!is_file($path)) {
+        $iconMismatch[] = "$src — declared $declared but the file is missing";
+        continue;
+    }
+    $dim = @getimagesize($path);
+    if ($dim === false) {
+        $iconMismatch[] = "$src — unreadable image";
+        continue;
+    }
+    $actual = $dim[0] . 'x' . $dim[1];
+    // `sizes` may list several, space separated.
+    if (!in_array($actual, preg_split('/\s+/', trim($declared)), true)) {
+        $iconMismatch[] = "$src — declared $declared, actual $actual";
+    }
+}
 p46_assert(
-    'manifest.json — icon sizes match the actual PNG (600x600)',
-    isset($manifest['icons']) && $manifest['icons'][0]['sizes'] === '600x600',
-    'icon size mismatch — Chrome rejects manifests with incorrect sizes'
+    'manifest.json — every icon\'s declared size matches the actual PNG',
+    ($manifest['icons'] ?? []) !== [] && $iconMismatch === [],
+    'icon size mismatch — Chrome rejects manifests with incorrect sizes: '
+        . implode('; ', $iconMismatch)
 );
+
+// Likewise by src, not by index: the logos fill their canvas edge to edge, so
+// declaring either of them maskable chops the content. Which position they
+// occupy is not the point.
+$badMaskable = [];
+foreach (($manifest['icons'] ?? []) as $icon) {
+    $src = $icon['src'] ?? '';
+    if (strpos($src, 'logo-') !== false && ($icon['purpose'] ?? '') === 'maskable') {
+        $badMaskable[] = $src;
+    }
+}
 p46_assert(
-    'manifest.json — dark logo not falsely declared maskable',
-    isset($manifest['icons'][1]) && $manifest['icons'][1]['purpose'] !== 'maskable',
-    'logo fills the canvas edge-to-edge — maskable claim chops the content'
+    'manifest.json — full-bleed logos not falsely declared maskable',
+    $badMaskable === [],
+    'logo fills the canvas edge-to-edge — maskable claim chops the content: '
+        . implode(', ', $badMaskable)
 );
 
 // Login.php must link the manifest — Chrome only shows "Install" if

@@ -747,7 +747,6 @@ A trained AI agent producing the video should be able to:
 **Audience:** admins / dispatchers integrating with OwnTracks-app smartphones, Traccar Server fleets, Traccar Client phones, or legacy OpenGTS GPS modems.
 **Prerequisites for the viewer:** m02, m05, m11, m15, m17.
 **Estimated runtime:** 20–25 minutes (≈1.5× the typical module — justified by four distinct setup paths and the per-device-token workflow).
-**Brief / outline:** training-scripts/m27-location-tracking-traccar-owntracks.md — this is the input for the video-generating agent; the camera-ready script and the finished video are produced from it.
 **Companion reading:** [docs/TRACCAR-SETUP.md](TRACCAR-SETUP.md).
 
 Why an add-on rather than slotted in-sequence: most agencies decide whether they want hardware GPS integration months after their initial TicketsCAD deploy, often after first running a real exercise and realizing they want unit position on the map. Treating this as an add-on lets the core curriculum stay focused on what every deployment needs.

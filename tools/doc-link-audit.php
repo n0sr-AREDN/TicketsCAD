@@ -14,6 +14,8 @@
  * Exit code 0 if no broken links, 1 if any broken links found.
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 $root = realpath(__DIR__ . '/../..');   // newui-dev/newui/tools → newui-dev
 $quiet = in_array('--quiet', $argv, true);
 foreach ($argv as $i => $arg) {

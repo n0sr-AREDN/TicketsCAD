@@ -16,6 +16,8 @@
  *   php tools/install_fresh.php --verbose
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 $verbose = in_array('--verbose', $argv ?? [], true);
@@ -46,6 +48,47 @@ function step(string $name, callable $check, callable $apply): void {
         echo "  [fail] $name — " . $e->getMessage() . "\n";
         $fail++;
     }
+}
+
+/**
+ * Run a program as a list of discrete arguments; return [outputLines, exitCode].
+ *
+ * NO SHELL IS INVOLVED — argv-array proc_open() goes straight to
+ * execvp()/CreateProcess(), so the escapeshellarg() that used to wrap these
+ * paths is deliberately absent, not merely relocated: it quotes FOR a shell,
+ * and with none present the child would be handed literal quotes.
+ *
+ * Replaces exec(), which hardened Windows/IIS hosts remove via
+ * disable_functions — a fatal that @ cannot suppress, mid-install.
+ *
+ * Callers rely on getting LINES back: the digest filter and the "Pending: 0"
+ * no-op detection both scan the array, so the split below is load-bearing.
+ * stdout and stderr share one temp file, reproducing the old `2>&1` exactly
+ * without a pipe that could deadlock.
+ *
+ * NOTE: this is NOT for the MariaDB import at the top of this file — that one
+ * genuinely needs a shell (`command -v` fallback plus a stdin redirect) and is
+ * allowlisted as such. Keep its escapeshellarg() calls.
+ */
+function run_argv(array $cmdArgv): array {
+    $sink = tmpfile();
+    if ($sink === false) {
+        return [['(could not open a temporary file to capture output)'], 127];
+    }
+    $descriptors = [0 => ['pipe', 'r'], 1 => $sink, 2 => $sink];
+    $pipes = [];
+    $proc = proc_open($cmdArgv, $descriptors, $pipes);
+    if (!is_resource($proc)) {
+        fclose($sink);
+        return [['(failed to start the subprocess)'], 127];
+    }
+    fclose($pipes[0]);
+    $exit = proc_close($proc);
+    rewind($sink);
+    $combined = rtrim((string) stream_get_contents($sink), "\r\n");
+    fclose($sink);
+    $lines = ($combined === '') ? [] : preg_split('/\r\n|\r|\n/', $combined);
+    return [$lines, $exit];
 }
 
 function col_exists(string $table, string $col): bool {
@@ -469,13 +512,10 @@ step('all sql/run_*.php migrations applied',
         if (!file_exists($runner)) {
             throw new Exception("Master migration runner not found at {$runner}");
         }
-        // Exec via PHP CLI so it gets its own globals/process state and
-        // doesn't pollute ours. Capture stdout for the log; bubble up
+        // Run via PHP CLI so it gets its own globals/process state and
+        // doesn't pollute ours. Capture output for the log; bubble up
         // failure if exit code != 0.
-        $cmd = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($runner) . ' 2>&1';
-        $output = [];
-        $code = 0;
-        exec($cmd, $output, $code);
+        list($output, $code) = run_argv([PHP_BINARY, $runner]);
         // Echo a digest — full output would dwarf install_fresh's own log
         $summary = array_filter($output, fn($l) =>
             preg_match('/Summary:|\[ok\]|\[FAILED\]|\[SKIP\]/i', $l));

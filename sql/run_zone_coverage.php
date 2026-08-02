@@ -21,6 +21,8 @@
  * Usage: php sql/run_zone_coverage.php   (also runs via sql/run_migrations.php)
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 $prefix = $GLOBALS['db_prefix'] ?? '';

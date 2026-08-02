@@ -14,10 +14,7 @@
  * Idempotent — guarded by information_schema; safe to run repeatedly.
  */
 
-if (php_sapi_name() !== 'cli' && basename($_SERVER['SCRIPT_NAME'] ?? '') === basename(__FILE__)) {
-    http_response_code(403);
-    exit('CLI or migration-runner only');
-}
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/db.php';

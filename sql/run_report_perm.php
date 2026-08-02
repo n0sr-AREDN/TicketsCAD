@@ -23,6 +23,9 @@
  * Usage: php sql/run_report_perm.php   (also runs via sql/run_migrations.php)
  * Safety: idempotent — INSERT IGNORE only, safe to run repeatedly.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Report permission (action.view_reports)\n";

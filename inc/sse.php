@@ -130,7 +130,25 @@ if (!function_exists('sse_publish')) {
                 [$eventType, json_encode($payload), $userId, $scope, $idsStr]
             );
 
-            if (function_exists('webhook_fire')) {
+            // 2026-07-31 — this was a SECOND synchronous outbound fan-out on
+            // the dispatch hot path, and it was not in the offline audit's
+            // finding: the audit named inc/audit.php, and fixing only that
+            // still left a unit status change costing 3.07s against a
+            // black-holed webhook subscriber, because responder-write also
+            // publishes an SSE event and this fired webhooks from inside it.
+            //
+            // Same treatment: queue it, let the scheduled sweep deliver it.
+            // WEBHOOKS ONLY — an SSE event has never fanned out to Web Push
+            // and must not start now, or every chat line would buzz a phone.
+            // That restriction is also what makes the recursion terminate:
+            // a webhook-only row never re-enters the routing engine, so it
+            // cannot publish another SSE event.
+            if (function_exists('notify_fanout_dispatch')) {
+                notify_fanout_dispatch($eventType, $payload, ['webhook']);
+            } elseif (is_file(__DIR__ . '/notify-fanout.php')) {
+                require_once __DIR__ . '/notify-fanout.php';
+                notify_fanout_dispatch($eventType, $payload, ['webhook']);
+            } elseif (function_exists('webhook_fire')) {
                 webhook_fire($eventType, $payload);
             }
 

@@ -349,8 +349,17 @@ foreach ($onDisk as $name => $m) {
                                         if ($line === false) break;
                                         echo str_pad((string)(++$lineNum), 3, ' ', STR_PAD_LEFT) . '  ' . e(rtrim($line, "\n")) . "\n";
                                     }
+                                    // Ask the handle whether there is more file
+                                    // BEFORE closing it. PHP 8 raises a
+                                    // TypeError for feof() on a closed
+                                    // resource unconditionally — the boolean
+                                    // it would have returned is irrelevant,
+                                    // the call itself is fatal. Reversing
+                                    // these two lines fatalled the preview for
+                                    // every migration file (GH TicketsCAD#11).
+                                    $more = !feof($fh);
                                     fclose($fh);
-                                    if (!feof($fh)) echo "... (truncated)\n";
+                                    if ($more) echo "... (truncated)\n";
                                 } else {
                                     echo '(unable to read file)';
                                 }

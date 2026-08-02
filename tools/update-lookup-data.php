@@ -28,6 +28,9 @@
  */
 
 // Increase limits for large imports
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 ini_set('memory_limit', '512M');
 set_time_limit(0);
 

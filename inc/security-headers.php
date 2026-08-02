@@ -10,6 +10,8 @@
  *   set_security_headers();
  */
 
+require_once __DIR__ . '/https.php';   // is_https(), is_https_verified()
+
 /**
  * Set standard security headers.
  * Safe to call multiple times (headers are overwritten, not duplicated).
@@ -17,6 +19,30 @@
  * @return void
  */
 function set_security_headers(): void {
+    // Geocoder origins the BROWSER is allowed to contact.
+    //
+    // Under the shipped default (geocoding_mode=server) this is EMPTY, and
+    // that is the point: the browser has no business talking to a geocoder,
+    // so a twelfth hardcoded call site fails visibly on every install instead
+    // of silently disclosing the incident address on all of them. In direct
+    // mode it carries exactly the configured provider's origin — which also
+    // fixes a latent bug: before this, direct mode against any provider other
+    // than Nominatim would have been CSP-blocked, because only Nominatim was
+    // ever named here.
+    //
+    // Wrapped, because a CSP builder must never be the thing that takes a page
+    // down. On any failure we fall back to the historical allowance.
+    $geocodeHosts = ['https://nominatim.openstreetmap.org'];
+    try {
+        require_once __DIR__ . '/geocode.php';
+        if (function_exists('geocode_csp_connect_hosts') && function_exists('get_variable')) {
+            $geocodeHosts = geocode_csp_connect_hosts();
+        }
+    } catch (Throwable $e) {
+        error_log('[geocode] CSP host resolution failed: ' . $e->getMessage());
+    }
+    $geocodeCsp = $geocodeHosts ? (' ' . implode(' ', $geocodeHosts)) : '';
+
     // Prevent MIME type sniffing
     header('X-Content-Type-Options: nosniff');
 
@@ -47,18 +73,33 @@ function set_security_headers(): void {
         // img-src: tile providers (OSM, Carto dark, OpenWeatherMap weather,
         // Esri World Imagery satellite, USGS basemap, IEM/mesonet WMS,
         // RainViewer + NOAA/NWS MRMS precipitation radar — situation.php #53),
-        // Nominatim geocoder (its result icons), plus data:/blob: for SVGs
-        // and downloads.
+        // plus data:/blob: for SVGs and downloads. The geocoder is NOT a fixed
+        // entry any more: $geocodeCsp is empty in the shipped server mode and
+        // carries the configured provider's origin in direct mode.
+        // 'self' also covers api/tile-proxy.php: in the default proxy mode the
+        // basemaps that CAN be proxied are same-origin, so they need no
+        // allowlist entry at all. The hosts below are what DIRECT mode needs.
         "img-src 'self' data: blob: "
             . "https://*.tile.openstreetmap.org "
+            // Found 2026-07-31 while wiring the tile proxy: the Terrain
+            // basemap MapPrefs ships (OpenTopoMap) was never in this list, so
+            // in direct mode the browser blocked every one of its tiles and
+            // the layer rendered empty. Proxy mode masks it (same-origin), so
+            // it must stay listed for anyone who switches to direct.
+            . "https://*.tile.opentopomap.org "
             . "https://*.basemaps.cartocdn.com "
             . "https://tile.openweathermap.org "
+            // openweathermap.org (no `tile.`) serves the City Weather marker
+            // icons. Only the TILE host was listed, so those icons were
+            // CSP-blocked as well as being requested over plain http — see
+            // the imageUrl* overrides in assets/js/app.js.
+            . "https://openweathermap.org "
             . "https://server.arcgisonline.com "
             . "https://basemap.nationalmap.gov "
             . "https://mesonet.agron.iastate.edu "
             . "https://*.rainviewer.com "
-            . "https://mapservices.weather.noaa.gov "
-            . "https://nominatim.openstreetmap.org",
+            . "https://mapservices.weather.noaa.gov"
+            . $geocodeCsp,
         "style-src 'self' 'unsafe-inline'",
         // Phase 84-followup: blob: needed so the radio widget's
         // AudioWorklet (constructed via URL.createObjectURL(new Blob(...)))
@@ -68,15 +109,16 @@ function set_security_headers(): void {
         "script-src 'self' 'unsafe-inline' blob:",
         "font-src 'self' data:",
         // connect-src: SSE, Zello/Meshtastic websockets on the LAN, the
-        // callsign + radio-id lookup APIs, Nominatim geocoding (XHR), the
-        // aprs.fi API used by the location-providers test path, and the
-        // RainViewer frame catalog fetched by the situation radar (#53).
+        // callsign + radio-id lookup APIs, the aprs.fi API used by the
+        // location-providers test path, and the RainViewer frame catalog
+        // fetched by the situation radar (#53). Geocoding via $geocodeCsp —
+        // empty in server mode, on purpose.
         "connect-src 'self' ws: wss: "
             . "https://callook.info "
             . "https://*.radioid.net "
-            . "https://nominatim.openstreetmap.org "
             . "https://api.aprs.fi "
-            . "https://*.rainviewer.com",
+            . "https://*.rainviewer.com"
+            . $geocodeCsp,
         "frame-ancestors 'self'",
         "form-action 'self'",
         "base-uri 'self'",
@@ -138,19 +180,12 @@ function set_security_headers(): void {
  * @return bool
  */
 function _is_https(): bool {
-    // Direct HTTPS
-    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
-        return true;
-    }
-    // Behind a reverse proxy
-    if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
-        return true;
-    }
-    // Standard port check
-    if (!empty($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443) {
-        return true;
-    }
-    return false;
+    // Thin alias — logic lives in inc/https.php so every site agrees.
+    // Required at the top of this file, not here: config.php calls
+    // set_security_headers() long before inc/functions.php loads.
+    // Best-effort variant: correct for its callers (HSTS emission, URL
+    // and WebSocket scheme). An access gate wants is_https_verified().
+    return is_https();
 }
 
 /**

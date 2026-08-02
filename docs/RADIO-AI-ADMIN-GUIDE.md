@@ -225,7 +225,7 @@ The page has a **Dry run** toggle that adds `dry_run: true` to the bridge POST. 
 
 ### Auto-approve
 
-Page has an **Auto-approve** toggle that auto-fires Approve on any incoming `pending_approval` row. Three hard safeties (per project-radio-ai-separation memory decisions):
+Page has an **Auto-approve** toggle that auto-fires Approve on any incoming `pending_approval` row. Three hard safeties:
 
 1. **Two-hour ceiling** — independent watchdog checks the expiry every 15 s and flips OFF the moment 2 h elapses, regardless of traffic.
 2. **Page-closed = OFF** — auto-approve state lives in the browser's localStorage and is bound to operator presence.

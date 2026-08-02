@@ -197,22 +197,33 @@ function audit_log(
                         $fanOutPayload['ticket_id'] = $flatTid;
                     }
 
-                    webhook_fire($eventType, $fanOutPayload);
-
-                    // Phase 96 (2026-06-28) — parallel Web Push fan-out.
-                    // Wrapped in its own try/catch so a push failure
-                    // doesn't poison the webhook path or audit commit.
-                    // The same event_type allowlist gate applies (we
-                    // only call push_fire when webhook_fire fires).
+                    // 2026-07-31 — THE FAN-OUT NO LONGER HAPPENS HERE.
+                    //
+                    // This used to call webhook_fire() and then push_fire()
+                    // in-line, so a dispatcher's screen did not come back
+                    // until every phone, webhook, SMS gateway and Slack
+                    // workspace had answered or timed out. Measured through
+                    // the real writers with the endpoints black-holed
+                    // (203.0.113.1, RFC 5737): creating an incident took
+                    // 21.34s and a unit status change 21.33s — every action,
+                    // for the whole outage, each one holding a PHP worker.
+                    // That is the storm the software exists for.
+                    //
+                    // notify_fanout_dispatch() writes the event to the queue
+                    // the scheduled sweep already drains and returns. It does
+                    // no outbound network at all when a sweep is running, and
+                    // is bounded + circuit-broken when one is not. It never
+                    // throws: a notification problem must not break the audit
+                    // row, which is the record of what happened.
+                    //
+                    // Everything downstream is unchanged — the same event
+                    // type, the same payload, the same routing rules and
+                    // recipient predicates. Only the moment moved.
                     try {
-                        if (file_exists(__DIR__ . '/push.php')) {
-                            require_once __DIR__ . '/push.php';
-                            if (function_exists('push_fire')) {
-                                push_fire($eventType, $fanOutPayload);
-                            }
-                        }
-                    } catch (Throwable $pushErr) {
-                        error_log('[audit_log] push fan-out failed: ' . $pushErr->getMessage());
+                        require_once __DIR__ . '/notify-fanout.php';
+                        notify_fanout_dispatch($eventType, $fanOutPayload);
+                    } catch (Throwable $notifyErr) {
+                        error_log('[audit_log] notification fan-out failed: ' . $notifyErr->getMessage());
                     }
                 }
             }

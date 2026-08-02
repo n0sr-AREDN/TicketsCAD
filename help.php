@@ -398,6 +398,43 @@ each map&#39;s layer-control widget. This reference covers what every
 built-in option is, whether it needs a key, and what attribution it
 requires.</p>
 
+<h6>Tile Mode &mdash; who fetches the tiles</h6>
+<p>Every map tile your browser requests tells the provider which patch of
+ground is on screen. Over a shift that adds up to a running account of where
+your incidents are. <strong>Tile Mode</strong> (Settings &raquo; Tile Providers)
+controls who makes that request:</p>
+<ul>
+    <li><strong>Proxy</strong> (the default) &mdash; <em>your server</em> fetches
+        the tiles and caches them. Dispatchers&#39; browsers never contact the
+        provider, so the provider sees one server rather than every workstation.</li>
+    <li><strong>Direct</strong> &mdash; each dispatcher&#39;s browser fetches
+        tiles itself, exposing their IP address and browser to the provider.
+        Use this if your server has no outbound internet access but your
+        workstations do.</li>
+</ul>
+<p><strong>Proxy mode does not apply to every provider.</strong> Some
+providers&#39; terms do not permit a third party to cache and re-serve their
+tiles, and TicketsCAD will not breach them on your behalf &mdash; those
+providers always go direct. <em>OpenStreetMap, OSM Humanitarian, OpenTopoMap,
+USGS and your own tile server can be proxied. CARTO, Esri, Mapbox, Google and
+Bing cannot.</em> In practice that means the <strong>Dark</strong>,
+<strong>Light</strong> and <strong>Satellite</strong> basemaps still reach out
+from the browser even in proxy mode. The live per-provider verdict is shown in
+Settings &raquo; Tile Providers.</p>
+<p class="mb-1"><strong>Two things worth setting:</strong></p>
+<ul>
+    <li><strong>Proxy User-Agent</strong> &mdash; OpenStreetMap blocks generic
+        identifiers. Leave it blank for an automatic value, or enter something
+        contactable such as <code>Metro ARES CAD (dispatch@example.org)</code>.</li>
+    <li><strong>Cache Size Limit</strong> and <strong>Keep Disk Free</strong>
+        &mdash; the cache evicts its least-recently-used tiles at the size
+        limit, and stops writing (but keeps serving maps) if free disk would
+        fall below the reserve. It cannot fill your disk.</li>
+</ul>
+<p>Address lookup (the <strong>Lookup</strong> buttons) is <em>not</em>
+proxied &mdash; the typed address always goes from the browser to the public
+geocoder. If that matters for your deployment, host geocoding internally.</p>
+
 <h6>Free &mdash; no key required (recommended)</h6>
 <table class="table table-sm table-bordered">
     <thead><tr><th>Name</th><th>Coverage</th><th>Best for</th><th>Attribution</th></tr></thead>

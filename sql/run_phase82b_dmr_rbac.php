@@ -28,6 +28,8 @@
  *   php tools/run_phase82b_dmr_rbac.php
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require __DIR__ . '/../config.php';
 
 $pdo = db();

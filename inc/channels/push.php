@@ -21,6 +21,24 @@
  */
 
 require_once __DIR__ . '/../push.php';
+// notify_deadline_remaining() / notify_clamp_timeout() — the wall-clock budget
+// a caller on a request path imposes. Optional: this channel still works
+// standalone (the timer-driven sweep, the admin "send test push" button).
+if (is_file(__DIR__ . '/../notify-fanout.php')) {
+    require_once __DIR__ . '/../notify-fanout.php';
+}
+
+/**
+ * Defaults when no caller-imposed deadline is in force.
+ *
+ * 15s total rather than the library's 30s: a push service that has not
+ * answered in fifteen seconds is not going to, and a dispatch notification
+ * that arrives that late has been overtaken by events anyway. 5s to connect
+ * is the number that actually matters — an unset connect timeout is what let
+ * a black-holed endpoint hold the request for 21 seconds.
+ */
+if (!defined('PUSH_DEFAULT_TIMEOUT_S'))         define('PUSH_DEFAULT_TIMEOUT_S', 15);
+if (!defined('PUSH_DEFAULT_CONNECT_TIMEOUT_S')) define('PUSH_DEFAULT_CONNECT_TIMEOUT_S', 5);
 
 broker_register('push', [
     'name'    => 'Web Push (per-user)',
@@ -130,15 +148,44 @@ function _push_channel_send(array $message): array
     }
     $bodyJson = json_encode($notif);
 
+    // ── Timeouts ────────────────────────────────────────────────────────
+    //
+    // minishlink/web-push defaults to a 30-second total and leaves Guzzle's
+    // connect_timeout unset (0 = unlimited), so a black-holed push endpoint
+    // held this call for as long as the OS took to give up on the SYN —
+    // measured at 21.1s on Windows, and the library's 30s on Linux. That was
+    // the whole of the 21-second dispatch stall this work removes.
+    //
+    // The bound now comes from whoever is calling. When the fan-out is
+    // running under a wall-clock budget (inc/notify-fanout.php), the timeouts
+    // are clamped to whatever is left of it; when it is the timer-driven
+    // sweep, no deadline is set and the generous defaults apply, because a
+    // background job may take its time.
+    $remaining   = function_exists('notify_deadline_remaining') ? notify_deadline_remaining() : null;
+    $totalTimeout = function_exists('notify_clamp_timeout')
+        ? notify_clamp_timeout(PUSH_DEFAULT_TIMEOUT_S, $remaining)
+        : PUSH_DEFAULT_TIMEOUT_S;
+    $connectTimeout = function_exists('notify_clamp_timeout')
+        ? notify_clamp_timeout(PUSH_DEFAULT_CONNECT_TIMEOUT_S, $remaining)
+        : PUSH_DEFAULT_CONNECT_TIMEOUT_S;
+
     // Reuse the WebPush instance pattern from push_fire.
     try {
-        $webPush = new Minishlink\WebPush\WebPush([
-            'VAPID' => [
-                'subject'    => $vapid['subject'],
-                'publicKey'  => $vapid['publicKey'],
-                'privateKey' => $vapid['privateKey'],
+        $webPush = new Minishlink\WebPush\WebPush(
+            [
+                'VAPID' => [
+                    'subject'    => $vapid['subject'],
+                    'publicKey'  => $vapid['publicKey'],
+                    'privateKey' => $vapid['privateKey'],
+                ],
             ],
-        ]);
+            [],
+            $totalTimeout,
+            // Guzzle leaves connect_timeout at 0 (unlimited) unless told
+            // otherwise. On a black-holed endpoint that is the difference
+            // between a bounded failure and an OS-length wait.
+            ['connect_timeout' => $connectTimeout]
+        );
         $webPush->setDefaultOptions(['TTL' => 30, 'urgency' => 'high']);
     } catch (Throwable $e) {
         return ['success' => false, 'error' => 'WebPush init failed: ' . $e->getMessage()];
@@ -184,7 +231,7 @@ function _push_channel_send(array $message): array
         return ['success' => false, 'error' => 'WebPush flush failed: ' . $e->getMessage()];
     }
 
-    return [
+    $result = [
         'success'   => true,
         'queued'    => $queued,
         'delivered' => $delivered,
@@ -193,6 +240,16 @@ function _push_channel_send(array $message): array
         'recipients_resolved' => count($recipients),
         'subscriptions_matched' => count($subs),
     ];
+
+    // The routing engine reports a route as 'forwarded' as long as the channel
+    // adapter did not throw, so "nothing actually reached a phone" is
+    // indistinguishable from success by the time router_evaluate() returns.
+    // The fan-out needs that distinction to decide whether to retry the queued
+    // row and whether to open the outbound breaker, so record the tally where
+    // notify_fanout_deliver() can read it.
+    $GLOBALS['_push_last_result'] = $result;
+
+    return $result;
 }
 
 function _push_channel_status(): array

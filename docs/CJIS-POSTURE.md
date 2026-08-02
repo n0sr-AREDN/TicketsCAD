@@ -1,7 +1,7 @@
 # CJIS Security Policy — TicketsCAD Posture Brief
 
 **Audience:** compliance officer, security auditor, agency CIO evaluating TicketsCAD for use with Criminal Justice Information (CJI).
-**Scope:** TicketsCAD NewUI v4.0 as of 2026-06-15.
+**Scope:** TicketsCAD NewUI v4.0 as of 2026-06-15; amended 2026-07-30 to document outbound connections to third-party services, including the optional Radio AI feature (see [§5.10](#outbound-connections-to-third-party-services)).
 **Companion docs:** [SECURITY-POLICY.md](SECURITY-POLICY.md) · [BACKUP-RECOVERY-RUNBOOK.md](BACKUP-RECOVERY-RUNBOOK.md) · [AUDIT-LOG-REFERENCE.md](AUDIT-LOG-REFERENCE.md)
 
 ---
@@ -20,7 +20,7 @@ If your CSA / state agency has additional requirements above and beyond CJIS Pol
 
 | CJIS Policy Section | What it covers | TicketsCAD relevance |
 |---|---|---|
-| §5.1 | Information Exchange Agreements | Out of scope (org-level) |
+| §5.1 | Information Exchange Agreements | Largely org-level — **but not entirely.** Several optional TicketsCAD features transmit content to third parties, which is an information-exchange decision your CSO has to make rather than a purely organisational one. All of them are off or unconfigured by default. See [Outbound connections to third-party services](#outbound-connections-to-third-party-services) under §5.10 |
 | §5.2 | Security Awareness Training | Org-level; we provide [TRAINING-CURRICULUM.md](TRAINING-CURRICULUM.md) for the application side |
 | §5.3 | Incident Response | We log; you respond. See [BACKUP-RECOVERY-RUNBOOK.md](BACKUP-RECOVERY-RUNBOOK.md) |
 | §5.4 | **Auditing and Accountability** | **Direct: audit_log, retention, query export.** Detailed below |
@@ -161,14 +161,65 @@ Retention is **minimum 365 days**.
 | **Encryption at rest — patient/contact PII** | The `ENC2:` blob format (RSA-wrapped AES-GCM) is available for any field via the field-encryption helper. Selective; opt-in per field. |
 | **Database-level encryption** | TicketsCAD does NOT enforce DB-tablespace encryption — that's MariaDB-side configuration (encryption-at-rest plugin or LUKS at the OS layer). **You must configure this for CJIS.** |
 | **Cryptography** | PHP openssl extension (FIPS-compliant when underlying OpenSSL is FIPS-validated). Web Crypto API in browser (browser-vendor compliance). |
-| **Boundary protection** | Org-level — Apache reverse proxy, firewall rules, IP allowlisting all happen outside TicketsCAD. We provide vhost-level directory restrictions in the install checklist Apache config. |
+| **Boundary protection — inbound** | Org-level — Apache reverse proxy, firewall rules, IP allowlisting all happen outside TicketsCAD. We provide vhost-level directory restrictions in the install checklist Apache config. |
+| **Boundary protection — outbound** | **Not purely org-level.** TicketsCAD itself can originate outbound connections to third-party services. Every one is enumerated below; all are off or unconfigured by default. Your egress policy must account for them. |
 | **Session encryption** | PHP session cookies marked `Secure`, `HttpOnly`, `SameSite=Lax` when served over HTTPS. |
+
+### Outbound connections to third-party services
+
+An earlier revision of this brief treated boundary protection as entirely
+org-level. That was incomplete: TicketsCAD ships optional features that transmit
+content **outside your security boundary**, and a CJIS assessment has to see them.
+
+Nearly all of them are off or unconfigured until an administrator enables them —
+including the AI feature. **The exception, and the one to look at first, is map
+tiles and address lookup:** those are on by default, so an incident address typed
+into the new-incident form goes to a public geocoder unless you host that
+capability internally. "Off by default" is also not the same as "absent," so
+decide about each row below deliberately rather than relying on the shipped
+default.
+
+Two clarifications on that pair, because they no longer behave the same way:
+
+- **Map tiles** are, since v4.2.3, fetched by **your server** and cached there
+  for the providers whose terms permit it (OpenStreetMap, USGS, OpenTopoMap, a
+  tile server you run). The dispatcher's browser does not contact those
+  providers. Providers whose terms forbid proxying — CARTO, Esri, Mapbox,
+  Google, Bing — are still fetched by the browser; that includes the **Dark**,
+  **Light** and **Satellite** basemaps. Proxying hides *which dispatcher* and
+  reduces request volume; it does **not** hide *which map areas this install
+  views*. Only an internally hosted tile server does that.
+- **Address lookup is not proxied.** The typed address goes from the browser to
+  `nominatim.openstreetmap.org` directly, in every mode. Of the two, this is the
+  one that carries an actual incident address, and it is unchanged.
+
+The authoritative, code-verified accounting is in
+[SECURITY.md § What TicketsCAD sends outside your network](../SECURITY.md#what-ticketscad-sends-outside-your-network).
+The CJIS-relevant summary:
+
+| Feature | Destination | Content | Default | CJIS note |
+|---|---|---|---|---|
+| **Radio AI** | `api.anthropic.com` (Anthropic, commercial LLM API) | Amateur-radio speech-to-text transcripts, caller callsign and DMR ID, up to 5 prior exchanges. **No CAD data** — no incidents, roster, patient, facility, location or account records. Also enables Anthropic server-side web search (≤3/question). | **Off** (`radio_ai_enabled` = `0`); additionally requires a hand-created API key file, a separate daemon, and a DMR bridge | **Leave off for any system that touches CJI.** If you want it, treat it as an information-exchange arrangement under §5.1 and get CSO sign-off. Note it is an amateur-radio feature: amateur transmissions are unencrypted and public by law, so it should never be on a CJI-bearing path in the first place. |
+| **Speech-to-text** (Vosk, faster-whisper) | — | Runs in-process on your server; no audio or transcript leaves | Local | No boundary crossing. Stage model files at build time. |
+| **Text-to-speech** (Piper) | — | Local binary, local voice model | Local, and the seeded default | No boundary crossing. |
+| **Text-to-speech** (Deepgram / OpenAI-compatible drivers) | `api.deepgram.com`, or an endpoint you configure | The text to be spoken | **Not seeded** — an admin must create the engine row *and* install a key file | If a bulletin could ever contain CJI, do not route it to a hosted engine. Piper covers this case locally. |
+| **Map tiles** | Tile provider (OpenStreetMap by default) | Map viewport. Sent by **your server** for providers that permit proxying (OSM, USGS, OpenTopoMap, self-hosted); sent by the dispatcher's **browser** for those that do not (CARTO, Esri, Mapbox, Google, Bing — i.e. the Dark, Light and Satellite basemaps). | **On**, `tile_mode` = `proxy` | Proxy mode removes per-dispatcher exposure and caches on your server, but the viewport is still visible to the provider. For CJI deployments host tiles internally (`tile_provider` = custom); that is the only configuration where map viewports do not leave your network. |
+| **Address lookup (geocoding)** | `nominatim.openstreetmap.org` | The address typed into an incident form, or map-click coordinates. Sent by the dispatcher's **browser**, directly — **not proxied, in any tile mode**. | **On** | The default-on item most likely to carry operationally sensitive data: an incident address goes to a public geocoder. For CJI deployments, host geocoding internally, or accept and document the exposure. |
+| **Callsign / DMR ID lookup** | `opencallbook.com`, `callook.info`, `database.radioid.net` | A callsign or DMR ID. By default the User-Agent also discloses your install's hostname (`lookup_ua_detail` = `full`). | On when used | Set `lookup_ua_detail` to `minimal` so your hostname is not disclosed, or point at a self-hosted FCC ULS service. |
+| **Weather, SMS, Slack, webhooks, Web Push, APRS, DMR, Zello** | Various | Only what you configure each to carry | **All off / unconfigured** | Each becomes an information-exchange decision the moment you enable it. |
+
+**There is no telemetry, analytics, usage reporting, or update check anywhere in
+TicketsCAD.** Nothing contacts the project about your installation. An air-gapped
+deployment is fully supported; see the offline guidance in SECURITY.md.
 
 ### Gaps / your responsibility
 
 - **OS-level disk encryption** (LUKS, BitLocker) — not configured by TicketsCAD. Strongly recommended for CJIS.
 - **DB-level transparent data encryption** — MariaDB supports it; we don't configure it. Strongly recommended for CJIS.
 - **Network segmentation** — TicketsCAD VM should not share a subnet with general-user workstations. Org-level.
+- **Egress control** — decide, per the table above, which outbound services this deployment may reach, and enforce it at your firewall rather than relying only on application settings. Default-deny outbound is the posture that matches the rest of this brief.
+- **Geocoding** — the default-on outbound path that carries an incident address, sent by the browser and **not** covered by the tile proxy. Host it internally for CJI deployments, or record the exposure in your risk assessment.
+- **Map tiles** — proxied through your server by default, which is an improvement but not containment: the provider still sees the viewport. Host tiles internally for CJI deployments. Note that the Dark, Light and Satellite basemaps cannot be proxied at all (provider terms), so they contact CARTO/Esri from the dispatcher's browser — restrict operators to Street/Terrain or an internal provider if that matters.
 
 ---
 
@@ -224,6 +275,15 @@ When in doubt, configure these tighter than the defaults:
 | `audit_log_retention_days` | 365 | 365 (minimum; some CSAs require longer) |
 | `owntracks_allow_anonymous` | 0 | 0 (must stay 0 for CJIS) |
 | `owntracks_require_token` | 1 (if configured) | 1 |
+| `radio_ai_enabled` | 0 | **0 — must stay 0.** Sends amateur-radio transcripts to a commercial LLM API outside your boundary (see §5.10) |
+| `lookup_ua_detail` | `full` | `minimal` — stops your install's hostname being disclosed to public callsign-lookup services |
+| `tile_provider` | unset (public OpenStreetMap) | An internally hosted tile server, so map viewports do not leave your network |
+| `tile_mode` | `proxy` | `proxy` — keep it. Direct mode exposes every dispatcher's IP and browser to the tile provider. (Note: proxy mode is only honoured for providers whose terms allow it.) |
+
+Outbound features not in this table — Deepgram / OpenAI-compatible text-to-speech,
+SMS, Slack, webhooks, Web Push, APRS, DMR and Zello — ship unconfigured. Leaving
+them unconfigured is the CJIS-recommended state; enabling any of them is an
+information-exchange decision under §5.1.
 
 ---
 
@@ -249,7 +309,7 @@ When the CJIS auditor visits, hand them:
 - It is **not a certificate of compliance**. There's no FBI seal on this PDF.
 - It is **not a substitute for your CSO's risk assessment**. They have to sign off.
 - It is **not exhaustive**. CJIS Policy v6.0 is 250+ pages; this brief covers the sections with substantial TicketsCAD-side controls and points you at where the gaps are.
-- It is **dated 2026-06-15**. CJIS Policy revisions happen periodically. Re-audit against the current version before each annual recert.
+- It is **dated 2026-06-15, amended 2026-07-30**. CJIS Policy revisions happen periodically. Re-audit against the current version before each annual recert.
 
 ---
 
@@ -258,6 +318,8 @@ When the CJIS auditor visits, hand them:
 | Topic | Doc |
 |---|---|
 | Security policy implementation details | [SECURITY-POLICY.md](SECURITY-POLICY.md) |
+| Outbound connections, AI features, offline/air-gapped operation | [SECURITY.md § What TicketsCAD sends outside your network](../SECURITY.md#what-ticketscad-sends-outside-your-network) |
+| Radio AI operator setup + trust boundaries | [RADIO-AI-ADMIN-GUIDE.md](RADIO-AI-ADMIN-GUIDE.md) |
 | Incident response | [BACKUP-RECOVERY-RUNBOOK.md](BACKUP-RECOVERY-RUNBOOK.md) |
 | Encryption keys (storage, rotation, escrow) | [SECURITY-POLICY.md](SECURITY-POLICY.md) |
 | Audit log schema | [AUDIT-LOG-REFERENCE.md](AUDIT-LOG-REFERENCE.md) |

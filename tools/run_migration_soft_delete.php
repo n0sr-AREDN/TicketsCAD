@@ -4,6 +4,8 @@
  * Usage: php tools/run_migration_soft_delete.php
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Running soft_delete_mileage migration...\n\n";

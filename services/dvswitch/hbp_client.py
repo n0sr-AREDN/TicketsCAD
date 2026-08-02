@@ -34,6 +34,7 @@ import configparser
 import hashlib
 import json
 import logging
+import math
 import os
 import secrets
 import select
@@ -838,6 +839,21 @@ class HBPClient:
 
 
 # ── HTTP control server (Phase 84g) ───────────────────────────────
+def _make_tone_pcm(freq_hz: float, duration_s: float,
+                   sample_rate: int = 8000, amplitude: int = 8000) -> bytes:
+    """8 kHz mono s16le sine tone — the /tx/test payload.
+
+    Mirrors bridge.py's generator so the two bridges produce the same
+    diagnostic tone.
+    """
+    n = int(duration_s * sample_rate)
+    out = bytearray()
+    for i in range(n):
+        sample = int(amplitude * math.sin(2 * math.pi * freq_hz * i / sample_rate))
+        out.extend(struct.pack("<h", sample))
+    return bytes(out)
+
+
 class ControlHandler(BaseHTTPRequestHandler):
     """Minimal HTTP control endpoint: GET /health, POST /tx/text."""
 
@@ -1342,6 +1358,59 @@ class ControlHandler(BaseHTTPRequestHandler):
             "pcm_bytes": len(pcm), "duration_ms": duration_ms,
         })
 
+    def _handle_tx_test(self, body: dict) -> None:
+        """POST /tx/test — key the radio with a short 1 kHz tone.
+
+        The fastest way to prove the transmit path end to end (tone →
+        AMBE vocoder → DMR framing → master) without involving Piper or
+        the browser. api/dvswitch.php has POSTed here since Phase 73j
+        and services/dvswitch/bridge.py implements it, but this native
+        HBP client never did — so the CAD's "TX 0.5s 1 kHz tone" button
+        answered 404 on every hbp_client bridge, Docker included
+        (openises/tickets#10, reported by @kmk1971).
+
+        Runs synchronously: duration is capped at 5 s, and a caller
+        pressing a diagnostic button wants the result, not a 202.
+        """
+        if not self.client or self.client.state != STATE_RUNNING:
+            return self._json(503, {"error": "not authenticated"})
+        try:
+            duration = float(body.get("duration_s") or 0.5)
+        except (TypeError, ValueError):
+            return self._json(400, {"error": "duration_s must be a number"})
+        duration = max(0.1, min(5.0, duration))
+        tg = int(body.get("talkgroup") or self.default_tg)
+        src = int(body.get("src_id") or self.operator_id)
+        if tg <= 0:
+            return self._json(400, {"error": "talkgroup required"})
+
+        pcm = _make_tone_pcm(1000.0, duration)
+        from services.dvswitch.ambe_codec import AmbeCodec
+        from services.dvswitch.dmr_tx import DMRCallTransmitter
+        codec = AmbeCodec()
+        tx = DMRCallTransmitter(
+            src_id=src, dst_id=tg,
+            repeater_id=self.client.config.dmr_id,
+            send_fn=self.client.send_to_master,
+            ambe_codec=codec,
+        )
+        try:
+            sent = tx.transmit_pcm(pcm)
+        except Exception as e:  # noqa: BLE001 — report, don't crash the server
+            LOG.exception("tx/test failed")
+            return self._json(500, {"error": str(e)})
+        finally:
+            codec.close()
+        LOG.info("tx_test: 1 kHz tone %.2fs to TG %d — %d packets",
+                 duration, tg, sent)
+        return self._json(200, {
+            "ok": True,
+            "packets": sent,
+            "talkgroup": tg,
+            "src_id": src,
+            "duration_ms": int(duration * 1000),
+        })
+
     def _do_post_json(self) -> None:
         """Legacy JSON POST path — kept under a private name so the
         public do_POST can dispatch /tx/audio before parsing JSON."""
@@ -1350,7 +1419,26 @@ class ControlHandler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length).decode()) if length else {}
         except json.JSONDecodeError:
             return self._json(400, {"error": "bad json"})
+        if self.path == "/tx/test":
+            return self._handle_tx_test(body)
         if self.path == "/tx/text":
+            # /tx/text is the ONLY endpoint that needs Piper. Say so
+            # precisely — and name the two variables that have to be
+            # set — instead of failing somewhere deeper. The Docker
+            # image deliberately ships WITHOUT Piper; see
+            # docs/RADIO-DMR-DOCKER.md § "Text-to-speech (/tx/text)".
+            if not (self.piper_bin and self.piper_voice):
+                return self._json(503, {
+                    "error": "tts_not_configured",
+                    "detail": (
+                        "DMR_PIPER_BIN and DMR_PIPER_VOICE are not set on "
+                        "this bridge, so text-to-speech is unavailable. "
+                        "Receive, /tx/audio and /tx/stream are unaffected. "
+                        "The Docker image ships without Piper: mount a Piper "
+                        "binary and a .onnx voice into the container and set "
+                        "those two variables — see docs/RADIO-DMR-DOCKER.md."
+                    ),
+                })
             text = (body.get("text") or "").strip()
             if not text:
                 return self._json(400, {"error": "text required"})
@@ -1392,7 +1480,13 @@ class ControlHandler(BaseHTTPRequestHandler):
 def serve_http(client: HBPClient, port: int, bearer: str,
                operator_id: int, default_tg: int,
                piper_bin: str, piper_voice: str,
-               ffmpeg_bin: str = "ffmpeg") -> ThreadingHTTPServer:
+               ffmpeg_bin: str = "ffmpeg",
+               bind_addr: str = "0.0.0.0") -> ThreadingHTTPServer:
+    """Start the CAD-facing HTTP control surface.
+
+    `bind_addr` and `port=0` exist so tests can bring the real handler up on
+    an ephemeral loopback port; production always takes the defaults.
+    """
     ControlHandler.client = client
     ControlHandler.bearer = bearer
     ControlHandler.piper_bin = piper_bin
@@ -1400,11 +1494,11 @@ def serve_http(client: HBPClient, port: int, bearer: str,
     ControlHandler.ffmpeg_bin = ffmpeg_bin
     ControlHandler.operator_id = operator_id
     ControlHandler.default_tg = default_tg
-    server = ThreadingHTTPServer(("0.0.0.0", port), ControlHandler)
+    server = ThreadingHTTPServer((bind_addr, port), ControlHandler)
     t = threading.Thread(target=server.serve_forever,
                          name="hbp-http", daemon=True)
     t.start()
-    LOG.info("HTTP control listening on :%d", port)
+    LOG.info("HTTP control listening on :%d", server.server_address[1])
     return server
 
 
@@ -1465,7 +1559,25 @@ def main() -> None:
     piper_voice = os.environ.get("DMR_PIPER_VOICE", "")
     ffmpeg_bin = os.environ.get("DMR_FFMPEG_BIN", "ffmpeg")
     http_server = None
-    if bearer and piper_bin and piper_voice:
+    # The HTTP control surface needs exactly ONE thing to be useful: a
+    # bearer token to authenticate the CAD with.
+    #
+    # It used to also require Piper (DMR_PIPER_BIN + DMR_PIPER_VOICE),
+    # but only /tx/text ever speaks to Piper. Gating the whole surface
+    # on text-to-speech meant every Docker deployment — which sets
+    # neither variable — came up with NO listener at all: /health,
+    # /audio-stream, /tx/audio and /tx/stream were taken down by a
+    # dependency none of them use, while the DMR side kept working, so
+    # the bridge looked healthy and only the CAD saw the failure.
+    # Reported by @kmk1971 in openises/tickets#10, reproduced against
+    # HBLink3.
+    if bearer:
+        if not (piper_bin and piper_voice):
+            LOG.warning(
+                "Piper is not configured (DMR_PIPER_BIN / DMR_PIPER_VOICE "
+                "are empty) — /tx/text will answer 503. Receive, /tx/audio "
+                "and /tx/stream are unaffected."
+            )
         # Start the HBP client in a worker thread so we can also
         # serve HTTP from the main thread.
         worker = threading.Thread(target=client.run, name="hbp-loop",
@@ -1477,6 +1589,12 @@ def main() -> None:
             default_tg=default_tg,
             piper_bin=piper_bin, piper_voice=piper_voice,
             ffmpeg_bin=ffmpeg_bin,
+        )
+    else:
+        LOG.warning(
+            "DMR_BEARER_TOKEN is empty — the HTTP control surface is "
+            "DISABLED and the CAD cannot reach this bridge. Set it to the "
+            "token the CAD showed when the DMR channel was created."
         )
 
     def _sigterm(_sig, _frame):

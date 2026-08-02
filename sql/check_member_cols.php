@@ -9,6 +9,9 @@
  * Safety:   Read-only. Safe to run multiple times — makes no schema changes.
  * Output:   Full column listing and one sample row.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/db.php';
 $pdo = db();

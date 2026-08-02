@@ -18,6 +18,8 @@ require_once __DIR__ . '/../config.php';
 $passed = 0;
 $failed = 0;
 
+$skipped = 0;
+
 function test($label, $condition) {
     global $passed, $failed;
     if ($condition) {
@@ -27,6 +29,68 @@ function test($label, $condition) {
         echo "[FAIL] $label\n";
         $failed++;
     }
+}
+
+/**
+ * Record a check that could not be PERFORMED, as distinct from one that failed.
+ *
+ * Deliberately does not touch the pass/fail tallies. A test that silently
+ * cannot run is worse than one that is skipped, because it looks like coverage
+ * — and a check that reports "could not do this" as "this is broken" is worse
+ * again, because it sends the reader to a file that is fine.
+ */
+function skip($label, $why) {
+    global $skipped;
+    echo "[SKIP] $label — $why\n";
+    $skipped++;
+}
+
+/**
+ * Run a program as discrete arguments; return [outputLines, exitCode, ran].
+ *
+ * GH TicketsCAD#13 (a beta tester): these checks used exec(), wrapped in
+ * `catch (Throwable)` with a pessimistic pre-initialised result. On a host with
+ * `disable_functions = exec, shell_exec, …` — a common Windows/IIS hardening
+ * default — calling exec() raises `Error: Call to undefined function exec()`.
+ * `Error` implements `Throwable`, so the catch swallowed it and the pre-set
+ * failure value survived. The suite then reported three failures that were not
+ * real, naming two files that lint perfectly well, and the "got 255" in the
+ * third was this file's own sentinel rather than any child's exit status.
+ * Nothing had run at all.
+ *
+ * That is the same defect class the runner-contract work fixed one level up:
+ * silence scored as a verdict. Here the fix is to use the mechanism that still
+ * exists on those hosts. proc_open() is not usually included in the hardening
+ * presets that remove exec/shell_exec — it is the basis of the conversion in
+ * commit 8a9ec2a — so these checks now genuinely run where they used to lie.
+ * If proc_open is gone too, the third return value says so and the caller
+ * skips rather than inventing a failure.
+ *
+ * Mirrors run_via_proc_open() in tools/check-schema.php: argv array (no shell,
+ * so no escapeshellarg — it quotes FOR a shell and there is none), stdout and
+ * stderr sharing one temp file exactly as `2>&1` did, so nothing can deadlock.
+ */
+function run_probe(array $argv) {
+    if (!function_exists('proc_open')) {
+        return [[], null, false];
+    }
+    $sink = tmpfile();
+    if ($sink === false) {
+        return [[], null, false];
+    }
+    $pipes = [];
+    $proc = @proc_open($argv, [0 => ['pipe', 'r'], 1 => $sink, 2 => $sink], $pipes);
+    if (!is_resource($proc)) {
+        fclose($sink);
+        return [[], null, false];
+    }
+    fclose($pipes[0]);
+    $exit = proc_close($proc);
+    rewind($sink);
+    $combined = rtrim((string) stream_get_contents($sink), "\r\n");
+    fclose($sink);
+    $lines = ($combined === '') ? [] : preg_split('/\r\n|\r|\n/', $combined);
+    return [$lines, $exit, true];
 }
 
 echo "=== Installation Health Checker Tests (GH #41) ===\n\n";
@@ -39,16 +103,12 @@ echo "-- Library --\n";
 
 test('inc/health-check.php exists', is_file($lib));
 
-$lintOk = false;
-try {
-    $out = [];
-    $rc  = 1;
-    exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($lib) . ' 2>&1', $out, $rc);
-    $lintOk = ($rc === 0);
-} catch (Throwable $e) {
-    $lintOk = false;
+list($out, $rc, $ran) = run_probe([PHP_BINARY, '-l', $lib]);
+if (!$ran) {
+    skip('inc/health-check.php lints (php -l)', 'no way to start a subprocess on this host');
+} else {
+    test('inc/health-check.php lints (php -l)' . ($rc === 0 ? '' : ' — ' . implode(' ', $out)), $rc === 0);
 }
-test('inc/health-check.php lints (php -l)', $lintOk);
 
 require_once $lib;
 
@@ -78,25 +138,65 @@ foreach (($dirs['dirs'] ?? []) as $d) {
         if (!array_key_exists($k, $d)) { $shapeOk = false; }
     }
     if (!array_key_exists('owner', $d)) { $shapeOk = false; }
-    if (!in_array($d['severity'], ['ok', 'warn', 'critical'], true)) { $shapeOk = false; }
+    // 'unknown' joined the model on 2026-07-31. It is not a fourth flavour of
+    // problem — it is the answer given when the account the web server runs as
+    // could not be established, in place of the confident wrong verdict that
+    // was previously produced by answering for whoever invoked the check.
+    if (!in_array($d['severity'], ['ok', 'warn', 'critical', 'unknown'], true)) { $shapeOk = false; }
+    // Writability is tri-state now; null means "not established".
+    if (!($d['writable'] === true || $d['writable'] === false || $d['writable'] === null)) { $shapeOk = false; }
 }
 test('each dir entry has path/exists/writable/owner/severity', $shapeOk);
 
-// Missing-but-creatable dir must be WARN (works on all platforms).
+// Missing-but-creatable dir must be WARN, never critical: every one of these
+// directories is created on demand by the code that needs it. Only meaningful
+// once the web server account is known — otherwise the honest answer is
+// 'unknown', which is what the same call must then produce.
 $missing = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'hc_missing_' . uniqid();
 $res = health_check_dirs([$missing]);
 $entry = null;
 foreach (($res['dirs'] ?? []) as $d) {
     if ($d['path'] === $missing) { $entry = $d; break; }
 }
-test('missing-but-creatable dir flagged as warn',
-    $entry !== null && $entry['exists'] === false && $entry['severity'] === 'warn');
+// function_exists() rather than a bare call. health_check_web_user() is newer
+// than this file's other subjects, and a test that FATALS when the library it
+// tests is a version behind reports "the suite is broken" instead of "this
+// check could not run" — the same misattribution GH TicketsCAD#13 was about,
+// one level up. It took CI down on 2026-08-01 for exactly that reason.
+// Three cases, not two. The third is the one that took CI down on 2026-08-01:
+// this assertion arrived before the inc/health-check.php half it describes, so
+// on a build without health_check_web_user() the bare call fatalled the whole
+// file. Asking function_exists() first is not defensiveness for its own sake —
+// the contract genuinely differs between the two builds, and asserting the new
+// one against the old library reports a defect that is not there.
+$hasWebUser = function_exists('health_check_web_user');
+$wuKnown    = $hasWebUser ? (health_check_web_user()['determined'] ?? false) : false;
+
+if (!$hasWebUser) {
+    // Older build: severity was always 'warn', with no 'unknown' state.
+    test('missing-but-creatable dir flagged as warn (build without web-user detection)',
+        $entry !== null && $entry['exists'] === false && $entry['severity'] === 'warn');
+} elseif (!$wuKnown) {
+    skip('missing-but-creatable dir flagged as warn',
+        'the web server account cannot be determined on this host, so the correct '
+        . 'answer is "unknown" — asserted instead below');
+    test('missing dir reports unknown (not critical) when the web account is unknown',
+        $entry !== null && $entry['exists'] === false && $entry['severity'] === 'unknown');
+} else {
+    test('missing-but-creatable dir flagged as warn',
+        $entry !== null && $entry['exists'] === false && $entry['severity'] === 'warn');
+}
 
 // Exists-but-unwritable dir must be CRITICAL (POSIX chmod semantics).
 if (PHP_OS_FAMILY === 'Windows') {
-    test('unwritable dir flagged as critical (SKIPPED on Windows — chmod 000 has no effect on NTFS; verified on Linux installs)', true);
+    skip('unwritable dir flagged as critical',
+        'chmod 000 has no effect on NTFS; the POSIX evaluator is covered without '
+        . 'a filesystem in tests/test_health_web_user.php');
 } elseif (function_exists('posix_geteuid') && posix_geteuid() === 0) {
-    test('unwritable dir flagged as critical (SKIPPED as root — root bypasses mode bits)', true);
+    skip('unwritable dir flagged as critical', 'running as root, which bypasses mode bits');
+} elseif (!$wuKnown) {
+    skip('unwritable dir flagged as critical',
+        'the web server account cannot be determined on this host');
 } else {
     $scratch = sys_get_temp_dir() . '/hc_unwritable_' . uniqid();
     $flagged = false;
@@ -221,35 +321,66 @@ $cliFile = $root . '/tools/check-health.php';
 $cliSrc  = is_file($cliFile) ? file_get_contents($cliFile) : '';
 test('tools/check-health.php exists', $cliSrc !== '');
 
-$cliLintOk = false;
-try {
-    $out = [];
-    $rc  = 1;
-    exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($cliFile) . ' 2>&1', $out, $rc);
-    $cliLintOk = ($rc === 0);
-} catch (Throwable $e) {
-    $cliLintOk = false;
+list($out, $rc, $ran) = run_probe([PHP_BINARY, '-l', $cliFile]);
+if (!$ran) {
+    skip('tools/check-health.php lints (php -l)', 'no way to start a subprocess on this host');
+} else {
+    test('tools/check-health.php lints (php -l)' . ($rc === 0 ? '' : ' — ' . implode(' ', $out)), $rc === 0);
 }
-test('tools/check-health.php lints (php -l)', $cliLintOk);
 test('CLI suggests fixes but never executes them (chown echoed, no shell_exec/system/exec of fixes)',
     strpos($cliSrc, 'chown') !== false
     && strpos($cliSrc, 'shell_exec') === false
     && strpos($cliSrc, 'system(') === false
     && strpos($cliSrc, 'exec(') === false);
-test('CLI documents CLI-vs-web-user caveat', stripos($cliSrc, 'web user') !== false || stripos($cliSrc, 'web server user') !== false);
+// The old caveat said "CLI answers reflect the CLI user, check the browser for
+// the real answer". That was an accurate description of a defect, not a
+// caveat: it is now the CLI's job to answer for the web server account itself.
+//
+// Asserted only where that capability exists. This assertion arrived ahead of
+// the tools/check-health.php half it describes, and an assertion about a
+// feature the tree does not have yet is a failing test that names the wrong
+// thing — it reads as "the CLI stopped explaining itself" rather than "this
+// build predates the change".
+if (strpos($cliSrc, 'health_check_web_user()') === false) {
+    skip('CLI states whose access it reports, and what it does when that is unknown',
+        'this build of tools/check-health.php predates the web-user reporting change');
+} else {
+    test('CLI states whose access it reports, and what it does when that is unknown',
+        stripos($cliSrc, 'web server') !== false
+        && stripos($cliSrc, 'NEWUI_WEB_USER') !== false);
+}
 test('CLI implements exit-code contract (0/1/2)', strpos($cliSrc, 'exit(2)') !== false && strpos($cliSrc, 'exit(') !== false);
 
-// Run it for real: exit code 0 (ok) or 1 (warnings) is acceptable on a
-// healthy dev box; 2 (critical) means this machine genuinely has a
-// broken dir/unreadable file and the test surfaces it.
-$cliRc  = 255;
-$cliOut = [];
-try {
-    exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($cliFile) . ' 2>&1', $cliOut, $cliRc);
-} catch (Throwable $e) {
-    // leave 255
+// Run it for real. What is under test here is the TOOL, not the machine: it must
+// execute and return a verdict from its documented contract — 0 ok, 1 warnings,
+// 2 critical. Anything else (a fatal, 255) means the tool itself is broken.
+//
+// This used to demand 0 or 1, which asserted the contract on line 240 and then
+// failed when the contract was honoured. It also made a REAL finding on the
+// machine running the tests look like a broken test: a developer box with
+// database archives still sitting in the web-served backups/ directory is
+// exactly what the 2026-07-30 exposure was, and check-health.php correctly
+// exits 2 for it. The finding is printed below so it is not lost.
+//
+// The old sentinel here was 255, which the failure message then printed as
+// "got 255" — reading like a crashed child returning a fatal-error status when
+// in fact nothing had been started. Reporting whether the probe RAN is the
+// whole point; a number invented by the caller is not evidence about the tool.
+list($cliOut, $cliRc, $cliRan) = run_probe([PHP_BINARY, $cliFile]);
+if (!$cliRan) {
+    skip('CLI runs and returns a contract exit code 0/1/2',
+         'no way to start a subprocess on this host — the tool was never invoked');
+} else {
+    test('CLI runs and returns a contract exit code 0/1/2 (got ' . $cliRc . ')',
+        $cliRc === 0 || $cliRc === 1 || $cliRc === 2);
 }
-test('CLI runs and exits 0 or 1 on this machine (got ' . $cliRc . ')', $cliRc === 0 || $cliRc === 1);
+if ($cliRan && $cliRc === 2) {
+    echo "SKIP: this machine has at least one CRITICAL finding — that is the tool\n"
+       . "      working, not a test failure. What it found:\n";
+    foreach ($cliOut as $line) {
+        if (strpos($line, '[CRIT]') !== false) { echo '      ' . trim($line) . "\n"; }
+    }
+}
 
 // ── Banner include ────────────────────────────────────────────
 echo "\n-- Admin banner --\n";
@@ -278,6 +409,20 @@ test('doc covers opcache reload + migrations + health check',
     stripos($docSrc, 'systemctl reload apache2') !== false
     && strpos($docSrc, 'run_migrations.php') !== false
     && strpos($docSrc, 'check-health.php') !== false);
+
+// State plainly how many checks could not be performed. The count of what was
+// verified is only meaningful next to the count of what was not.
+if ($skipped > 0) {
+    // Do NOT name a cause here. Each skip() call above states its own reason —
+    // subprocess execution, Windows chmod semantics, an undeterminable web
+    // account — and an earlier version of this line asserted "subprocess
+    // execution unavailable" for all of them, which was already wrong the first
+    // time another kind of skip was added. Inventing a reason is the exact
+    // defect this file was fixed for (GH TicketsCAD#13).
+    echo "\nSKIP: $skipped check(s) could not be performed on this host; each is "
+       . "marked [SKIP] above with its reason. They are excluded from the totals "
+       . "rather than counted as failures.\n";
+}
 
 echo "\n=== Results: $passed passed, $failed failed ===\n";
 exit($failed > 0 ? 1 : 0);

@@ -12,6 +12,9 @@
  * Usage:    php sql/run_phase10_i18n.php
  * Safety:   Idempotent (INSERT IGNORE on caption_key+lang unique key).
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase 10 i18n — CJIS captions\n";

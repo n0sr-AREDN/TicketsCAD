@@ -87,8 +87,17 @@
             return Promise.resolve({ ok: false, error: 'not_supported' });
         }
 
-        // Step 1: register the service worker
-        return navigator.serviceWorker.register('/sw.js')
+        // Step 1: register the service worker.
+        //
+        // The path is RELATIVE to this page, not '/sw.js'. An install served
+        // from a subdirectory (http://host/newui/, which is the documented
+        // XAMPP layout) has no /sw.js at the domain root, so the absolute form
+        // failed registration outright and Web Push could never be enabled
+        // there at all. Resolving against the current directory gives
+        // /newui/sw.js on such an install and /sw.js at a domain root, which
+        // is also the scope the worker needs in both cases.
+        var swPath = location.pathname.replace(/[^/]*$/, '') + 'sw.js';
+        return navigator.serviceWorker.register(swPath)
             .then(function (registration) {
                 // Step 2: request notification permission (must be from user gesture)
                 return Notification.requestPermission().then(function (permission) {

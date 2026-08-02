@@ -1,0 +1,67 @@
+# CODEOWNERS — who is asked to review changes to what.
+#
+# GitHub reads this file and automatically requests a review from the listed
+# owner when a pull request touches a matching path. It is a routing table, not
+# an access-control mechanism: it decides who gets *asked*, not who *can* merge.
+# Enforcement would come from a branch-protection rule requiring code-owner
+# review, which is a repository setting, not something this file can do.
+#
+# MAINTAINERS: as additional maintainers are given commit access, add them to
+# the relevant lines below and to the table in GOVERNANCE.md. Listing two or
+# more owners on a path is what lets a change be reviewed by someone other than
+# its author — the single most useful thing this file can be made to do, and
+# the specific gap recorded under the Community criterion in
+# docs/security/cisa-oss-2026-conformance.md.
+#
+# Syntax: <path pattern>  <@owner> [@owner ...]
+# Later matching lines win, so the general rule comes first.
+
+# ---------------------------------------------------------------------------
+# Default owner for everything not matched below.
+# ---------------------------------------------------------------------------
+*                               @ejosterberg
+
+# ---------------------------------------------------------------------------
+# Security-sensitive surfaces. Changes here need a deliberate second look:
+# authentication, the permission system, session handling, encryption, and the
+# audit trail. A mistake in this set is not a bug, it is an incident.
+# ---------------------------------------------------------------------------
+/inc/auth.php                   @ejosterberg
+/inc/rbac.php                   @ejosterberg
+/inc/audit.php                  @ejosterberg
+/inc/encrypt.php                @ejosterberg
+/inc/tfa.php                    @ejosterberg
+/login.php                      @ejosterberg
+/SECURITY.md                    @ejosterberg
+/docs/security/                 @ejosterberg
+/docs/SECURITY-POLICY.md        @ejosterberg
+/docs/CJIS-POSTURE.md           @ejosterberg
+
+# ---------------------------------------------------------------------------
+# Supply chain. The SBOM and its signature are published claims about what this
+# software contains; the release script and CI gates are what keep them true.
+# ---------------------------------------------------------------------------
+/SBOM.cdx.json                  @ejosterberg
+/SBOM.cdx.json.sig              @ejosterberg
+/SBOM.txt                       @ejosterberg
+/SBOM-signing-key.pub.pem       @ejosterberg
+/tools/generate-sbom.php        @ejosterberg
+/composer.json                  @ejosterberg
+/composer.lock                  @ejosterberg
+/.github/workflows/             @ejosterberg
+/.github/dependabot.yml         @ejosterberg
+
+# ---------------------------------------------------------------------------
+# Database schema and migrations. Migrations run unattended on other people's
+# production installations; there is no undo.
+# ---------------------------------------------------------------------------
+/sql/                           @ejosterberg
+
+# ---------------------------------------------------------------------------
+# Project governance and licensing.
+# ---------------------------------------------------------------------------
+/LICENSE                        @ejosterberg
+/GOVERNANCE.md                  @ejosterberg
+/CODE_OF_CONDUCT.md             @ejosterberg
+/CONTRIBUTING.md                @ejosterberg
+/CODEOWNERS                     @ejosterberg

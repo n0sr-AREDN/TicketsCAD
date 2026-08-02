@@ -33,6 +33,8 @@
  * Usage: php tools/pending_messages_tick.php
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/pending-messages.php';
 require_once __DIR__ . '/../inc/scheduled-jobs.php';
@@ -43,7 +45,17 @@ $ts = date('Y-m-d H:i:s');
 try {
     $r = pending_sweep();
     $detail = "considered={$r['considered']} sent={$r['sent']} failed={$r['failed']}"
-            . ' expired=' . ($r['expired'] ?? 0);
+            . ' expired=' . ($r['expired'] ?? 0)
+            . ' deferred=' . ($r['deferred'] ?? 0);
+    // Since 2026-07-31 this sweep also carries the outbound notifications that
+    // used to be sent inside the dispatcher's own request. Report the backlog
+    // so `journalctl -u ticketscad-pending-msg` answers "are callouts going
+    // out?" without anyone opening a browser.
+    if (function_exists('notify_queue_depth')) {
+        $q = notify_queue_depth();
+        $detail .= ' notify_pending=' . $q['pending'];
+        if ($q['oldest_age_s'] !== null) $detail .= ' oldest=' . $q['oldest_age_s'] . 's';
+    }
     echo "[{$ts}] pending_sweep: {$detail}\n";
     sched_job_record('pending_messages_tick', 'ok', $detail,
                      (int) round((microtime(true) - $t0) * 1000));

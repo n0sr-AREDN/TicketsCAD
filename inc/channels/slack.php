@@ -27,8 +27,37 @@ function _slack_send(array $message) {
         return ['success' => false, 'error' => 'Slack not configured'];
     }
 
-    $body    = $message['body'] ?? '';
-    $channel = $message['slack_channel'] ?? $config['slack_channel'] ?? '#general';
+    $body = $message['body'] ?? '';
+
+    // The destination is PINNED to configuration. It used to read
+    // `$message['slack_channel'] ?? $config['slack_channel']`, letting the
+    // message array choose where it went.
+    //
+    // Nothing could reach that today — every broker_send() call site builds its
+    // message from a fixed key list, and the one path that forwards an array
+    // wholesale (inc/router.php's route forwarding) only rewrites body,
+    // priority and type. But two receive handlers return RAW third-party JSON
+    // into that path (_slack_receive() and _sms_receive()), so the only thing
+    // standing between an inbound message and an attacker-chosen destination
+    // was the shape of somebody else's response schema. If a top-level
+    // slack_channel ever became settable — a provider schema change, a new
+    // ingest endpoint that json_decode()s a request body into a message array —
+    // every routed message would go to a channel of their choosing: incident
+    // address and type, patient counts, responder callsign and coordinates,
+    // with the routing log recording `forwarded` and success.
+    //
+    // "No path reaches it today" is exactly the state assigns.rec_facility_id
+    // and un_status.extra_data_target were in. Grepped first: no file in the
+    // tree sets slack_channel in a message array, so pinning removes nothing
+    // that works.
+    //
+    // A per-message destination may be a reasonable feature later — routing
+    // weather to one channel and dispatch to another is a fair thing to want.
+    // It is not this: it would need an admin-configured allowlist and the
+    // router's own trust marker (`_is_routed_forward`), not an unchecked key.
+    // This channel id is bound to the bot credential, not a per-message
+    // recipient like `to`.
+    $channel = $config['slack_channel'] ?? '#general';
 
     if (!$body) {
         return ['success' => false, 'error' => 'Message body required'];

@@ -1910,6 +1910,12 @@
                 return;
             }
 
+            // Phase 131 — the note is now ON the incident, so the net check-in
+            // that carried it is genuinely worked. Marking it here rather than
+            // at keypress time means abandoning the page leaves the check-in
+            // still waiting to be called on.
+            if (window.NetPrefill) window.NetPrefill.markWorked(ticketId);
+
             noteText.value = '';
             refreshIncident();
         })
@@ -2879,37 +2885,39 @@
             }
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Looking up...';
-            // Build a Nominatim forward-geocode query. Add ', USA' to
-            // bias to US results when state looks like a US 2-letter code.
+            // Build a forward-geocode query. Add ', USA' to bias to US results
+            // when state looks like a US 2-letter code.
             var parts = [];
             if (street) parts.push(street);
             if (city)   parts.push(city);
             if (state)  parts.push(state);
             var q = parts.join(', ');
             if (state && state.length <= 3) q += ', USA';
-            var url = 'https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=1&q=' +
-                      encodeURIComponent(q);
-            fetch(url)
-                .then(function (r) { return r.json(); })
-                .then(function (results) {
-                    if (!results || !results.length) {
+            Geocode.search({ q: q, limit: 1 })
+                .then(function (res) {
+                    if (!res.ok) {
+                        showAlert(res.message, 'warning');
+                        return;
+                    }
+                    if (!res.results.length) {
                         showAlert('No match found for "' + q + '". Try a simpler query or click the map to drop a pin manually.', 'warning');
                         return;
                     }
-                    var hit = results[0];
+                    var hit = res.results[0];
                     var lat = parseFloat(hit.lat);
                     var lng = parseFloat(hit.lon);
                     if (isNaN(lat) || isNaN(lng)) return;
                     _placePinAt(lat, lng, /*reverseGeocode*/ false);
                     map.setView([lat, lng], 16, { animate: true });
-                    // Surface what Nominatim matched so the dispatcher
+                    // Surface what the geocoder matched so the dispatcher
                     // can sanity-check the result before saving.
                     showAlert('Found: ' + (hit.display_name || (lat + ', ' + lng)), 'success');
                 })
-                .catch(function (err) {
-                    showAlert('Lookup failed: ' + err.message, 'danger');
-                })
                 .then(function () {
+                    // Always restores the button. Geocode.search() never
+                    // rejects, so this runs on every path — a Lookup button
+                    // left spinning forever is the exact failure this work
+                    // exists to remove.
                     btn.disabled = false;
                     btn.innerHTML = '<i class="bi bi-search me-1"></i>Lookup';
                 });
@@ -2979,14 +2987,14 @@
         if (elLng) elLng.value = lng.toFixed(6);
 
         if (!reverseGeocode) return;
-        // Reverse-geocode via Nominatim. Best-effort; only fill EMPTY
-        // fields so we don't overwrite the dispatcher's typed values.
-        fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat=' +
-              encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lng))
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                if (!data || !data.address) return;
-                var a = data.address;
+        // Reverse-geocode through the configured provider. Best-effort; only
+        // fill EMPTY fields so we don't overwrite the dispatcher's typed
+        // values. A failure is silent here on purpose — the pin is already
+        // placed, so the incident has its location either way.
+        Geocode.reverse(lat, lng)
+            .then(function (res) {
+                if (!res.ok || !res.results.length) return;
+                var a = res.results[0].address;
                 var elStreet = document.getElementById('editStreet');
                 var elCity   = document.getElementById('editCity');
                 var elState  = document.getElementById('editState');

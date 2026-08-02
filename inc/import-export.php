@@ -205,15 +205,22 @@ function get_table_config(string $target): array
                 'name'        => ['label' => 'Name',         'type' => 'string', 'required' => true,  'import' => true,  'export' => true],
                 'type'        => ['label' => 'Type',         'type' => 'int',    'required' => false, 'import' => true,  'export' => true],
                 'description' => ['label' => 'Description',  'type' => 'string', 'required' => true,  'import' => true,  'export' => true],
+                // History:
+                //   2026-07-31 (a beta tester, GH TicketsCAD#14): four of these
+                //   named columns `facilities` has never had, so exporting
+                //   Facilities failed outright. `zip` and `capacity` were
+                //   dropped — no facility screen offers a postcode, and
+                //   capacity is tracked as beds_a/beds_o, so mapping it to
+                //   either one would export a misleading single figure.
+                //   `phone` and `contact` DO have exact equivalents and are
+                //   aliased rather than dropped, so no data leaves the export.
                 'street'      => ['label' => 'Street',       'type' => 'string', 'required' => false, 'import' => true,  'export' => true],
                 'city'        => ['label' => 'City',         'type' => 'string', 'required' => false, 'import' => true,  'export' => true],
                 'state'       => ['label' => 'State',        'type' => 'string', 'required' => false, 'import' => true,  'export' => true],
-                'zip'         => ['label' => 'Zip',          'type' => 'string', 'required' => false, 'import' => true,  'export' => true],
                 'lat'         => ['label' => 'Latitude',     'type' => 'float',  'required' => false, 'import' => true,  'export' => true],
                 'lng'         => ['label' => 'Longitude',    'type' => 'float',  'required' => false, 'import' => true,  'export' => true],
-                'phone'       => ['label' => 'Phone',        'type' => 'string', 'required' => false, 'import' => true,  'export' => true],
-                'contact'     => ['label' => 'Contact',      'type' => 'string', 'required' => false, 'import' => true,  'export' => true],
-                'capacity'    => ['label' => 'Capacity',     'type' => 'int',    'required' => false, 'import' => true,  'export' => true],
+                'phone'       => ['label' => 'Phone',        'type' => 'string', 'required' => false, 'import' => true,  'export' => true, 'legacy' => 'contact_phone'],
+                'contact'     => ['label' => 'Contact',      'type' => 'string', 'required' => false, 'import' => true,  'export' => true, 'legacy' => 'contact_name'],
             ],
         ],
 
@@ -255,10 +262,19 @@ function get_table_config(string $target): array
             'match_columns' => ['name'],
             'audit_cols'   => [],
             'columns' => [
+                // History:
+                //   2026-07-31 (a beta tester, GH TicketsCAD#14): `description` and
+                //   `team_type_id` are not columns of `teams`; the real ones
+                //   are `mission` and `ttypes_id`. `name` is worse than it
+                //   looks — it exists ONLY where sql/seed_scheduling_data.php
+                //   has run, and there only as a GENERATED VIRTUAL alias of
+                //   `team`, which cannot be INSERTed into. So export failed on
+                //   installs without it and import failed on installs with it.
+                //   Aliasing to the base column works on both.
                 'id'          => ['label' => 'ID',            'type' => 'int',    'required' => false, 'import' => false, 'export' => true],
-                'name'        => ['label' => 'Team Name',     'type' => 'string', 'required' => true,  'import' => true,  'export' => true],
-                'description' => ['label' => 'Description',   'type' => 'string', 'required' => false, 'import' => true,  'export' => true],
-                'team_type_id'=> ['label' => 'Team Type ID',  'type' => 'int',    'required' => false, 'import' => true,  'export' => true],
+                'name'        => ['label' => 'Team Name',     'type' => 'string', 'required' => true,  'import' => true,  'export' => true, 'legacy' => 'team'],
+                'description' => ['label' => 'Description',   'type' => 'string', 'required' => false, 'import' => true,  'export' => true, 'legacy' => 'mission'],
+                'team_type_id'=> ['label' => 'Team Type ID',  'type' => 'int',    'required' => false, 'import' => true,  'export' => true, 'legacy' => 'ttypes_id'],
                 'active'      => ['label' => 'Active',        'type' => 'int',    'required' => false, 'import' => true,  'export' => true],
             ],
         ],
@@ -273,7 +289,12 @@ function get_table_config(string $target): array
                 'id'        => ['label' => 'ID',        'type' => 'int',    'required' => false, 'import' => false, 'export' => true],
                 'user'      => ['label' => 'Username',  'type' => 'string', 'required' => true,  'import' => false, 'export' => true],
                 'level'     => ['label' => 'Level',     'type' => 'int',    'required' => false, 'import' => false, 'export' => true],
-                'name'      => ['label' => 'Full Name', 'type' => 'string', 'required' => false, 'import' => false, 'export' => true],
+                // `user`.`name` does not exist — names are stored split as
+                // name_l / name_f. A synthesised full name is not expressible
+                // through the one-to-one `legacy` alias, and the split fields
+                // round-trip better anyway (GH TicketsCAD#14).
+                'name_l'    => ['label' => 'Last Name',  'type' => 'string', 'required' => false, 'import' => false, 'export' => true],
+                'name_f'    => ['label' => 'First Name', 'type' => 'string', 'required' => false, 'import' => false, 'export' => true],
                 'email'     => ['label' => 'Email',     'type' => 'string', 'required' => false, 'import' => false, 'export' => true],
                 'can_login' => ['label' => 'Can Login',  'type' => 'int',   'required' => false, 'import' => false, 'export' => true],
             ],
@@ -291,16 +312,33 @@ function get_table_config(string $target): array
                 'in_types_id'  => ['label' => 'Type ID',       'type' => 'int',     'required' => false, 'import' => false, 'export' => true],
                 'status'       => ['label' => 'Status',        'type' => 'int',     'required' => false, 'import' => false, 'export' => true],
                 'severity'     => ['label' => 'Severity',      'type' => 'int',     'required' => false, 'import' => false, 'export' => true],
-                'address'      => ['label' => 'Address',       'type' => 'string',  'required' => false, 'import' => false, 'export' => true],
+                // History:
+                //   2026-07-31 (a beta tester, GH TicketsCAD#14): six of these named
+                //   columns `ticket` does not have. Each alias below is
+                //   grounded in how the app itself uses the column, not
+                //   inferred from the name:
+                //     address       -> street       (api/incidents.php treats
+                //                                    street as the address)
+                //     caller_name   -> contact      \ new-incident.php's caller
+                //     caller_phone  -> phone        / inputs post to these
+                //     call_received -> date         (api/feed.php aliases
+                //                                    `date` AS `opened`)
+                //     closed        -> problemend   (api/incidents.php:159,
+                //                                    api/reports.php:391)
+                //   `dispatched` is dropped: dispatch time is a property of an
+                //   assignment (`assigns`.`dispatched`), not of the incident,
+                //   so there is nothing on `ticket` to map it to. `problemstart`
+                //   does exist and was simply missing.
+                'address'      => ['label' => 'Address',       'type' => 'string',  'required' => false, 'import' => false, 'export' => true, 'legacy' => 'street'],
                 'city'         => ['label' => 'City',          'type' => 'string',  'required' => false, 'import' => false, 'export' => true],
                 'state'        => ['label' => 'State',         'type' => 'string',  'required' => false, 'import' => false, 'export' => true],
                 'lat'          => ['label' => 'Latitude',      'type' => 'float',   'required' => false, 'import' => false, 'export' => true],
                 'lng'          => ['label' => 'Longitude',     'type' => 'float',   'required' => false, 'import' => false, 'export' => true],
-                'caller_name'  => ['label' => 'Caller Name',   'type' => 'string',  'required' => false, 'import' => false, 'export' => true],
-                'caller_phone' => ['label' => 'Caller Phone',  'type' => 'string',  'required' => false, 'import' => false, 'export' => true],
-                'call_received'=> ['label' => 'Call Received',  'type' => 'string', 'required' => false, 'import' => false, 'export' => true],
-                'dispatched'   => ['label' => 'Dispatched',     'type' => 'string', 'required' => false, 'import' => false, 'export' => true],
-                'closed'       => ['label' => 'Closed',         'type' => 'string', 'required' => false, 'import' => false, 'export' => true],
+                'caller_name'  => ['label' => 'Caller Name',   'type' => 'string',  'required' => false, 'import' => false, 'export' => true, 'legacy' => 'contact'],
+                'caller_phone' => ['label' => 'Caller Phone',  'type' => 'string',  'required' => false, 'import' => false, 'export' => true, 'legacy' => 'phone'],
+                'call_received'=> ['label' => 'Call Received',  'type' => 'string', 'required' => false, 'import' => false, 'export' => true, 'legacy' => 'date'],
+                'problemstart' => ['label' => 'Problem Start',  'type' => 'string', 'required' => false, 'import' => false, 'export' => true],
+                'closed'       => ['label' => 'Closed',         'type' => 'string', 'required' => false, 'import' => false, 'export' => true, 'legacy' => 'problemend'],
             ],
         ],
     ];
@@ -696,6 +734,13 @@ function export_csv(array $config, array $filters = []): string
     try {
         $rows = db_fetch_all($sql, $params);
     } catch (Exception $e) {
+        // The '' return is the caller's contract ("Export failed — no data or
+        // table error") and stays. But swallowing the REASON is what made GH
+        // TicketsCAD#14 take a manual reconstruction of the SELECT to
+        // diagnose: a genuinely empty table still returns a header row, so
+        // reaching this branch always means a real error, never "no rows".
+        error_log('export_csv(' . $config['table'] . ') failed: ' . $e->getMessage()
+                . ' — SQL: ' . $sql);
         return '';
     }
 

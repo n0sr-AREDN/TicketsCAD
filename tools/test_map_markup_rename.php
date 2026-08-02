@@ -19,6 +19,9 @@
  *
  * @requires-http — hits http://localhost/newui via a live Apache; skipped when NEWUI_TEST_NO_HTTP=1
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require __DIR__ . '/../config.php';
 
 $pass = 0; $fail = 0;

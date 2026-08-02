@@ -14,6 +14,8 @@
  * Usage: php tools/seed_zone_demo.php
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 chdir(__DIR__ . '/..');
 require_once 'config.php';
 

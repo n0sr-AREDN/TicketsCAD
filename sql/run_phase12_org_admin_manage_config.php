@@ -16,6 +16,9 @@
  *
  * Usage:  php sql/run_phase12_org_admin_manage_config.php
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase 12 — grant action.manage_config to Org Admin\n";

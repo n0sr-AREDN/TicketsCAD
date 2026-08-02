@@ -19,6 +19,9 @@
  *
  * Usage:  php sql/run_phase11_role_metadata.php
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase 11 — role metadata migration\n";

@@ -3,6 +3,9 @@
  * Direct API Integration Tests (no HTTP, no curl — direct PHP includes)
  * Tests that the API logic returns correct data when authenticated
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require __DIR__ . '/../config.php';
 
 echo "=== Direct API Tests ===\n\n";

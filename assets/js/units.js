@@ -601,6 +601,16 @@
 
         var unitsLayersControl = L.control.layers(baseMaps, overlays, { collapsed: true, position: 'topright' }).addTo(mapInstance);
 
+        // Per-user layer visibility, shared with every other map surface.
+        if (window.MapLayerPrefs) {
+            window.MapLayerPrefs.bind(mapInstance, {
+                temperature:   weatherTemp,
+                precipitation: weatherPrecip,
+                wind:          weatherWind,
+                clouds:        weatherClouds
+            });
+        }
+
         // ── Configured tile provider (specs/configurable-tile-providers-2026-06) ──
         // Fold the admin-configured Tile Provider in as an additional base
         // layer once map-prefs.js has fetched it. Additive + async; the

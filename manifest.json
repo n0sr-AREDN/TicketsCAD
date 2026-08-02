@@ -10,6 +10,18 @@
     "orientation": "any",
     "icons": [
         {
+            "src": "assets/icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "assets/icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
             "src": "assets/logo-light.png",
             "sizes": "600x600",
             "type": "image/png",

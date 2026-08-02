@@ -1,8 +1,7 @@
 # ATAK / TAK setup — operator guide
 
 > **Status:** outline / skeleton. The full document is filled out as Phase 91 ships. Use this as the planning artifact for the matching training video and to gauge what setup will look like.
-> **Spec:** `specs/phase-91-atak-interop/spec.md`.
-> **Authored:** 2026-06-24 (Eric initiated planning).
+> **Authored:** 2026-06-24.
 
 This guide gets you from "I have ATAK installed and want to use it with TicketsCAD" to "ATAK and TicketsCAD share incidents, units, facilities, and notes in real time." Pick the path that matches your deployment.
 
@@ -184,7 +183,6 @@ A mapping document so the operational "which tool do I open when?" decision is e
 
 ## Related docs
 
-- `specs/phase-91-atak-interop/spec.md` — the spec this guide implements.
 - [docs/TRACCAR-SETUP.md](TRACCAR-SETUP.md) — sibling integration; reuses the same per-device-token infrastructure.
 - [docs/OWNTRACKS-CONFIG-PUSH.md](OWNTRACKS-CONFIG-PUSH.md) — the per-provider equivalent for OwnTracks; useful comparison reading for how a single-protocol integration is set up.
 - [docs/MESH-BRIDGE-GUIDE.md](MESH-BRIDGE-GUIDE.md) — the underlying Meshtastic bridge service this integration extends.

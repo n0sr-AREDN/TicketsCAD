@@ -1078,6 +1078,22 @@ if (!preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', $__pttC
 <script src="assets/js/radio-widget.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/radio-widget.js') ? filemtime(__DIR__ . '/../assets/js/radio-widget.js') : newui_version(); ?>"></script>
 <!-- Shared map-defaults loader (one canonical source for all Leaflet map initializers) -->
 <script src="assets/js/map-defaults.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/map-defaults.js') ? filemtime(__DIR__ . '/../assets/js/map-defaults.js') : newui_version(); ?>"></script>
+<!-- Per-user map layer visibility. Loaded here, globally, for the same reason
+     EventBus and audio-alerts are: every map surface needs it, and a per-page
+     script tag is one more place for a new map page to forget it and silently
+     lose the operator's layer choices. Pairs with window.MAP_LAYER_PREFS. -->
+<script src="assets/js/map-layer-prefs.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/map-layer-prefs.js') ? filemtime(__DIR__ . '/../assets/js/map-layer-prefs.js') : newui_version(); ?>"></script>
+<!-- Map background status. Tells a dispatcher "map background unavailable —
+     incident data is still live" instead of leaving them to interpret a grey
+     rectangle as a dead CAD. Loaded globally so every map surface gets it;
+     MapPrefs registers each basemap with it. -->
+<script src="assets/js/map-status.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/map-status.js') ? filemtime(__DIR__ . '/../assets/js/map-status.js') : newui_version(); ?>"></script>
+<!-- Address lookup. Loaded globally, and deliberately so: the previous
+     arrangement was eleven hand-written copies of a Nominatim URL across six
+     page scripts, which is eleven places to forget and eleven different
+     failure behaviours. Everything now calls Geocode.search()/reverse().
+     Pairs with window.GEOCODING, injected below. -->
+<script src="assets/js/geocode.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/geocode.js') ? filemtime(__DIR__ . '/../assets/js/geocode.js') : newui_version(); ?>"></script>
 
 <!-- Command Bar (hidden, shown on "/" keypress) — available on all pages -->
 <div class="command-bar d-none" id="commandBar">
@@ -1234,8 +1250,106 @@ if (function_exists('get_variable')) {
     $_lps = (int) get_variable('page_size');
     if ($_lps > 0) $_list_page_size = $_lps;
 }
+
+// 2026-07-31 — expose the tile-proxy decision to client JS via
+// window.TILE_PROXY, SYNCHRONOUSLY.
+//
+// This is the fix for the defect that started this work: `tile_mode` was
+// written by three code paths and read by none, because the only place it
+// surfaced was api/map-config.php — an async fetch that the URL-building code
+// never consulted. Injecting it here, from navbar.php (which every page
+// includes), means the answer is on the page BEFORE any map builds its first
+// tile layer. An async answer would be too late by definition: the first
+// screenful of tiles would already have gone to the provider direct, which is
+// exactly the disclosure proxy mode exists to prevent.
+//
+// `allowed` carries only the providers whose terms permit us to proxy for
+// them — see inc/tile-proxy.php. The browser fetches everything else directly,
+// on purpose.
+$_tile_proxy_js = ['mode' => 'proxy', 'endpoint' => 'api/tile-proxy.php', 'allowed' => []];
+try {
+    require_once __DIR__ . '/tile-proxy.php';
+    $_tp_mode = '';
+    if (function_exists('get_variable')) {
+        $_tp = get_variable('tile_mode');
+        $_tp_mode = ($_tp === false || $_tp === null) ? '' : (string) $_tp;
+    }
+    $_tile_proxy_js['mode'] = ($_tp_mode === 'direct') ? 'direct' : 'proxy';
+    foreach (tile_proxy_policy() as $_tpKey => $_tpVal) {
+        if (!empty($_tpVal['proxy'])) {
+            $_tile_proxy_js['allowed'][] = $_tpKey;
+        }
+    }
+} catch (Throwable $e) {
+    // Degrade to direct rather than to a broken map. Logged, not swallowed.
+    error_log('[tile-proxy] navbar bootstrap failed: ' . $e->getMessage());
+    $_tile_proxy_js = ['mode' => 'direct', 'endpoint' => 'api/tile-proxy.php', 'allowed' => []];
+}
+
+// 2026-07-31 — expose this user's map LAYER VISIBILITY to client JS via
+// window.MAP_LAYER_PREFS, SYNCHRONOUSLY, for the same reason as TILE_PROXY
+// above: the answer has to be on the page BEFORE any map adds its overlays.
+//
+// Fetching it instead would mean every load shows the operator the layers they
+// switched off, then removes them a moment later — a visible flash on the one
+// screen a dispatcher stares at all shift. Injecting it costs one already-open
+// DB read and makes the apply step purely local.
+//
+// This is layer VISIBILITY only. It has nothing to do with the tile
+// provider/mode decision in $_tile_proxy_js; the two share no settings key.
+$_map_layer_prefs_js = null;
+try {
+    require_once __DIR__ . '/map-layer-prefs.php';
+    $_mlp_uid = (int) ($_SESSION['user_id'] ?? 0);
+    $_map_layer_prefs_js = map_layer_prefs_for_js($_mlp_uid);
+} catch (Throwable $e) {
+    // Degrade to the shipped defaults baked into map-layer-prefs.js rather
+    // than to a map with no overlays. Logged, not swallowed.
+    error_log('[map-layer-prefs] navbar bootstrap failed: ' . $e->getMessage());
+    $_map_layer_prefs_js = null;
+}
+
+// 2026-07-31 — expose the geocoding decision to client JS via
+// window.GEOCODING, SYNCHRONOUSLY, for exactly the reason TILE_PROXY above is
+// injected rather than fetched.
+//
+// This is the fix for the sibling of that defect: `geocoding_provider` and
+// `geocoding_api_key` were written by the Settings page and read by NOTHING,
+// while all eleven geocoding calls hardcoded nominatim.openstreetmap.org in
+// the browser. An async answer would be too late by definition — the first
+// Lookup a dispatcher presses would already have gone to whichever provider
+// was compiled into the page.
+//
+// Degrading to 'server' rather than to a hardcoded provider is deliberate: the
+// endpoint can explain itself in a sentence, and the address stays off a third
+// party while it does.
+// Whether a dispatcher is TOLD when the map background stops loading
+// (docs/OFFLINE-OPERATION.md D4). On unless an admin turns it off: a grey map
+// misread as a dead CAD is the more expensive mistake, but an unattended wall
+// display may prefer the picture uncluttered.
+$_map_status_banner = true;
+if (function_exists('get_variable')) {
+    $_msb = get_variable('map_offline_banner');
+    if ($_msb !== false && $_msb !== null && trim((string) $_msb) !== '') {
+        $_map_status_banner = !in_array(strtolower(trim((string) $_msb)), ['0', 'off', 'no', 'false'], true);
+    }
+}
+
+$_geocoding_js = ['mode' => 'server', 'requested' => 'server', 'reason' => '',
+                  'provider' => 'nominatim', 'label' => '', 'endpoint' => 'api/geocode.php',
+                  'direct_base' => '', 'unsupported' => []];
+try {
+    require_once __DIR__ . '/geocode.php';
+    $_geocoding_js = geocode_client_config();
+} catch (Throwable $e) {
+    error_log('[geocode] navbar bootstrap failed: ' . $e->getMessage());
+}
 ?>
 <script>
+window.GEOCODING           = <?php echo json_encode($_geocoding_js); ?>;
+window.MAP_STATUS_BANNER   = <?php echo json_encode((bool) $_map_status_banner); ?>;
+window.TILE_PROXY          = <?php echo json_encode($_tile_proxy_js); ?>;
+window.MAP_LAYER_PREFS     = <?php echo json_encode($_map_layer_prefs_js); ?>;
 window.STALE_LOCATION_MIN  = <?php echo (int) $_stale_loc_min; ?>;
 window.LIST_PAGE_SIZE      = <?php echo (int) $_list_page_size; ?>;
 window.DISTANCE_UNIT       = <?php echo json_encode($_dist_unit); ?>;

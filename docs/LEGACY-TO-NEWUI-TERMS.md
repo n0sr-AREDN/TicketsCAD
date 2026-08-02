@@ -56,16 +56,19 @@ The first three columns of this table are the most important. The fourth tells y
 
 These features didn't exist in v3.44. Don't waste time looking for the old name — there isn't one.
 
+Rows that point at a training video refer to the TicketsCAD training playlist:
+https://www.youtube.com/playlist?list=PLeOKl8VFMO3ZmqFQ7Yxn8QZl2cqNfMLyh
+
 | New term | What it is | Where to learn more |
 |---|---|---|
 | **RBAC** | Role-Based Access Control. 65 permissions, 6 default roles, custom roles, time-bound grants. | [RBAC-GUIDE.md](RBAC-GUIDE.md) |
-| **TOTP / 2FA / TFA** | Time-based one-time passwords. RFC 6238, 30-second window. Mandatory if your role requires it. | Settings → Login Settings; Training m02 |
-| **Backup codes** | Eight single-use codes issued at 2FA enrollment, for use if you lose your authenticator. | Training m02 |
+| **TOTP / 2FA / TFA** | Time-based one-time passwords. RFC 6238, 30-second window. Mandatory if your role requires it. | Settings → Login Settings; training video: Login + 2FA |
+| **Backup codes** | Eight single-use codes issued at 2FA enrollment, for use if you lose your authenticator. | Training video: Login + 2FA |
 | **Remember device** | Cookie-based 2FA bypass for a configurable window, bound to UA + Accept-Language + /24 IP prefix. | [SECURITY-POLICY.md](SECURITY-POLICY.md) |
 | **Force password change** | Admin can flag a user as "must change on next login". Auto-set on new-user creation and admin reset. | [SECURITY-POLICY.md](SECURITY-POLICY.md) |
 | **PAR (Personnel Accountability Report)** | Periodic check-in cycle for assigned units. Configurable cadence per incident type. | [PAR-CHECK-GUIDE.md](PAR-CHECK-GUIDE.md) |
-| **Personal resource** | A responder auto-created for a member when they clock in. Lets the person be tracked + assigned even with no fleet vehicle. | Training m18 |
-| **Clock-in / clock-out** | Members can toggle their on-duty status from the navbar or mobile UI. Drives personal-resource creation and OwnTracks-mode switching. | Training m18 |
+| **Personal resource** | A responder auto-created for a member when they clock in. Lets the person be tracked + assigned even with no fleet vehicle. | Training video: Time-keeping |
+| **Clock-in / clock-out** | Members can toggle their on-duty status from the navbar or mobile UI. Drives personal-resource creation and OwnTracks-mode switching. | Training video: Time-keeping |
 | **Location provider** | A configurable source of position data (OwnTracks, APRS, Meshtastic, browser GPS, etc.). Bound to specific responders. | [TRACCAR-SETUP.md](TRACCAR-SETUP.md) |
 | **Location inheritance** | A responder's position can come from the personnel currently assigned to it. | — |
 | **OwnTracks integration** | Per-member token, HTTP-direct posting, queued config push for rotation. | [OWNTRACKS-CONFIG-PUSH.md](OWNTRACKS-CONFIG-PUSH.md) |
@@ -76,13 +79,13 @@ These features didn't exist in v3.44. Don't waste time looking for the old name 
 | **Broker / channels** | Unified message fan-out. One `broker_send()` call dispatches to chat, SMS, SMTP, Slack, Meshtastic, DMR, etc. | [GLOSSARY § Broker](GLOSSARY.md#broker) |
 | **Routing engine** | Rules that forward messages between channels (e.g. "radio chatter on this talkgroup → post to chat"). | [ROUTING-ENGINE-REFERENCE.md](ROUTING-ENGINE-REFERENCE.md) |
 | **SSE / EventBus** | Real-time dashboard updates. Replaces v3's setInterval polling. | [GLOSSARY § SSE](GLOSSARY.md#sse-server-sent-events) |
-| **Notification tray** | Bell-icon panel in the navbar showing every event the user has rights to see. | Training m06 |
+| **Notification tray** | Bell-icon panel in the navbar showing every event the user has rights to see. | Training video: Communications |
 | **Audit log** (`audit_log` table) | OCSF-aligned, every state-changing action recorded. Distinct from the legacy per-incident `log` table. | [AUDIT-LOG-REFERENCE.md](AUDIT-LOG-REFERENCE.md) |
 | **Webhooks** | Outbound HTTP POSTs to user-configured URLs on subscribed events. HMAC-signed, retried with backoff. | [WEBHOOKS-INTEGRATOR-GUIDE.md](WEBHOOKS-INTEGRATOR-GUIDE.md) |
 | **i18n / captions** | Server-side `t($key)` calls plus a database-overlayable translation registry. EN/DE/NL/FR/ES seeded; community-extensible. | [I18N-GUIDE.md](I18N-GUIDE.md) |
-| **ICS forms** | Built-in 213, 214, 202, 205, 205a, 213rr, 206, 214a, 221 with Winlink XML export. | Training m07 |
+| **ICS forms** | Built-in 213, 214, 202, 205, 205a, 213rr, 206, 214a, 221 with Winlink XML export. | Training video: Major incidents |
 | **Map overlay categories** | Group map markups so dispatchers can toggle them in bulk. | Settings → Maps & Places → Overlay Categories |
-| **Major incidents** | Link multiple sub-incidents under a campaign with command structure. | Training m07 |
+| **Major incidents** | Link multiple sub-incidents under a campaign with command structure. | Training video: Major incidents |
 | **Quick-start wizard** | First-run setup wizard for new installations. | [INSTALLATION-CHECKLIST.md](INSTALLATION-CHECKLIST.md) |
 | **Command bar** (`/` prefix) | Type `/` anywhere to open a search-and-dispatch quick action menu. | [Help → Keyboard Shortcuts](../help.php) |
 

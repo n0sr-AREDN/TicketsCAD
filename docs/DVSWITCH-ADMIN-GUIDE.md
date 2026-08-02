@@ -4,7 +4,7 @@
 **Goal:** dispatcher can speak text onto a DMR talkgroup, and incoming DMR voice gets transcribed into the incident log.
 **Time estimate:** 90 minutes for the first install (including hardware/account prerequisites). 20 minutes per additional channel.
 
-This guide covers Phase 73i–73o of the TicketsCAD build. If you're researching whether to use DVSwitch at all vs. a future direct-to-network protocol (ODMRTP), read specs/odmrtp-2026-06/research.md first.
+This guide covers Phase 73i–73o of the TicketsCAD build. If you're weighing DVSwitch against a future direct-to-network protocol (ODMRTP), see the "Future: ODMRTP direct-to-network" section near the end of this guide first.
 
 ---
 
@@ -251,7 +251,9 @@ In your browser, log in to TicketsCAD as admin.
    - **Link mode:** `rx_and_tx` (or `rx_only` for listen-only)
    - **Chat channel:** `dispatch` (routing destination if you enable forwarding)
 3. Click **Save**.
-4. A **bearer token** appears in a modal. **Copy it immediately** — you won't see it again. The server stores SHA-256(token), not the plaintext.
+4. A **bearer token** appears in a modal. **Copy it immediately** — it is shown once and no page will ever display it again.
+
+   TicketsCAD stores this token in a form it can send, because it has to put it in an `Authorization: Bearer` header on every call it makes to the bridge — live audio, push-to-talk, health polling, weather read-outs. It is never returned to the browser after the mint dialog: the channel list reports only whether a token is set. (Until this was corrected the server stored a SHA-256 digest and then sent *that* to the bridge, so every unattended call answered 401 while the Test dialog — where a human pastes the plaintext — worked. See [openises/tickets#10](https://github.com/openises/tickets/issues/10). If you are upgrading and a channel shows a red **token unusable** badge, that is this defect; the fix is below under *Repair a channel marked "token unusable"*.)
 
 - [ ] Channel created
 - [ ] Token saved to a temporary file (you'll paste into env file next)
@@ -350,7 +352,7 @@ Back in the TicketsCAD admin UI: **Settings → Communications → DMR (DVSwitch
 
 ### Test 1: /health probe
 
-1. Paste the bearer token into the test modal.
+1. Leave the token box **empty** — the probe then uses the channel's stored bearer, which is the same value TicketsCAD sends on every unattended call. That is what makes this test meaningful: a green result here means live audio and push-to-talk authenticate too. (Fill it in only to repair a channel marked *token unusable*; see below.)
 2. Click **Test /health**.
 3. Response should be HTTP 200 with `{"ok": true, "instance": "tg9990", ...}`.
 
@@ -396,7 +398,7 @@ If all four pass: **the DMR bridge is operationally complete**. Move to producti
 
 ## Section 8 — Operational decisions
 
-These are the questions in `specs/dvswitch-proxy-2026-06/setup-log.md`. Answer them now, before you go live on a real talkgroup.
+Answer the questions below now, before you go live on a real talkgroup.
 
 ### 1. Which DMR ID?
 
@@ -518,6 +520,15 @@ If a token leaks:
 
 The old token is invalidated immediately on rotate; the bridge will start failing /health calls until the env is updated.
 
+### Repair a channel marked "token unusable"
+
+Channels created before this was corrected have a bearer stored as a SHA-256 digest. It cannot be turned back into the value the bridge compares against, so the CAD cannot present it — the channel list marks those rows **token unusable** and `php sql/run_migrations.php` lists them by name when it applies the Phase 129 migration.
+
+Two ways out, both of which leave the channel working:
+
+- **You still have the token you copied at mint time.** Row → **Test**, paste it into the token box, click **Test /health**. A 200 is the bridge itself confirming the value is the one it accepts, so TicketsCAD stores it and the badge clears. Nothing on the bridge changes and there is no restart.
+- **You don't.** Row → **Rotate Token**, copy the new value into the bridge's `DMR_BEARER_TOKEN` (Docker: `services/dvswitch/docker/.env`, then `docker compose up -d`; bare metal: `/etc/ticketscad/dvswitch-<instance>.env`, then `systemctl restart ticketscad-dvswitch@<instance>`).
+
 ---
 
 ## Troubleshooting
@@ -537,7 +548,7 @@ The old token is invalidated immediately on rotate; the bridge will start failin
 
 The current bridge architecture (bridge.py ↔ Analog_Bridge ↔ MMDVM_Bridge ↔ BrandMeister) has multiple moving parts. The Open DMR Terminal Protocol (ODMRTP) would let TicketsCAD connect directly to BrandMeister as a software terminal, bypassing MMDVM_Bridge and Analog_Bridge entirely.
 
-This is researched but not yet implemented — see `specs/odmrtp-2026-06/research.md` and `spec.md` for the design and decision criteria.
+This is researched but not yet implemented.
 
 For now: the DVSwitch stack works, is well-understood, and supports any digital-radio network MMDVM_Bridge handles (not just BrandMeister DMR — also P25, NXDN, YSF). ODMRTP is BrandMeister-specific.
 
@@ -554,8 +565,6 @@ For now: the DVSwitch stack works, is well-understood, and supports any digital-
 | Ingest endpoint | [`api/dmr-ingest.php`](../api/dmr-ingest.php) |
 | Admin JS | [`assets/js/dvswitch-admin.js`](../assets/js/dvswitch-admin.js) |
 | Schema migration | [`sql/run_phase73i_dvswitch_schema.php`](../sql/run_phase73i_dvswitch_schema.php) |
-| Architectural spec | `specs/dvswitch-proxy-2026-06/spec.md` |
-| Setup log (operational record) | `specs/dvswitch-proxy-2026-06/setup-log.md` |
 
 ---
 

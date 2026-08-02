@@ -3,6 +3,9 @@
  * Exercise the real revoke / delete_bridge behaviour against the DB, the way
  * the endpoint does it — not by hand-seeding the ideal end state.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 chdir(__DIR__ . '/..');
 require_once 'config.php';
 $prefix = $GLOBALS['db_prefix'] ?? '';

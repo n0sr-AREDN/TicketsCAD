@@ -119,6 +119,44 @@
             'Use a modern browser or enable HTTPS for security.';
 
         var body = document.body;
+
+        // GH TicketsCAD#12 (a beta tester): inserting this as body's first child is
+        // correct in normal block flow — it lands at the top of the page, which
+        // is what happens on the dashboard. But login.php centres its card by
+        // making <body> itself a flex row, and in a flex row "first child" is
+        // the leftmost COLUMN, not the top. The banner became a flex sibling of
+        // the login card and ate horizontal space in the same row: at 1280px
+        // the banner took 860px and the card 420px, totalling exactly the
+        // viewport, so justify-content:center had no slack and the card sat
+        // flush against the edge.
+        //
+        // This fires on every install served over plain HTTP — crypto.subtle is
+        // withheld outside a secure context — which is essentially every
+        // install during first-run setup, before a certificate is in place.
+        // The login page is also the page where this warning matters most,
+        // since it is where a password is about to be posted.
+        //
+        // The root cause is that the banner is inserted into a container whose
+        // layout mode it does not know. So ask: only when the body is itself a
+        // flex or grid container does the banner take itself out of flow. On
+        // every ordinary page the in-flow insertion is unchanged, so nothing
+        // that works today starts overlaying a navbar.
+        var display = '';
+        try {
+            display = window.getComputedStyle(body).display || '';
+        } catch (e) {
+            display = '';
+        }
+        if (display.indexOf('flex') !== -1 || display.indexOf('grid') !== -1) {
+            div.style.position = 'fixed';
+            div.style.top = '0';
+            div.style.left = '0';
+            div.style.right = '0';
+            div.style.zIndex = '1080';
+            div.style.margin = '0';
+            div.style.borderRadius = '0';
+        }
+
         if (body.firstChild) {
             body.insertBefore(div, body.firstChild);
         } else {

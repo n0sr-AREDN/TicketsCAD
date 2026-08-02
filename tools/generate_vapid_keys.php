@@ -15,15 +15,33 @@
 
 declare(strict_types=1);
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/../inc/vapid-keygen.php';
 
-use Minishlink\WebPush\VAPID;
-
-$keys = VAPID::createVapidKeys();
+// GH TicketsCAD#8: prefer the library, but fall back to generating with an
+// explicit openssl.cnf on hosts whose OpenSSL cannot find its own — stock
+// Windows PHP, where this used to die with "Unable to create the key".
+try {
+    $keys = vapid_generate_keypair();
+} catch (Throwable $e) {
+    fwrite(STDERR, "\n" . $e->getMessage() . "\n\n");
+    exit(1);
+}
 
 echo "\n";
 echo "VAPID keypair generated.\n";
 echo "========================\n\n";
+
+if (($keys['via'] ?? '') === 'openssl-direct') {
+    echo "Note: this host's OpenSSL could not find its own configuration file,\n";
+    echo "so the key was generated using:\n";
+    echo "  " . ($keys['config'] ?? '(located openssl.cnf)') . "\n";
+    echo "The key is valid and nothing further is required for Web Push, but\n";
+    echo "other OpenSSL-dependent features may hit the same thing — see\n";
+    echo "docs/INSTALL-WINDOWS-IIS.md.\n\n";
+}
 echo "Paste both values into Settings → Push Notifications, then\n";
 echo "set push_vapid_subject to a 'mailto:' contact (required by RFC 8292)\n";
 echo "and flip push_enabled to 1.\n\n";

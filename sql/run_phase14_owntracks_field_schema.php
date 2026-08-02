@@ -26,6 +26,9 @@
  *
  * Usage: php sql/run_phase14_owntracks_field_schema.php
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase 14 — OwnTracks comm_mode field schema fix\n";

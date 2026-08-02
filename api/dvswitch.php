@@ -11,21 +11,30 @@
  * POST   action=channel_rotate_token       — mint a new bridge bearer (returned ONCE)
  * GET    ?action=channel_test_health&id=N  — proxy /health to the bridge HTTP control
  * POST   action=channel_test_tx            — proxy /tx/test to the bridge (1 kHz tone)
- * GET    ?action=channel_recent_calls&id=N — proxy /calls/recent to the bridge
  * GET    ?action=channel_recent_messages&id=N — persisted dmr_messages rows for this channel
  *                                              (includes transcripts written by api/dmr-ingest.php)
  * POST   action=channel_tx_text             — proxy /tx/text to the bridge (Piper synthesises and keys)
  *
- * The token-mint pattern mirrors api/mesh.php's mint_token /
- * revoke_token convention: server stores the SHA-256 hash, returns
- * the raw token exactly once when minted, and the admin is
- * responsible for copying it into the bridge's env file.
+ * TOKEN STORAGE (Phase 129, openises/tickets#10)
+ * ─────────────────────────────────────────────
+ * This used to mirror api/mesh.php's mint/verify convention and store
+ * `hash('sha256', $token)`. That was a category error: mesh.php VERIFIES an
+ * incoming token, so a digest is right there; here the CAD PRESENTS the token
+ * to the bridge on every unattended call, so it needs the value itself. The
+ * digest was sent as the Bearer and the bridge — comparing against the
+ * plaintext DMR_BEARER_TOKEN — answered 401 every time.
  *
- * Phase 73j (2026-06-14).
+ * The token is now stored in the form the callers need (see inc/dmr_token.php
+ * for why plaintext, and what protects it). It is still returned to the browser
+ * exactly once, from the POST that mints it: `?action=channels` reports only a
+ * `has_token` boolean and `?action=channel` does not select the column.
+ *
+ * Phase 73j (2026-06-14); token storage corrected Phase 129 (2026-07-30).
  */
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/audit.php';
+require_once __DIR__ . '/../inc/dmr_token.php';
 ini_set('display_errors', '0');
 
 $prefix = $GLOBALS['db_prefix'] ?? '';
@@ -116,12 +125,40 @@ function dvs_bridge_call(array $ch, string $pathAndQuery, string $verb = 'GET', 
     ];
 }
 
+/**
+ * Resolve which bearer to send for an operator-driven probe.
+ *
+ * The pasted token is now OPTIONAL. Before Phase 129 it had to be supplied by
+ * hand, because the stored value was a hash and there was nothing usable to
+ * fall back to — which is precisely why the Test dialog was the ONLY path that
+ * ever authenticated while everything unattended 401'd.
+ *
+ * Order: what the operator typed wins (that is how they repair a channel whose
+ * stored token is a legacy hash), otherwise the stored token.
+ *
+ * Never returns the stored token to the caller — only into a Bearer header.
+ */
+function dvs_probe_token(array $ch, string $pasted): string
+{
+    $pasted = trim($pasted);
+    if ($pasted !== '') return $pasted;
+    return dmr_bridge_token($ch);
+}
+
 // ─── GET endpoints ────────────────────────────────────────────────
 if ($method === 'GET') {
 
     if ($action === 'channels') {
         dvs_require_perm('action.dmr_receive');
         try {
+            // NEVER select bridge_token here — the browser gets a boolean.
+            // `token_needs_regen` flags a channel whose stored token is a
+            // pre-Phase-129 SHA-256 digest: it looks present (has_token = 1)
+            // but cannot be sent to the bridge, so the UI has to say so
+            // rather than let the operator keep hunting a 401.
+            $fmt = dmr_token_format_column_exists()
+                ? "(`bridge_token` <> '' AND `bridge_token_format` = 'legacy_hash')"
+                : "0";
             $rows = db_fetch_all(
                 "SELECT id, label, talkgroup, network, bridge_host, bridge_port,
                         link_mode, chat_channel, tts_engine, tts_voice,
@@ -130,7 +167,8 @@ if ($method === 'GET') {
                         usrp_listen_port, usrp_send_port,
                         created_at, updated_at,
                         (`bridge_token` IS NOT NULL
-                          AND `bridge_token` <> '') AS has_token
+                          AND `bridge_token` <> '') AS has_token,
+                        {$fmt} AS token_needs_regen
                  FROM `{$prefix}dmr_channels`
                  ORDER BY enabled DESC, label"
             );
@@ -168,14 +206,32 @@ if ($method === 'GET') {
         $id = (int) ($_GET['id'] ?? 0);
         $token = (string) ($_GET['token'] ?? '');
         if ($id <= 0) json_error('id required');
-        if ($token === '') json_error('bridge token required (paste the value the admin saved at mint time)');
         try {
             $ch = db_fetch_one("SELECT * FROM `{$prefix}dmr_channels` WHERE id = ?", [$id]);
             if (!$ch) json_error('not found', 404);
-            $ch['_token_plain'] = $token;
+            $probe = dvs_probe_token($ch, $token);
+            if ($probe === '') json_error(dmr_token_missing_reason($ch));
+            $ch['_token_plain'] = $probe;
             $resp = dvs_bridge_call($ch, '/health', 'GET');
             // Update last_seen on success
             if ($resp['ok']) {
+                // Repair path for installs carrying a legacy hash: a 200 from
+                // /health is the BRIDGE confirming this token is the one it
+                // accepts, so adopting it is safe — and it is the only
+                // evidence that would justify overwriting a stored value.
+                // Without this the operator would have to rotate the token
+                // and restart the bridge to recover from a defect that was
+                // never theirs.
+                if (trim($token) !== '' && trim($token) !== (string) ($ch['bridge_token'] ?? '')) {
+                    try {
+                        dmr_token_adopt($id, trim($token));
+                        $resp['token_adopted'] = true;
+                        audit_log('comms', 'rotate', 'dmr_channel', $id,
+                            'Bridge token adopted from a verified /health probe');
+                    } catch (Exception $e) {
+                        error_log('[dvswitch token adopt] ' . $e->getMessage());
+                    }
+                }
                 try {
                     db_query(
                         "UPDATE `{$prefix}dmr_channels`
@@ -200,27 +256,20 @@ if ($method === 'GET') {
         }
     }
 
-    if ($action === 'channel_recent_calls') {
-        dvs_require_perm('action.dmr_receive');
-        $id = (int) ($_GET['id'] ?? 0);
-        $token = (string) ($_GET['token'] ?? '');
-        if ($id <= 0) json_error('id required');
-        if ($token === '') json_error('bridge token required');
-        try {
-            $ch = db_fetch_one("SELECT * FROM `{$prefix}dmr_channels` WHERE id = ?", [$id]);
-            if (!$ch) json_error('not found', 404);
-            $ch['_token_plain'] = $token;
-            json_response(dvs_bridge_call($ch, '/calls/recent', 'GET'));
-        } catch (Exception $e) {
-            json_error('call list failed: ' . $e->getMessage(), 500);
-        }
-    }
+    // NOTE: `channel_recent_calls` was removed in Phase 129. It proxied
+    // GET /calls/recent to the bridge — an endpoint services/dvswitch/bridge.py
+    // implements but the native HBP client (hbp_client.py, which is what the
+    // Docker image and every current bare-metal install run) never has, so it
+    // returned 404 wherever anyone actually pointed it. Nothing in the UI
+    // called it; channel_recent_messages below serves the same purpose from
+    // persisted rows, works while the bridge is offline, and needs no bearer.
+    // Flagged by @kmk1971 in openises/tickets#10.
 
     if ($action === 'channel_recent_messages') {
         // Phase 73o — pulls persisted dmr_messages rows so the panel
         // shows transcripts even when the bridge is offline or has
-        // rolled its in-memory ring buffer. Unlike channel_recent_calls
-        // this needs no bridge bearer; data is fully local.
+        // rolled its in-memory ring buffer. Needs no bridge bearer;
+        // data is fully local.
         dvs_require_perm('action.dmr_receive');
         $id = (int) ($_GET['id'] ?? 0);
         $limit = max(1, min(200, (int) ($_GET['limit'] ?? 25)));
@@ -280,30 +329,36 @@ if ($method === 'POST') {
             }
         }
         try {
-            // Mint a bearer token for the bridge.  Stored hashed.
-            $token = bin2hex(random_bytes(32));
-            $hash  = hash('sha256', $token);
+            // Mint a bearer token for the bridge. Stored in the form the
+            // CAD's outbound callers need — dmr_token_store() is the single
+            // writer, so what we hand the admin and what we later present to
+            // the bridge cannot drift apart. See inc/dmr_token.php.
+            $token = dmr_token_mint();
             db_query(
                 "INSERT INTO `{$prefix}dmr_channels`
                    (label, talkgroup, network, bridge_host, bridge_port,
                     bridge_token, usrp_listen_port, usrp_send_port,
                     link_mode, chat_channel, enabled, created_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
+                 VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, ?, 0, ?)",
                 [
                     $label, $tg, $network, $bridgeHost, $bridgePort,
-                    $hash, $listenPort, $sendPort,
+                    $listenPort, $sendPort,
                     $linkMode, $chatChan,
                     (int) ($_SESSION['user_id'] ?? 0) ?: null,
                 ]
             );
             $id = (int) db_insert_id();
+            dmr_token_store($id, $token);
             audit_log('comms', 'create', 'dmr_channel', $id,
                 "Created DMR channel '{$label}' (TG {$tg})");
             json_response([
                 'channel_id' => $id,
                 'bridge_token' => $token,   // shown ONCE
-                'note' => 'Paste this token into /etc/ticketscad/dvswitch-' . $label
-                          . '.env as DMR_BEARER_TOKEN. It will not be shown again.',
+                'note' => 'Put this token in the bridge\'s DMR_BEARER_TOKEN and restart it: '
+                          . 'Docker — DMR_BEARER_TOKEN in services/dvswitch/docker/.env, then '
+                          . '`docker compose up -d`; bare metal — /etc/ticketscad/dvswitch-'
+                          . $label . '.env, then `systemctl restart ticketscad-dvswitch@'
+                          . $label . '`. It will not be shown again.',
                 'suggested_env' => [
                     'DMR_INSTANCE'            => $label,
                     'DMR_USRP_LISTEN_PORT'    => $listenPort,
@@ -403,18 +458,16 @@ if ($method === 'POST') {
         $id = (int) ($input['id'] ?? 0);
         if ($id <= 0) json_error('id required');
         try {
-            $token = bin2hex(random_bytes(32));
-            $hash  = hash('sha256', $token);
-            db_query(
-                "UPDATE `{$prefix}dmr_channels`
-                    SET bridge_token = ?, updated_at = NOW()
-                  WHERE id = ?",
-                [$hash, $id]
-            );
+            $token = dmr_token_mint();
+            dmr_token_store($id, $token);
             audit_log('comms', 'rotate', 'dmr_channel', $id, 'Bearer token rotated');
             json_response([
                 'bridge_token' => $token,
-                'note' => 'Update /etc/ticketscad/dvswitch-<instance>.env then restart the systemd unit.',
+                'note' => 'Put this value in the bridge\'s DMR_BEARER_TOKEN and restart it '
+                          . '(Docker: services/dvswitch/docker/.env then `docker compose up -d`; '
+                          . 'bare metal: /etc/ticketscad/dvswitch-<instance>.env then '
+                          . '`systemctl restart ticketscad-dvswitch@<instance>`). '
+                          . 'It will not be shown again.',
             ]);
         } catch (Exception $e) {
             json_error('rotate failed: ' . $e->getMessage(), 500);
@@ -429,12 +482,13 @@ if ($method === 'POST') {
         $tg = (int) ($input['talkgroup'] ?? 0);
         $duration = (float) ($input['duration_s'] ?? 0.5);
         if ($id <= 0) json_error('id required');
-        if ($token === '') json_error('bridge token required');
         if ($duration > 5) $duration = 5;
         try {
             $ch = db_fetch_one("SELECT * FROM `{$prefix}dmr_channels` WHERE id = ?", [$id]);
             if (!$ch) json_error('not found', 404);
-            $ch['_token_plain'] = $token;
+            $probe = dvs_probe_token($ch, $token);
+            if ($probe === '') json_error(dmr_token_missing_reason($ch));
+            $ch['_token_plain'] = $probe;
             $tgToUse = $tg ?: (int) $ch['talkgroup'];
             $resp = dvs_bridge_call($ch, '/tx/test', 'POST', [
                 'talkgroup' => $tgToUse,
@@ -461,13 +515,14 @@ if ($method === 'POST') {
         $tg = (int) ($input['talkgroup'] ?? 0);
         $text = trim((string) ($input['text'] ?? ''));
         if ($id <= 0)        json_error('id required');
-        if ($token === '')   json_error('bridge token required');
         if ($text === '')    json_error('text required');
         if (mb_strlen($text) > 280) json_error('text too long (max 280 chars)');
         try {
             $ch = db_fetch_one("SELECT * FROM `{$prefix}dmr_channels` WHERE id = ?", [$id]);
             if (!$ch) json_error('not found', 404);
-            $ch['_token_plain'] = $token;
+            $probe = dvs_probe_token($ch, $token);
+            if ($probe === '') json_error(dmr_token_missing_reason($ch));
+            $ch['_token_plain'] = $probe;
             $tgToUse = $tg ?: (int) $ch['talkgroup'];
             $resp = dvs_bridge_call($ch, '/tx/text', 'POST', [
                 'talkgroup' => $tgToUse,

@@ -581,7 +581,15 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
                         <!-- Edit mode (hidden) -->
                         <div id="additionalEdit" class="d-none">
                             <div class="mb-2">
-                                <label class="form-label text-body-secondary mb-0">Comments</label>
+                                <?php /* GH TicketsCAD#16: this was the one label on this page
+                                        with no t() wrapper, while 110 sibling incdetail.*
+                                        captions are seeded and translated. On a non-English
+                                        install it rendered in English and no admin could
+                                        rename it through the caption system — which v3 could,
+                                        its changelog recording "10/15/08 changed 'Comments' to
+                                        'Disposition'". Same field, same wording as
+                                        new-incident.php's newinc.label.comments. */ ?>
+                                <label class="form-label text-body-secondary mb-0" for="editComments"><?php echo e(t('incdetail.label.comments', 'Disposition / Comments')); ?></label>
                                 <textarea class="form-control form-control-sm" id="editComments" rows="4"></textarea>
                             </div>
                             <div class="d-flex gap-1">
@@ -861,6 +869,9 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
 window.INCIDENT_NUMBER_LABEL = <?php echo json_encode($incNumLabel); ?>;
 </script>
 <script src="assets/js/incident-detail.js?v=<?php echo asset_v('assets/js/incident-detail.js'); ?>"></script>
+<?php /* Phase 131 — prefills the activity-log box when the operator arrived
+         here from a net check-in (?net_entry=N). No-op otherwise. */ ?>
+<script src="assets/js/net-prefill.js?v=<?php echo asset_v('assets/js/net-prefill.js'); ?>"></script>
 
 </body>
 </html>

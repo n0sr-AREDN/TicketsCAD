@@ -10,6 +10,9 @@
  *
  * Additive columns only — no destructive changes. Safe to re-run.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase 42 — MeshCore node enrichment\n";

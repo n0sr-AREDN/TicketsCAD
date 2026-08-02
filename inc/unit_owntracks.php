@@ -22,6 +22,8 @@
  * global $prefix to be in scope.
  */
 
+require_once __DIR__ . '/https.php';   // is_https(), is_https_verified()
+
 if (!function_exists('_p117_ot_provider')) {
 
     function _p117_ot_provider() {
@@ -32,7 +34,7 @@ if (!function_exists('_p117_ot_provider')) {
     }
 
     function _p117_base_url() {
-        $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $proto = is_https() ? 'https' : 'http';
         return $proto . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
     }
 

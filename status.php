@@ -783,6 +783,9 @@ $csrf     = csrf_token();
     function sevBadge(sev) {
         if (sev === 'critical') return '<span class="badge bg-danger">Critical</span>';
         if (sev === 'warn')     return '<span class="badge bg-warning text-dark">Warning</span>';
+        // "Could not tell" is its own answer. Rendering it green would be the
+        // same mistake in the other direction as the CLI's old false criticals.
+        if (sev === 'unknown')  return '<span class="badge bg-secondary">Not determined</span>';
         return '<span class="badge bg-success">OK</span>';
     }
 
@@ -793,22 +796,122 @@ $csrf     = csrf_token();
             : '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> No</span>';
     }
 
+    // Writability is tri-state: yes / no / not established. A null must never
+    // render as "No" — that is how a correctly-configured install gets told it
+    // is broken.
+    function yesNoUnknown(val) {
+        if (val === null || val === undefined) {
+            return '<span class="text-body-secondary"><i class="bi bi-question-circle"></i> Unknown</span>';
+        }
+        return yesNo(val);
+    }
+
     function render(data) {
         // Overall badge
         var crit = (data.summary && data.summary.critical) || 0;
         var warn = (data.summary && data.summary.warn) || 0;
+        var unkn = (data.summary && data.summary.unknown) || 0;
         if (crit > 0) {
             badge.className = 'badge bg-danger';
             badge.textContent = crit + ' critical';
         } else if (warn > 0) {
             badge.className = 'badge bg-warning text-dark';
             badge.textContent = warn + ' warning' + (warn === 1 ? '' : 's');
+        } else if (unkn > 0) {
+            // Not "healthy" — the report is incomplete, and saying otherwise
+            // would be asserting something that was not established.
+            badge.className = 'badge bg-secondary';
+            badge.textContent = unkn + ' not determined';
         } else {
             badge.className = 'badge bg-success';
             badge.textContent = 'healthy';
         }
 
         var html = '';
+
+        // ── Web exposure (2026-07-30) ──────────────────────────────
+        // FIRST, and loud when it fails. Every other row here is about this
+        // machine's files; this one is about what the WEB SERVER will hand to a
+        // stranger. It is at the top because the failure it detects — a
+        // downloadable database archive — is the worst thing on the page.
+        var we = data.web_exposure || {};
+        if (we.checked) {
+            if (we.severity === 'critical') {
+                html += '<div class="alert alert-danger py-2 px-3 mb-3">';
+                html += '<div class="fw-bold mb-1"><i class="bi bi-exclamation-octagon-fill me-1"></i>' +
+                        'Directories that should be private are reachable over HTTP</div>';
+                html += '<ul class="mb-2" style="font-size:0.78rem">';
+                (we.probes || []).forEach(function (p) {
+                    if (p.state !== 'exposed') return;
+                    html += '<li><code>' + esc(p.url) + '</code> answered <strong>' +
+                            esc(String(p.status)) + '</strong> — ' + esc(p.label) + '</li>';
+                });
+                html += '</ul>';
+                html += '<div style="font-size:0.75rem">' + esc(we.remedy || '') + '</div>';
+                html += '</div>';
+            } else {
+                html += '<div class="status-detail-row">';
+                html += '<span class="status-detail-label">Web exposure ' +
+                        '<small class="text-body-secondary">(backups/, sql/, tools/ probed over HTTP)</small></span>';
+                html += '<span class="status-detail-value">';
+                if (we.severity === 'warn') {
+                    html += esc(we.summary || '') + ' ' + sevBadge('warn');
+                } else {
+                    html += esc(we.summary || '') + ' ' + sevBadge('ok');
+                }
+                html += (we.cached ? ' <small class="text-body-secondary">(cached)</small>' : '');
+                html += '</span></div>';
+            }
+        }
+
+        // ── Address lookup (2026-07-31) ────────────────────────────
+        // Geocoding moved from the dispatcher's browser to this server, which
+        // is the only place that can cache it, rate-limit it, keep an API key
+        // off a browser, or reach a geocoder on your own network. It also
+        // moved the dependency: an install whose BROWSERS have internet but
+        // whose PHP process does not now has no address lookup, and the usual
+        // cause is completely silent — on Rocky/RHEL, SELinux ships
+        // httpd_can_network_connect OFF, so a stock install cannot make
+        // outbound HTTP from PHP at all and says nothing about it. This row is
+        // where that becomes visible.
+        var gc = data.geocoding || {};
+        if (gc.checked) {
+            html += '<div class="status-detail-row">';
+            html += '<span class="status-detail-label">Address lookup ' +
+                    '<small class="text-body-secondary">(geocoding)</small></span>';
+            html += '<span class="status-detail-value">';
+            var gcMode = gc.mode === 'off' ? 'off'
+                       : (gc.mode === 'direct' ? 'direct from each browser' : 'through this server');
+            html += esc(gcMode) + ' &middot; ' + esc(gc.label || gc.provider || '');
+            if (gc.cache && gc.cache.entries) {
+                html += ' <small class="text-body-secondary">(' + esc(String(gc.cache.entries)) +
+                        ' cached)</small>';
+            }
+            html += ' ' + sevBadge(gc.severity === 'critical' ? 'critical'
+                                 : (gc.severity === 'warn' ? 'warn' : 'ok'));
+            if (gc.note) {
+                html += '<br><span class="text-muted" style="white-space:pre-wrap">' +
+                        esc(gc.note) + '</span>';
+            }
+            html += '</span></div>';
+        }
+
+        // ── Where the backups are ──────────────────────────────────
+        var bk = data.backups || {};
+        if (bk.checked) {
+            html += '<div class="status-detail-row">';
+            html += '<span class="status-detail-label">Backup archive location</span>';
+            html += '<span class="status-detail-value">';
+            if (bk.severity === 'critical') {
+                html += '<span class="text-danger fw-bold">IN THE WEB ROOT</span> — ' +
+                        esc(bk.summary || '');
+                html += '<br><span class="text-muted" style="white-space:pre-wrap">' +
+                        esc(bk.remedy || '') + '</span>';
+            } else {
+                html += '<code>' + esc(bk.active_dir || '') + '</code> ' + sevBadge('ok');
+            }
+            html += '</span></div>';
+        }
 
         // ── Database schema row (Phase 125) ────────────────────────
         // Every other row here is about FILES. This one asks whether the
@@ -880,11 +983,25 @@ $csrf     = csrf_token();
         html += '</span></div>';
 
         // ── Directories table ──────────────────────────────────────
+        // The verdict, the severity model and the account being asked about all
+        // come from inc/health-check.php, so this table and
+        // `php tools/check-health.php` necessarily agree — they render one
+        // computation. Before 2026-07-31 they did not: the library answered
+        // is_writable() for whatever process called it, so the browser (running
+        // as the web server) said OK while SSH said critical about the same
+        // directory. Nothing here may recompute a verdict locally.
         var dirs = (data.dirs && data.dirs.dirs) || [];
+        var wu   = data.web_user || {};
+        var asWho = wu.determined
+            ? ' <small class="text-body-secondary">(as the web server account: <code>' +
+              esc(wu.name || ('uid ' + wu.uid)) + '</code>)</small>'
+            : ' <small class="text-body-secondary">(web server account not determined)</small>';
         html += '<div class="mt-3 mb-1 fw-semibold" style="font-size:0.8rem">' +
                 '<i class="bi bi-folder2-open me-1"></i>Required-writable directories' +
-                (data.process_user ? ' <small class="text-body-secondary">(as user: ' + esc(data.process_user) + ')</small>' : '') +
-                '</div>';
+                asWho + '</div>';
+        if (wu.note) {
+            html += '<div class="text-body-secondary mb-1" style="font-size:0.75rem">' + esc(wu.note) + '</div>';
+        }
         html += '<div class="table-responsive"><table class="table table-sm mb-2" style="font-size:0.78rem">';
         html += '<thead><tr><th>Path</th><th>Exists</th><th>Writable</th><th>Owner</th><th>Status</th></tr></thead><tbody>';
         for (var i = 0; i < dirs.length; i++) {
@@ -892,8 +1009,8 @@ $csrf     = csrf_token();
             html += '<tr>';
             html += '<td><code>' + esc(d.path) + '</code><br><small class="text-body-secondary">' + esc(d.purpose || '') + '</small></td>';
             html += '<td>' + yesNo(d.exists) + '</td>';
-            html += '<td>' + yesNo(d.exists ? d.writable : null) + '</td>';
-            html += '<td>' + (d.owner ? '<code>' + esc(d.owner) + '</code>' : '<span class="text-body-secondary">n/a</span>') + '</td>';
+            html += '<td>' + (d.exists ? yesNoUnknown(d.writable) : '<span class="text-body-secondary">n/a</span>') + '</td>';
+            html += '<td>' + (d.owner ? '<code>' + esc(d.owner) + (d.mode ? ' ' + esc(d.mode) : '') + '</code>' : '<span class="text-body-secondary">n/a</span>') + '</td>';
             html += '<td>' + sevBadge(d.severity) + (d.note ? '<br><small class="text-body-secondary">' + esc(d.note) + '</small>' : '') + '</td>';
             html += '</tr>';
         }

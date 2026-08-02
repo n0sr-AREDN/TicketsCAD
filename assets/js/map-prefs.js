@@ -22,36 +22,121 @@
 
     var PREFS_KEY = 'ticketsMapPrefs';
 
+    // Each basemap carries the PROVIDER IDENTIFIER its tiles come from. That
+    // id is what decides whether this layer can be served through the
+    // same-origin tile proxy: inc/tile-proxy.php holds a per-provider verdict
+    // based on that provider's terms, and only the permitted ones are listed
+    // in window.TILE_PROXY.allowed.
+    //
+    // Note which ones that leaves direct: Dark and Light (CARTO) and Satellite
+    // (Esri) are NOT proxyable under their terms, so those basemaps still
+    // disclose the viewport to their provider even with proxy mode on. That is
+    // deliberate and visible rather than quietly violating someone's terms —
+    // an install that wants tiles never to leave its network should pick
+    // Street (OSM) or Terrain, or configure a USGS / self-hosted provider.
     var TILE_DEFS = {
         street: {
             label: 'Street',
+            provider: 'osm',
             url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            opts: { attribution: '&copy; OSM', maxZoom: 19 }
+            opts: { attribution: '&copy; OpenStreetMap contributors', maxZoom: 19 }
         },
         dark: {
             label: 'Dark',
+            provider: 'cartodb_dark',
             url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-            opts: { attribution: '&copy; CartoDB', maxZoom: 19 }
+            opts: { attribution: '&copy; OpenStreetMap contributors &copy; CARTO', maxZoom: 19 }
         },
         terrain: {
             label: 'Terrain',
+            provider: 'opentopomap',
             url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-            opts: { attribution: '&copy; OpenTopoMap', maxZoom: 17 }
+            opts: {
+                attribution: 'Map data &copy; OpenStreetMap contributors, SRTM | ' +
+                             'Map style &copy; OpenTopoMap (CC-BY-SA)',
+                maxZoom: 17
+            }
         },
         satellite: {
             label: 'Satellite',
             // Esri's World Imagery — free for non-commercial use, no key,
             // global coverage. Matches what most operators expect from
             // a "satellite" basemap option.
+            provider: 'esri_sat',
             url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
             opts: { attribution: 'Tiles &copy; Esri', maxZoom: 19 }
         },
         light: {
             label: 'Light',
+            provider: 'cartodb_positron',
             url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-            opts: { attribution: '&copy; CartoDB', maxZoom: 19 }
+            opts: { attribution: '&copy; OpenStreetMap contributors &copy; CARTO', maxZoom: 19 }
         }
     };
+
+    // ── The tile_mode decision, in ONE place ─────────────────────────────
+    //
+    // This function is the whole point of the change that introduced it.
+    // Before it existed, `tile_mode` was persisted by three code paths,
+    // defaulted to 'proxy' on every install, described in Settings as
+    // "route through server cache — recommended", surfaced in the
+    // api/map-config.php payload… and read by nothing. The URL handed to
+    // Leaflet was always the provider's own. The setting was inert.
+    //
+    // window.TILE_PROXY is injected server-side by inc/navbar.php, so it is
+    // available synchronously — before the first tile layer is constructed.
+    // Anything async would already have leaked the first screenful.
+
+    /**
+     * The URL Leaflet should use for a basemap: the same-origin proxy when
+     * proxy mode is on AND this provider's terms allow us to proxy for it,
+     * otherwise the provider's own URL.
+     *
+     * @param {string} providerId  e.g. 'osm' — '' means "not a known provider"
+     * @param {string} directUrl   the provider's own template
+     * @returns {string}
+     */
+    function tileUrlFor(providerId, directUrl) {
+        var cfg = window.TILE_PROXY;
+        if (!cfg || cfg.mode !== 'proxy' || !providerId) return directUrl;
+        var allowed = cfg.allowed || [];
+        for (var i = 0; i < allowed.length; i++) {
+            if (allowed[i] === providerId) {
+                return (cfg.endpoint || 'api/tile-proxy.php') +
+                       '?provider=' + encodeURIComponent(providerId) +
+                       '&z={z}&x={x}&y={y}';
+            }
+        }
+        return directUrl;
+    }
+
+    /** Shallow copy — ES5, no Object.assign. */
+    function copyOpts(src) {
+        var out = {};
+        for (var k in src) { if (src.hasOwnProperty(k)) out[k] = src[k]; }
+        return out;
+    }
+
+    /**
+     * Build a tile layer for a TILE_DEFS-shaped entry, honouring proxy mode.
+     *
+     * Attribution is carried through UNCHANGED in both modes. Proxying moves
+     * where the bytes come from; it does not move the obligation to credit the
+     * people whose map it is.
+     */
+    function buildProviderLayer(def) {
+        var url = tileUrlFor(def.provider || '', def.url);
+        var opts = def.opts;
+        if (url !== def.url) {
+            // Proxied: our endpoint has no {s} placeholder, so a subdomains
+            // option would be meaningless (and Leaflet would still try to
+            // interpolate it). Strip it; keep everything else, attribution
+            // very much included.
+            opts = copyOpts(def.opts);
+            delete opts.subdomains;
+        }
+        return buildLayer(url, opts);
+    }
 
     function readPrefs() {
         try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch (e) { return {}; }
@@ -111,10 +196,26 @@
                 .replace(/_/g, ' ')
                 .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
         }
+        var opts = customOpts(cfg);
+
+        // The server already decided this one. api/map-config.php knows the
+        // admin's custom template and API key, so it — not the browser — works
+        // out whether this provider can be proxied and what the proxy URL is.
+        // tile_effective_mode is the mode that will ACTUALLY be used, which
+        // differs from the configured tile_mode whenever the provider's terms
+        // forbid proxying.
+        if (cfg.tile_effective_mode === 'proxy' && cfg.tile_proxy_url) {
+            url = cfg.tile_proxy_url;
+            delete opts.subdomains;   // proxy URL has no {s}
+        }
+
         TILE_DEFS.custom = {
             label: label,
+            // Already resolved above; keep the id out of tileUrlFor's way so
+            // it cannot be substituted a second time.
+            provider: '',
             url: url,
-            opts: customOpts(cfg)
+            opts: opts
         };
     }
 
@@ -155,6 +256,22 @@
         return L.tileLayer(url, opts);
     }
 
+    /**
+     * Register a basemap layer with MapStatus so a dispatcher is TOLD when the
+     * map background stops loading, instead of watching it turn grey and
+     * concluding the CAD has failed (docs/OFFLINE-OPERATION.md D4).
+     *
+     * Hooked here, at the one place basemaps are attached to a map, rather
+     * than per page — the same reasoning that put geocode.js and
+     * map-layer-prefs.js in the navbar. A page that forgets is a page whose
+     * dispatcher gets no explanation.
+     */
+    function watchBasemap(mapInstance, layer) {
+        if (window.MapStatus && typeof window.MapStatus.watch === 'function') {
+            try { window.MapStatus.watch(mapInstance, layer); } catch (e) { /* never break the map */ }
+        }
+    }
+
     // Shared RainViewer radar layer (Eric 2026-07-04). Returns an empty
     // tile layer and asynchronously points it at the newest radar frame,
     // re-checking every 5 minutes so a long-lived map stays current
@@ -163,30 +280,55 @@
     // maps sharing the page don't each spin their own poll.
     var _radarTimer = null;
     var _radarLayers = [];
+    var _radarActive = 0;
+
+    // The catalogue is fetched ONLY while the radar layer is actually on a
+    // map, and the polling stops when the last one comes off
+    // (docs/OFFLINE-OPERATION.md D7).
+    //
+    // It used to be fetched the moment the layer control was BUILT — which is
+    // on every map page, whether or not the operator had ever switched radar
+    // on — and then every five minutes for as long as the page stayed open. A
+    // dispatch console sitting on the incident list quietly told a third party
+    // it was still running, all shift. SECURITY.md described this as happening
+    // only when radar was enabled, which was not accurate; it is now.
+    function refreshRadar() {
+        if (_radarActive <= 0) { return; }
+        fetch('https://api.rainviewer.com/public/weather-maps.json')
+            .then(function (r) { return r.json(); })
+            .then(function (cat) {
+                var frames = (cat && cat.radar && cat.radar.past) || [];
+                if (!frames.length) return;
+                var latest = frames[frames.length - 1];
+                var host = cat.host || 'https://tilecache.rainviewer.com';
+                var url = host + latest.path + '/256/{z}/{x}/{y}/4/1_1.png';
+                for (var i = 0; i < _radarLayers.length; i++) {
+                    _radarLayers[i].setUrl(url);
+                }
+            })
+            .catch(function () { /* offline / blocked — layer stays empty */ });
+    }
+
     function makeRadarLayer() {
         var layer = L.tileLayer('', { opacity: 0.7, maxZoom: 19, errorTileUrl: '' });
         _radarLayers.push(layer);
-        function refreshRadar() {
-            fetch('https://api.rainviewer.com/public/weather-maps.json')
-                .then(function (r) { return r.json(); })
-                .then(function (cat) {
-                    var frames = (cat && cat.radar && cat.radar.past) || [];
-                    if (!frames.length) return;
-                    var latest = frames[frames.length - 1];
-                    var host = cat.host || 'https://tilecache.rainviewer.com';
-                    var url = host + latest.path + '/256/{z}/{x}/{y}/4/1_1.png';
-                    for (var i = 0; i < _radarLayers.length; i++) {
-                        _radarLayers[i].setUrl(url);
-                    }
-                })
-                .catch(function () { /* offline / blocked — layer stays empty */ });
-        }
-        if (!_radarTimer) {
+
+        // Leaflet fires 'add'/'remove' on the LAYER when it joins or leaves a
+        // map, which is exactly the operator's decision to show radar or not.
+        layer.on('add', function () {
+            _radarActive++;
             refreshRadar();
-            _radarTimer = setInterval(refreshRadar, 5 * 60 * 1000);
-        } else {
-            refreshRadar();
-        }
+            if (!_radarTimer) {
+                _radarTimer = setInterval(refreshRadar, 5 * 60 * 1000);
+            }
+        });
+        layer.on('remove', function () {
+            _radarActive = Math.max(0, _radarActive - 1);
+            if (_radarActive === 0 && _radarTimer) {
+                clearInterval(_radarTimer);
+                _radarTimer = null;
+            }
+        });
         return layer;
     }
 
@@ -381,7 +523,34 @@
          */
         makeLayer: function (key) {
             var def = TILE_DEFS[key] || TILE_DEFS.street;
-            return buildLayer(def.url, def.opts);
+            return buildProviderLayer(def);
+        },
+
+        /**
+         * The URL a basemap should use given the install's tile mode: the
+         * same-origin proxy when proxy mode is on and the provider's terms
+         * permit it, otherwise the provider's own URL.
+         *
+         * Exposed so map pages that build their own layers (the dashboard in
+         * app.js does) get the same answer as MapPrefs' own basemaps, from the
+         * same function, instead of each re-deriving it.
+         *
+         * @param {string} providerId  inc/tile-proxy.php policy key, e.g. 'osm'
+         * @param {string} directUrl   the provider's own template
+         * @returns {string}
+         */
+        tileUrlFor: function (providerId, directUrl) {
+            return tileUrlFor(providerId, directUrl);
+        },
+
+        /**
+         * Whether tiles for a provider are being routed through this server.
+         * @param {string} providerId
+         * @returns {boolean}
+         */
+        isProxied: function (providerId) {
+            var direct = 'about:blank';
+            return tileUrlFor(providerId, direct) !== direct;
         },
 
         /**
@@ -424,7 +593,7 @@
         createTileLayer: function () {
             var key = this.getBasemap();
             var def = TILE_DEFS[key] || TILE_DEFS.street;
-            return buildLayer(def.url, def.opts);
+            return buildProviderLayer(def);
         },
 
         /**
@@ -435,6 +604,7 @@
         addDefaultBasemap: function (mapInstance) {
             var layer = this.createTileLayer();
             layer.addTo(mapInstance);
+            watchBasemap(mapInstance, layer);
             return layer;
         },
 
@@ -479,7 +649,11 @@
             for (var key in TILE_DEFS) {
                 if (TILE_DEFS.hasOwnProperty(key)) {
                     var def = TILE_DEFS[key];
-                    baseMaps[def.label] = buildLayer(def.url, def.opts);
+                    baseMaps[def.label] = buildProviderLayer(def);
+                    // Every basemap the operator can switch TO, not just the
+                    // one showing now — switching to a dead provider must
+                    // explain itself too.
+                    watchBasemap(mapInstance, baseMaps[def.label]);
                 }
             }
 
@@ -518,6 +692,22 @@
             }).addTo(mapInstance);
             mapInstance._ticketsLayerCtl = ctl;
 
+            // Per-user layer visibility, shared with the dashboard and the
+            // situation screen so one preference governs every surface. These
+            // weather overlays previously had no persistence of any kind here:
+            // only the markup CATEGORIES below were remembered, and only in
+            // localStorage. Binding is local + synchronous (the answer comes
+            // from window.MAP_LAYER_PREFS), so it costs nothing at render time.
+            if (window.MapLayerPrefs && includeWeather) {
+                window.MapLayerPrefs.bind(mapInstance, {
+                    radar:         overlays['Radar'],
+                    temperature:   overlays['Temperature'],
+                    precipitation: overlays['Precipitation'],
+                    wind:          overlays['Wind'],
+                    clouds:        overlays['Clouds']
+                });
+            }
+
             // Eric 2026-07-04 — event map image overlays (#43) on every
             // map that uses this control, so the traced event map is
             // visible while viewing/editing a unit's location. No-op if
@@ -552,7 +742,7 @@
                 return function () {
                     if (!TILE_DEFS.custom || ctlRef._ticketsCustomAdded) return;
                     var def = TILE_DEFS.custom;
-                    ctlRef.addBaseLayer(buildLayer(def.url, def.opts), def.label);
+                    ctlRef.addBaseLayer(buildProviderLayer(def), def.label);
                     ctlRef._ticketsCustomAdded = true;
                 };
             })(ctl));

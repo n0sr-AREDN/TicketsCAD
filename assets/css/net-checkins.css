@@ -1,0 +1,209 @@
+/**
+ * NewUI v4.0 — Net-Control Check-In widget (Phase 131)
+ *
+ * A floating panel above the situational widgets. Every colour comes from a
+ * Bootstrap CSS variable so the panel reads correctly in BOTH themes — the
+ * night shift is the shift that runs severe-weather nets, and a hardcoded
+ * light-theme colour would make it unreadable exactly when it matters.
+ */
+
+/* ── Floating: above, movable, resizable, and centred until it is moved ──
+   "Floating" means four things (owner review 2026-08-01): it sits ABOVE the
+   other widgets, it can be MOVED, it can be RESIZED, and where it was left is
+   where it comes back. The first three are here; the remembering is in
+   assets/js/net-checkins.js.
+
+   The default position is the CENTRE of the viewport, expressed as a
+   translate() so no measurement is needed before first paint. The moment JS
+   applies a stored pixel position it adds .net-panel-placed, which cancels the
+   translate — otherwise the saved left/top would land half a panel off. */
+.net-checkin-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 30rem;
+    max-width: calc(100vw - 2rem);
+    max-height: calc(100vh - 5rem);
+    min-width: 20rem;
+    min-height: 9rem;
+    z-index: 1045;         /* above GridStack widgets, below modals (1055) */
+    border-color: var(--bs-primary-border-subtle, var(--bs-border-color));
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;      /* keeps the rounded corners while the body scrolls */
+}
+
+.net-checkin-panel.net-panel-placed {
+    transform: none;
+}
+
+/* Dragging by the header. Not on the controls inside it — the buttons and the
+   number input must still take a plain click. */
+#netCheckinHeader {
+    cursor: move;
+    user-select: none;
+}
+
+#netCheckinHeader .btn,
+#netCheckinHeader input,
+#netCheckinHeader .widget-refresh {
+    cursor: pointer;
+    user-select: auto;
+}
+
+#netCheckinHeader input { cursor: text; }
+
+/* While a drag or resize is in flight, don't let the pointer select text or
+   land on the map underneath. */
+.net-checkin-panel.net-panel-dragging {
+    user-select: none;
+}
+
+.net-checkin-resize-handle {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 14px;
+    height: 14px;
+    cursor: nwse-resize;
+    /* Two hairlines, drawn from the theme's own border colour so the grip
+       reads in both themes without a hardcoded grey. */
+    background:
+        linear-gradient(135deg, transparent 0 45%, var(--bs-border-color) 45% 55%, transparent 55% 100%),
+        linear-gradient(135deg, transparent 0 70%, var(--bs-border-color) 70% 80%, transparent 80% 100%);
+    opacity: 0.8;
+}
+
+/* The panel takes focus for the hotkeys; show that it has it, without the
+   default heavy outline covering the content. */
+.net-checkin-panel:focus,
+.net-checkin-panel:focus-visible {
+    outline: 2px solid var(--bs-primary);
+    outline-offset: 1px;
+}
+
+/* flex child, so the list takes whatever height the operator resized to.
+   min-height:0 is what actually lets it shrink inside a flex column. */
+.net-checkin-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* The header carries the title, six action buttons, the history count and the
+   refresh control. On a narrow panel it wraps rather than overflowing — the
+   same set of controls the Responders header carries, in less width. */
+#netCheckinHeader { row-gap: 0.15rem; }
+
+.net-checkin-title { white-space: nowrap; }
+
+.net-checkin-table {
+    margin-bottom: 0;
+    font-size: 0.8125rem;
+}
+
+.net-checkin-table td {
+    padding: 0.15rem 0.4rem;
+    vertical-align: middle;
+    border-color: var(--bs-border-color-translucent);
+}
+
+.net-col-ident { width: 6rem; white-space: nowrap; }
+.net-col-note  { word-break: break-word; }
+.net-col-time  { width: 5.5rem; text-align: right; }
+
+/* ── Entry state ──────────────────────────────────────────────────────────
+   FR-6: worked and deleted check-ins must be obvious at a glance so the
+   operator can see who they still owe a turn. Opacity carries the "processed"
+   signal and a background tint reinforces it; both derive from theme
+   variables, so this holds in dark mode. */
+
+.net-row-pending { background-color: transparent; }
+
+.net-row-worked {
+    opacity: 0.55;
+    background-color: var(--bs-success-bg-subtle);
+}
+
+.net-row-deleted {
+    opacity: 0.45;
+    background-color: var(--bs-secondary-bg-subtle);
+}
+
+.net-row-deleted .net-col-ident,
+.net-row-deleted .net-col-note {
+    text-decoration: line-through;
+}
+
+/* Selection has to beat the state tints, or the operator loses their place. */
+.net-checkin-table tr.net-row-selected > td {
+    background-color: var(--bs-primary-bg-subtle);
+    box-shadow: inset 2px 0 0 var(--bs-primary);
+}
+
+.net-checkin-table tr.net-row-selected {
+    opacity: 1;
+}
+
+.net-state-tag {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    opacity: 0.8;
+}
+
+/* ── History count control ── */
+.net-history-count {
+    width: 4.25rem;
+    padding-top: 0.05rem;
+    padding-bottom: 0.05rem;
+}
+
+/* ── [a] append picker ── */
+.net-checkin-picker {
+    max-height: 16rem;
+    overflow-y: auto;
+    border-top: 1px solid var(--bs-border-color);
+    background-color: var(--bs-body-bg);
+}
+
+.net-picker-title {
+    background-color: var(--bs-tertiary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+}
+
+.net-picker-list .list-group-item {
+    font-size: 0.8125rem;
+    cursor: pointer;
+}
+
+/* The footer key legend is gone: the hotkeys are now labelled buttons with
+   keycap badges in the header, the same component the Responders widget uses
+   (assets/css/action-bar.css). A run of plain text along the bottom was the
+   thing that made this panel look like another application. */
+
+/* On a phone the panel spans the width rather than floating. A stored desktop
+   position must not follow it there, so these win over the inline styles. */
+@media (max-width: 576px) {
+    .net-checkin-panel,
+    .net-checkin-panel.net-panel-placed {
+        top: auto !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: auto !important;
+        height: auto !important;
+        max-width: none;
+        max-height: 60vh;
+        border-radius: 0;
+        transform: none;
+    }
+    .net-checkin-body { max-height: 40vh; }
+    .net-checkin-resize-handle { display: none; }
+    #netCheckinHeader { cursor: default; }
+}
+
+@media print {
+    .net-checkin-panel { display: none !important; }
+}

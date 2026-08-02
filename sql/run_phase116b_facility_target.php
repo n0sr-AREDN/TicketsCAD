@@ -13,6 +13,9 @@
  * this migration is data hygiene: it makes the stored target agree with reality so
  * the Settings status editor shows the right value. Idempotent.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/db.php';
 $prefix = $GLOBALS['db_prefix'] ?? '';

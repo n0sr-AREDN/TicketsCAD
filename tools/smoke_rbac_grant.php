@@ -3,6 +3,9 @@
  * Smoke test for inc/rbac_grant.php — runs in-process, no HTTP.
  * Throwaway tool; not part of the regression suite.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/rbac_grant.php';
 

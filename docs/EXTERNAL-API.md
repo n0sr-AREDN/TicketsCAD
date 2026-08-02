@@ -559,7 +559,7 @@ PATCH /api/external/v1/members/<id>/status
 
 **Status:** PENDING (Phase 94 Stage 4b). Handler file `responders.php` not on disk yet — `GET/POST/PATCH/DELETE /api/external/v1/responders[...]` return `501 endpoint_not_implemented`.
 
-Planned shape per `plan.md` §4:
+Planned shape:
 
 | Method | Path                                       | Scope             | RBAC                    | Internal helper             |
 |--------|--------------------------------------------|-------------------|-------------------------|------------------------------|
@@ -918,7 +918,7 @@ These are the only event types TicketsCAD can fire (the canonical list, from [`i
 | `incident` / `assign` / `responder` | `assign.created`         |
 | `incident` / `unassign` / `responder` | `assign.removed`       |
 
-Note 1: `incident|update|responder` is fired by TWO internal paths (the responder-edit update AND `setResponderStatus()` from the assignments flow). With one map slot per tuple the safer pick is `responder.status_changed`. Subscribers needing distinct `responder.updated` events should use the external API's `PATCH /responders/<id>` path or wait for the internal-endpoint refactor that's queued in `specs/handoff.md`.
+Note 1: `incident|update|responder` is fired by TWO internal paths (the responder-edit update AND `setResponderStatus()` from the assignments flow). With one map slot per tuple the safer pick is `responder.status_changed`. Subscribers needing distinct `responder.updated` events should use the external API's `PATCH /responders/<id>` path or wait for the queued internal-endpoint refactor.
 
 **Attachments:**
 

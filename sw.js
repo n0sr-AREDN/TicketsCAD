@@ -12,6 +12,39 @@
  * Lives at the web root (NOT under /assets/) so its scope can be
  * '/' — service workers can only control pages within their own
  * directory scope.
+ *
+ * ── THERE IS DELIBERATELY NO `fetch` HANDLER AND NO CACHE ─────────────
+ *
+ * docs/FAQ.md used to claim this worker "caches static assets so the UI
+ * shell loads offline". It never has, and after review (2026-07-31,
+ * docs/OFFLINE-OPERATION.md D10) it should not. The FAQ was corrected
+ * rather than the code, for four reasons worth recording so the omission
+ * is not read as an oversight and "fixed":
+ *
+ *   1. On a LAN install the server IS the box in the closet. When the
+ *      internet fails, the server is still up and still serving these
+ *      assets in milliseconds. A shell cache optimises a problem that
+ *      configuration does not have.
+ *   2. A CAD shell without data is worse than an honest error page. A
+ *      dispatcher who reaches a loaded UI showing an empty incident list
+ *      may reasonably conclude there are no active incidents. A failed
+ *      page load cannot be misread that way.
+ *   3. Stale cached JavaScript running against an upgraded API is this
+ *      project's documented worst bug class (the API/JS contract gate,
+ *      tools/api_contract_audit.php), and a service-worker cache makes it
+ *      invisible AND unfixable by phone: Ctrl-Shift-R does not clear one.
+ *      The About page reads the version server-side, so it would report the
+ *      new version while the browser ran the old one.
+ *   4. Asset URLs are not consistently versioned yet (several navbar
+ *      scripts carry no ?v= at all), so a cache-first shell would pin
+ *      exactly those files indefinitely.
+ *
+ * If you are here to add caching: fix asset versioning first, cache a
+ * NAMED allowlist of files rather than a URL pattern, never cache a
+ * response fetched with credentials, key the cache name to the app
+ * version so an upgrade evicts it — and update docs/FAQ.md and the
+ * outbound-disclosure table in the same change. tests/test_service_worker.php
+ * enforces the current state.
  */
 
 'use strict';
@@ -38,8 +71,14 @@ self.addEventListener('push', function (event) {
     var title = payload.title || 'TicketsCAD';
     var options = {
         body:  payload.body || '',
-        icon:  '/assets/icons/icon-192.png',
-        badge: '/assets/icons/badge-72.png',
+        // RELATIVE, not '/assets/...'. A service worker resolves a relative
+        // URL against its own location, so this works on an install served
+        // from a subdirectory (http://host/newui/) as well as from a domain
+        // root. The absolute form 404'd on every subdirectory install — and
+        // assets/icons/ did not exist at all until 2026-07-31, so until then
+        // every push notification rendered with no icon everywhere.
+        icon:  'assets/icons/icon-192.png',
+        badge: 'assets/icons/badge-72.png',
         tag:   payload.tag || 'tcad-notification',
         renotify: true,         // re-alert even if tag matches
         requireInteraction: false,

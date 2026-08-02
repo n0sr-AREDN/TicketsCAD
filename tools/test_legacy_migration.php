@@ -15,6 +15,9 @@
 
 // Fresh-install guard (QA automation 2026-07-07): this suite migrates
 // settings out of a legacy /tickets install. Without one, skip cleanly.
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 $__legacyCfg = __DIR__ . '/../../tickets/incs/mysql.inc.php';
 if (!file_exists($__legacyCfg)) {
     echo "SKIP: no legacy tickets/ install found — nothing to migrate\n";

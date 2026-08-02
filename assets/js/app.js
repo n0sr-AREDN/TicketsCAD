@@ -185,11 +185,11 @@
             if (saveTimer) clearTimeout(saveTimer);
             saveTimer = setTimeout(function () {
                 if (window.ScreenPrefs) {
-                    window.ScreenPrefs.save('dashboard', {
-                        columns: [],
-                        sort: { col: '', dir: 'asc' },
-                        options: { recent_close_mins: v }
-                    });
+                    // saveOptions, not save: the 'dashboard' screen's options
+                    // block now has a second writer (the net-control panel's
+                    // remembered position/size), and a whole-blob save wipes
+                    // whatever the other one stored.
+                    window.ScreenPrefs.saveOptions('dashboard', { recent_close_mins: v });
                 }
                 // Trigger an immediate refresh of just the incidents widget.
                 DataService.fetchAll(['incidents']).then(function (data) {
@@ -927,16 +927,35 @@
             if (window.TypeIcons && TypeIcons.bindLabelZoom) { TypeIcons.bindLabelZoom(map); }
 
             // ── Base Layers ──
-            var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap',
-                maxZoom: 19,
-            });
-            var usgsTopoLayer = L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}', {
-                attribution: 'USGS',
+            // Routed through the same-origin tile proxy when the install's
+            // tile_mode is 'proxy' AND the provider's terms allow us to proxy
+            // for them (MapPrefs.tileUrlFor consults window.TILE_PROXY, which
+            // inc/navbar.php injects server-side — so the decision is made
+            // BEFORE the first tile request, not after an async fetch).
+            //
+            // Of the three below, OSM and USGS are proxyable; CARTO's terms do
+            // not permit it, so Dark keeps going direct to their CDN. See
+            // inc/tile-proxy.php for the per-provider verdicts.
+            var tileUrl = function (provider, direct) {
+                return (window.MapPrefs && window.MapPrefs.tileUrlFor)
+                    ? window.MapPrefs.tileUrlFor(provider, direct)
+                    : direct;
+            };
+            var osmUrl = tileUrl('osm', 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
+            var osmOpts = { attribution: '&copy; OpenStreetMap contributors', maxZoom: 19 };
+            var osmLayer = L.tileLayer(osmUrl, osmOpts);
+
+            var usgsUrl = tileUrl('usgs_imagery_topo',
+                'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}');
+            var usgsTopoLayer = L.tileLayer(usgsUrl, {
+                attribution: 'USGS The National Map',
                 maxZoom: 20,
             });
-            var darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; CartoDB',
+
+            var darkUrl = tileUrl('cartodb_dark',
+                'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png');
+            var darkLayer = L.tileLayer(darkUrl, {
+                attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
                 maxZoom: 19,
                 className: 'dark-tiles',
             });
@@ -952,6 +971,11 @@
             };
 
             // ── Data Layer Groups ──
+            // Added per the SHIPPED default here; MapLayerPrefs.bind() below
+            // reconciles them against the operator's saved choice (and the
+            // administrator default) before the first paint. Do NOT read the
+            // preference here — bind() is the single place that decides, so
+            // there is one answer instead of two that can disagree.
             layerGroups.incidents = L.layerGroup().addTo(map);
             layerGroups.responders = L.layerGroup().addTo(map);
             layerGroups.facilities = L.layerGroup().addTo(map);
@@ -986,8 +1010,28 @@
                 overlays['Wind'] = L.OWM.wind(owmOpts);
                 overlays['Snow'] = L.OWM.snow(owmOpts);
 
-                // City Weather — override URL template to use proxy
-                var cityWeather = L.OWM.current({ interval: 15, lang: 'en', minZoom: 8, appId: 'proxy' });
+                // City Weather — override URL template to use proxy.
+                //
+                // The three imageUrl* overrides are a second, separate fix
+                // (docs/OFFLINE-OPERATION.md D12). leaflet-openweathermap
+                // hardcodes `http://openweathermap.org/img/...` for its marker
+                // icons, so on any HTTPS install every one of them was blocked
+                // as mixed content — the icons have been broken since the day
+                // the plugin was vendored, independent of any outage. They are
+                // overridden HERE rather than in the vendored file for the same
+                // reason baseUrl and _urlTemplate already are: the file is
+                // third-party, hashed individually in the SBOM, and patching it
+                // would put a local modification in the path of every future
+                // update. (openweathermap.org is allowlisted in the CSP's
+                // img-src alongside tile.openweathermap.org — only the tile
+                // host was there before, so https alone would still have been
+                // blocked.)
+                var cityWeather = L.OWM.current({
+                    interval: 15, lang: 'en', minZoom: 8, appId: 'proxy',
+                    imageUrlCity:    'https://openweathermap.org/img/w/{icon}.png',
+                    imageUrlStation: 'https://openweathermap.org/img/s/istation.png',
+                    imageUrlPlane:   'https://openweathermap.org/img/s/iplane.png'
+                });
                 cityWeather._urlTemplate = 'api/weather-proxy.php?type=cities&bbox={minlon},{minlat},{maxlon},{maxlat}';
                 overlays['City Weather'] = cityWeather;
             }
@@ -1073,46 +1117,64 @@
             // ─��� Restore saved layer preferences ──
             try {
                 var savedPrefs = JSON.parse(localStorage.getItem('newui_map_layers') || 'null');
-                if (savedPrefs) {
+                if (savedPrefs && savedPrefs.base && baseLayers[savedPrefs.base]) {
                     // Restore base layer (remove whichever base was added initially)
-                    if (savedPrefs.base && baseLayers[savedPrefs.base]) {
-                        Object.keys(baseLayers).forEach(function (name) {
-                            if (map.hasLayer(baseLayers[name])) baseLayers[name].remove();
-                        });
-                        baseLayers[savedPrefs.base].addTo(map);
-                    }
-                    // Restore active overlays
-                    if (savedPrefs.overlays && Array.isArray(savedPrefs.overlays)) {
-                        savedPrefs.overlays.forEach(function (name) {
-                            if (overlays[name] && !map.hasLayer(overlays[name])) {
-                                overlays[name].addTo(map);
-                            }
-                        });
-                    }
+                    Object.keys(baseLayers).forEach(function (name) {
+                        if (map.hasLayer(baseLayers[name])) baseLayers[name].remove();
+                    });
+                    baseLayers[savedPrefs.base].addTo(map);
                 }
             } catch (e) {}
 
-            // ── Save layer preferences on change ──
-            function saveMapLayers() {
+            // ── Save the BASE layer choice on change ──
+            function saveMapBase() {
                 var activeBase = '';
                 Object.keys(baseLayers).forEach(function (name) {
                     if (map.hasLayer(baseLayers[name])) activeBase = name;
                 });
-                var activeOverlays = [];
-                Object.keys(overlays).forEach(function (name) {
-                    if (map.hasLayer(overlays[name])) activeOverlays.push(name);
-                });
                 try {
-                    localStorage.setItem('newui_map_layers', JSON.stringify({
-                        base: activeBase,
-                        overlays: activeOverlays
-                    }));
+                    var prevSaved = JSON.parse(localStorage.getItem('newui_map_layers') || '{}') || {};
+                    prevSaved.base = activeBase;
+                    localStorage.setItem('newui_map_layers', JSON.stringify(prevSaved));
                 } catch (e) {}
             }
 
-            map.on('baselayerchange', saveMapLayers);
-            map.on('overlayadd', saveMapLayers);
-            map.on('overlayremove', saveMapLayers);
+            map.on('baselayerchange', saveMapBase);
+
+            // ── Per-user OVERLAY visibility (server-side, per user) ──
+            //
+            // This replaces a localStorage restore that only ever ADDED layers.
+            // Because the data groups above are `.addTo(map)` at construction,
+            // a layer the operator switched off was re-added on every load and
+            // the old restore had no branch that could take it back off — so
+            // "I don't want to see my facilities on my map" was the exact thing
+            // it could not do, while turning a layer ON worked fine. That
+            // asymmetry is why this read as "nothing persists".
+            //
+            // MapLayerPrefs.bind() adds AND removes, and stores the answer per
+            // USER on the server rather than per browser, so a shared dispatch
+            // console no longer has two operators overwriting each other.
+            // Basemap choice above is untouched — a different concern from
+            // which overlays are switched on.
+            if (window.MapLayerPrefs) {
+                window.MapLayerPrefs.bind(map, {
+                    incidents:       layerGroups.incidents,
+                    units:           layerGroups.responders,
+                    facilities:      layerGroups.facilities,
+                    markups:         layerGroups.markups,
+                    road_conditions: layerGroups.roadConditions,
+                    grid:            overlays['Grid'],
+                    radar:           overlays['Radar'],
+                    clouds:          overlays['Clouds'],
+                    precipitation:   overlays['Precipitation'],
+                    rain:            overlays['Rain'],
+                    pressure:        overlays['Pressure'],
+                    temperature:     overlays['Temperature'],
+                    wind:            overlays['Wind'],
+                    snow:            overlays['Snow'],
+                    city_weather:    overlays['City Weather']
+                });
+            }
 
             // Area title
             if (mapConfig.area_title) {
@@ -1445,36 +1507,52 @@
             onAdd: function () {
                 var container = L.DomUtil.create('div', 'leaflet-bar leaflet-control map-search-control');
                 container.innerHTML = '<input type="text" class="map-search-input" placeholder="Search address..." />'
-                    + '<button class="map-search-btn" title="Search"><i class="bi bi-search"></i></button>';
+                    + '<button class="map-search-btn" title="Search"><i class="bi bi-search"></i></button>'
+                    + '<div class="map-search-msg small text-warning px-2 pb-1 d-none"></div>';
                 L.DomEvent.disableClickPropagation(container);
                 L.DomEvent.disableScrollPropagation(container);
 
                 var input = container.querySelector('.map-search-input');
                 var btn = container.querySelector('.map-search-btn');
 
+                var msgEl = container.querySelector('.map-search-msg');
+
+                function flashNoResults() {
+                    input.classList.add('search-no-results');
+                    setTimeout(function () { input.classList.remove('search-no-results'); }, 1500);
+                }
+
+                function setMsg(text) {
+                    if (!msgEl) return;
+                    msgEl.textContent = text || '';
+                    msgEl.classList.toggle('d-none', !text);
+                }
+
                 function doSearch() {
                     var q = input.value.trim();
                     if (!q) return;
-                    fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q))
-                        .then(function (r) { return r.json(); })
-                        .then(function (results) {
-                            if (results && results.length > 0) {
-                                var r = results[0];
-                                var lat = parseFloat(r.lat);
-                                var lng = parseFloat(r.lon);
-                                if (searchMarker) mapInstance.removeLayer(searchMarker);
-                                searchMarker = L.marker([lat, lng]).addTo(mapInstance)
-                                    .bindPopup('<b>Search result</b><br>' + esc(r.display_name || q))
-                                    .openPopup();
-                                mapInstance.setView([lat, lng], 15);
-                            } else {
-                                input.classList.add('search-no-results');
-                                setTimeout(function () { input.classList.remove('search-no-results'); }, 1500);
-                            }
-                        })
-                        .catch(function () {
-                            console.warn('Geocoding failed');
-                        });
+                    // Was a hardcoded browser fetch to nominatim.openstreetmap.org
+                    // whose only failure handling was console.warn — so with the
+                    // internet down a dispatcher typed an address, pressed Enter,
+                    // and nothing happened at all, with no way to tell whether the
+                    // address was wrong or the link was. Geocode routes through the
+                    // configured provider and always yields a sentence.
+                    setMsg('');
+                    Geocode.search({ q: q, limit: 1 }).then(function (res) {
+                        if (res.ok && res.results.length > 0) {
+                            var r = res.results[0];
+                            var lat = parseFloat(r.lat);
+                            var lng = parseFloat(r.lon);
+                            if (searchMarker) mapInstance.removeLayer(searchMarker);
+                            searchMarker = L.marker([lat, lng]).addTo(mapInstance)
+                                .bindPopup('<b>Search result</b><br>' + esc(r.display_name || q))
+                                .openPopup();
+                            mapInstance.setView([lat, lng], 15);
+                            return;
+                        }
+                        flashNoResults();
+                        setMsg(res.ok ? 'No match for that address.' : res.message);
+                    });
                 }
 
                 btn.addEventListener('click', doSearch);

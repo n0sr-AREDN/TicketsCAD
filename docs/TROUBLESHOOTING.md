@@ -566,13 +566,47 @@ cd /var/www/newui && sudo -u www-data php sql/run_migrations.php
 
 **Cause A:** the tile provider URL is wrong, or it requires a key TicketsCAD doesn't have.
 
-**Cause B:** OpenStreetMap blocked your IP for excessive requests (the default tile.openstreetmap.org Referer policy).
+**Cause B:** the tile provider is rejecting your requests — commonly OpenStreetMap
+responding 429/403 to a generic or missing User-Agent, or to excessive volume.
 
-**Diagnostic:** browser devtools → Network. Look at the tile requests (`https://tile.openstreetmap.org/.../X.png`). What's the status code?
+**Cause C (proxy mode):** your *server* cannot reach the tile provider — egress
+firewall, no DNS, or a proxy the server does not know about. In proxy mode the
+browser talks only to TicketsCAD, so a server-side egress problem looks exactly
+like a dead provider.
 
-**Fix A:** Settings → Maps & Tracking → Map Providers. Use a different provider or supply the key.
+**Diagnostic:** browser devtools → Network, and look at what the tile requests
+are actually going to:
 
-**Fix B:** switch to Docker-style proxy mode (Settings → Maps → Map Providers → mode = "proxy"). The server fetches tiles and re-serves them without leaking the dispatcher's IP/Referer.
+- Requests to `api/tile-proxy.php?...` — you are in **proxy** mode. A `200` with
+  a blank image and an `X-Tile-Proxy: error` response header means the server
+  reached the endpoint but the upstream fetch failed; the `X-Tile-Proxy-Reason`
+  header and your PHP error log (`[tile-proxy]` entries) name the cause. Check
+  server egress: `curl -A "TicketsCAD/4 (+https://yourhost)" https://tile.openstreetmap.org/0/0/0.png -o /dev/null -w '%{http_code}\n'`
+  from the server itself.
+- Requests to `https://tile.openstreetmap.org/...` (or another provider's host) —
+  you are in **direct** mode for that basemap. Check the status code there.
+
+Note that both can be true at once: Street and Terrain proxy, while Dark, Light
+and Satellite always go direct because CARTO's and Esri's terms do not permit
+proxying. See [SECURITY.md § Map tiles: proxy vs direct](../SECURITY.md#map-tiles-proxy-vs-direct).
+
+**Fix A:** Settings → Maps & Tracking → Tile Providers. Use a different provider
+or supply the key.
+
+**Fix B (provider rejecting you):** set a contactable **Proxy User-Agent** in
+Settings → Tile Providers — OpenStreetMap blocks generic agents. The Cache Status
+panel on that page shows what you are currently identifying as.
+
+**Fix C (server has no egress):** either open outbound HTTPS from the server to
+your tile provider, or set Tile Mode to `direct` so the browsers fetch tiles
+instead. Direct mode exposes each dispatcher's IP and browser to the provider —
+it is a trade, not a free fix.
+
+> **Older releases:** before v4.2.3 the "Tile Mode" setting did nothing at all.
+> It was stored and defaulted to `proxy`, but no code read it and every install
+> fetched tiles directly from the browser. If you were told to switch to proxy
+> mode on an earlier version and nothing changed, that is why — the fix is to
+> upgrade, not to change the setting again.
 
 ---
 
@@ -724,7 +758,7 @@ Then in admin.google.com → Apps → Google Workspace → Gmail → Routing →
 
 **Symptom:** Chat messages appear in real time (via SSE) but disappear when you refresh the page.
 
-**Cause:** the broker / `chat_messages` shadow-schema issue documented in `specs/broker-schema-2026-06/decision-memo.md`. The INSERT into `chat_messages` fails silently because the columns the code writes don't match the legacy schema.
+**Cause:** the broker / `chat_messages` shadow-schema issue. The INSERT into `chat_messages` fails silently because the columns the code writes don't match the legacy schema.
 
 **Fix:** run the recovery migration:
 

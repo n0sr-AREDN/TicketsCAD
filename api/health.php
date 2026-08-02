@@ -1,4 +1,6 @@
 <?php
+
+require_once __DIR__ . '/../inc/https.php';   // is_https(), is_https_verified()
 /**
  * NewUI v4.0 API - System Health Check
  *
@@ -215,6 +217,38 @@ function checkPhp(): array
     ];
 }
 
+/**
+ * Run a program and return its stdout, discarding stderr. Best-effort: any
+ * failure yields '' so the caller degrades to "Unknown".
+ *
+ * NO SHELL IS INVOLVED. The argv-ARRAY form of proc_open() goes straight to
+ * execvp()/CreateProcess(), so `;`, `|`, `$(…)` and backticks inside an element
+ * are inert data rather than syntax. That is precisely why there is no
+ * escapeshellarg() here — escapeshellarg() is a shell-QUOTING function, and
+ * with no shell to unquote them the child would receive literal quote
+ * characters. The `array` type hint is load-bearing, not decoration: it makes
+ * passing a command STRING a TypeError instead of a shell invocation.
+ *
+ * Replaces shell_exec(), which hardened Windows/IIS hosts remove via
+ * disable_functions — and @ does not suppress "call to undefined function", so
+ * this endpoint died mid-request with an empty body instead of degrading.
+ */
+function runShellCapture(array $argv): string
+{
+    if ($argv === [] || !function_exists('proc_open')) return '';
+    $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+    $pipes = [];
+    $proc = @proc_open($argv, $descriptors, $pipes);
+    if (!is_resource($proc)) return '';
+    fclose($pipes[0]);
+    $out = (string) stream_get_contents($pipes[1]);
+    fclose($pipes[1]);
+    stream_get_contents($pipes[2]);   // drain stderr (was 2>NUL / 2>/dev/null)
+    fclose($pipes[2]);
+    proc_close($proc);
+    return $out;
+}
+
 function checkOs(): array
 {
     $os     = PHP_OS_FAMILY;
@@ -226,7 +260,7 @@ function checkOs(): array
 
     if ($os === 'Windows') {
         // Use wmic to get boot time
-        $output = @shell_exec('wmic os get LastBootUpTime 2>NUL');
+        $output = runShellCapture(['wmic', 'os', 'get', 'LastBootUpTime']);
         if ($output) {
             $lines = array_filter(array_map('trim', explode("\n", $output)));
             // Skip header line
@@ -255,7 +289,7 @@ function checkOs(): array
             $uptimeSec = (int) floatval($raw);
             $uptimeText = formatUptime($uptimeSec);
         } else {
-            $output = @shell_exec('uptime -s 2>/dev/null');
+            $output = runShellCapture(['uptime', '-s']);
             if ($output) {
                 $bootTs = strtotime(trim($output));
                 if ($bootTs) {
@@ -290,7 +324,7 @@ function checkWebServer(): array
     $software = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown';
     $protocol = $_SERVER['SERVER_PROTOCOL'] ?? '';
     $port     = $_SERVER['SERVER_PORT'] ?? '';
-    $https    = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'Yes' : 'No';
+    $https    = is_https() ? 'Yes' : 'No';
     $docRoot  = $_SERVER['DOCUMENT_ROOT'] ?? '';
 
     return [

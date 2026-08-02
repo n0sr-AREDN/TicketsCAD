@@ -19,6 +19,9 @@
  *           checks. Re-running this script does NOT clobber admin edits to
  *           the languages table (uses INSERT IGNORE for the seed pass).
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase 8b i18n — Languages Registry Migration\n";

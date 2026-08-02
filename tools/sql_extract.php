@@ -33,6 +33,9 @@ declare(strict_types=1);
  *
  * @return array<int, array{0:int,1:string}>  list of [line, sql]
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 function sql_extract_strings(string $src): array
 {
     $tokens = @token_get_all($src);

@@ -14,6 +14,8 @@
  * Usage: php tools/security_audit_inventory.php > specs/security-audit-2026-04/endpoint-inventory.md
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 $apiDir = __DIR__ . '/../api';
 $files = glob($apiDir . '/*.php');
 

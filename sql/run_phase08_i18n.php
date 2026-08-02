@@ -15,6 +15,9 @@
  *           added.
  * Output:   [OK]/[WARN] status; final per-language row counts.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase 8 i18n — Seed Captions\n";

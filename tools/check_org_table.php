@@ -1,4 +1,7 @@
 <?php
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require __DIR__ . '/../config.php';
 
 echo "=== member_organizations columns ===\n";

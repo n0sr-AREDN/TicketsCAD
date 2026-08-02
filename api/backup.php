@@ -122,7 +122,10 @@ if ($action === 'filesystem' && $method === 'POST') {
 
     set_time_limit(600);
 
-    $destDir = trim($input['path'] ?? BACKUP_DIR);
+    // backup_dir(), not the raw BACKUP_DIR constant: it honours the operator's
+    // `backup_dir` setting and the compatibility fallback, so a manual "save to
+    // server" lands in the same place as the scheduled runs.
+    $destDir = trim($input['path'] ?? backup_dir());
 
     // Validate path
     if (empty($destDir)) {
@@ -132,9 +135,12 @@ if ($action === 'filesystem' && $method === 'POST') {
     // Create directory if needed
     if (!is_dir($destDir)) {
         if (!@mkdir($destDir, 0755, true)) {
-            json_error('Cannot create backup directory: ' . $destDir);
+            json_error('Cannot create backup directory: ' . $destDir
+                . ' — create it yourself, or set a different one in Settings → Backup.');
         }
     }
+    // If it ended up inside the web root anyway, put deny rules beside it.
+    backup_harden_dir($destDir);
 
     if (!is_writable($destDir)) {
         json_error('Backup directory is not writable: ' . $destDir);
@@ -200,6 +206,20 @@ if ($action === 'download_file' && $method === 'GET') {
         json_error('Invalid filename', 400);
     }
 
+    // v4.2.3 moved the default backup directory above the web root. An install
+    // that has been running for a while still has archives in the old in-webroot
+    // location, and those must keep downloading — the move must not make anyone's
+    // existing restore points unreachable. Only searched when the caller did NOT
+    // name a directory; an explicit ?path= is still honoured exactly as given.
+    if (!isset($_GET['path']) && function_exists('backup_dirs_all')) {
+        foreach (backup_dirs_all() as $cand) {
+            if (is_file(rtrim($cand, '/\\') . DIRECTORY_SEPARATOR . $filename)) {
+                $dir = $cand;
+                break;
+            }
+        }
+    }
+
     $filePath = rtrim($dir, '/\\') . DIRECTORY_SEPARATOR . $filename;
 
     // Defence in depth: prove the resolved file really sits in the directory we
@@ -232,7 +252,28 @@ if ($action === 'history' && $method === 'GET') {
     // Default to the CONFIGURED directory, not the compiled-in one. An operator
     // who moved backups elsewhere was previously shown an empty history.
     $dir = $_GET['path'] ?? backup_dir();
-    $history = backup_get_history($dir);
+
+    if (isset($_GET['path'])) {
+        $history = backup_get_history($dir);
+    } else {
+        // List EVERY directory this install may have written to, so the v4.2.3
+        // move of the default out of the web root does not make an operator's
+        // existing restore points disappear from Settings → Backup. Retention
+        // still prunes only the active directory.
+        $history = [];
+        $seen    = [];
+        foreach (backup_dirs_all() as $cand) {
+            foreach (backup_get_history($cand) as $row) {
+                $key = $row['path'];
+                if (isset($seen[$key])) continue;
+                $seen[$key] = true;
+                $row['web_served'] = backup_dir_is_web_served($cand);
+                $history[] = $row;
+            }
+        }
+        usort($history, function ($a, $b) { return strcmp($b['date'], $a['date']); });
+    }
+
     json_response(['backups' => $history, 'directory' => $dir]);
 }
 

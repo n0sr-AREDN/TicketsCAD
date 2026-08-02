@@ -133,6 +133,7 @@ $canCfg   = (!function_exists('rbac_can') || rbac_can('action.manage_config'));
         <?php _cfg_tab('incident-numbers',      t('sidebar.tab.incident_numbers',     'Incident Numbers'), 'case number format template numbering'); ?>
         <?php _cfg_tab('incident-types',        t('sidebar.tab.incident_types',       'Incident Types'), 'call types nature protocol incident'); ?>
         <?php _cfg_tab('par-checks',            t('sidebar.tab.par_checks',           'PAR Checks'), 'par accountability roll call personnel'); ?>
+        <?php _cfg_tab('net-checkins',          t('sidebar.tab.net_checkins',         'Net Check-Ins'), 'net control checkin check-in skywarn ncs roll call radio net'); ?>
         <?php _cfg_tab('pending-messages',      t('sidebar.tab.pending_messages',     'Pending Messages'), 'queue pending messages outbox'); ?>
         <?php _cfg_tab('severity-levels',       t('sidebar.tab.severity_levels',      'Severity Levels'), 'priority severity levels'); ?>
         <?php _cfg_tab('signal-codes',          t('sidebar.tab.signal_codes',         'Signal Codes'), 'signal codes ten-codes 10-codes q-codes'); ?>

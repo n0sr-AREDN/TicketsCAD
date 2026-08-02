@@ -13,6 +13,9 @@
  * Prereqs:  run_phase08_i18n.php, run_phase08b_i18n.php, run_phase08e_i18n.php
  * Safety:   Idempotent. INSERT IGNORE on (caption_key, lang).
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase 8f i18n — Per-page seeds\n";

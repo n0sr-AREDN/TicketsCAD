@@ -2457,15 +2457,47 @@ class ZelloProxyApp implements MessageComponentInterface
         return $this->ttsConfig;
     }
 
-    /** Gap 1 — is a bare command name resolvable on PATH? (which/where). */
+    /**
+     * Gap 1 — is a bare command name resolvable on PATH?
+     *
+     * Resolved in PHP, with no subprocess. This used to run `command -v` on
+     * POSIX — a shell BUILTIN, so there is no executable to exec and an
+     * argv-array proc_open() of it would fail on every POSIX host — and `where`
+     * plus a `2>/dev/null` that cmd.exe reads as a path, so the Windows branch
+     * always returned false. Doing the lookup here fixes both and keeps the
+     * daemon working on hosts where disable_functions removes shell_exec().
+     *
+     * Deliberately self-contained: inc/tts/engine.php (which has the same
+     * helper) is only required lazily inside the synth path, so it may not be
+     * loaded when this runs.
+     */
     private function binOnPath(string $bin): bool
     {
         if ($bin === '' || strpbrk($bin, "/\\") !== false) {
             return false; // a path was given; is_file() handles that case
         }
-        $which = stripos(PHP_OS, 'WIN') === 0 ? 'where' : 'command -v';
-        $out = @shell_exec($which . ' ' . escapeshellarg($bin) . ' 2>/dev/null');
-        return is_string($out) && trim($out) !== '';
+        $path = (string) getenv('PATH');
+        if ($path === '') return false;
+
+        $isWin = stripos(PHP_OS, 'WIN') === 0;
+        $exts = [''];
+        if ($isWin) {
+            $pathext = (string) getenv('PATHEXT');
+            if ($pathext === '') $pathext = '.COM;.EXE;.BAT;.CMD';
+            $exts = array_merge($exts, explode(';', $pathext));
+        }
+
+        foreach (explode(PATH_SEPARATOR, $path) as $dir) {
+            $dir = rtrim(trim($dir), "/\\");
+            if ($dir === '') continue;
+            foreach ($exts as $ext) {
+                $candidate = $dir . DIRECTORY_SEPARATOR . $bin . $ext;
+                if (@is_file($candidate) && ($isWin || @is_executable($candidate))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**

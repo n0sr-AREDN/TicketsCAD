@@ -12,6 +12,9 @@
  *
  * Self-skips on a virgin DB that has fewer than 2 members to attach.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/db.php';
 require_once __DIR__ . '/../inc/assignment-write.php';

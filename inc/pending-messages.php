@@ -44,6 +44,14 @@
  */
 
 require_once __DIR__ . '/scheduled-jobs.php';
+// The queue carries two kinds of row now (2026-07-31): messages held for a
+// security label's kill window, and audit-driven notification fan-outs moved
+// off the dispatch request path. notify-fanout.php owns the second kind; this
+// file owns the sweep both are drained by. The two require_once each other,
+// which is safe because neither uses the other's symbols at load time.
+if (is_file(__DIR__ . '/notify-fanout.php')) {
+    require_once __DIR__ . '/notify-fanout.php';
+}
 
 function pending_enqueue(array $msg): ?int {
     $prefix = $GLOBALS['db_prefix'] ?? '';
@@ -101,23 +109,53 @@ function pending_kill(int $id, ?int $userId, ?string $reason): bool {
     } catch (Exception $e) { return false; }
 }
 
-function pending_sweep(?int $now = null, ?int $cutoffMin = null): array {
+/**
+ * @param ?int    $now         evaluation time; defaults to now
+ * @param ?int    $cutoffMin   override the stale cutoff (tests)
+ * @param ?int    $limit       rows per sweep; defaults to 200
+ * @param ?float  $budgetS     wall-clock budget. Stop when it is gone and
+ *                             leave the rest pending — this is what lets the
+ *                             same sweep be called from a request path
+ *                             without ever becoming the 21-second stall it
+ *                             replaced.
+ * @param ?string $onlyChannel restrict to one queue channel
+ */
+function pending_sweep(?int $now = null, ?int $cutoffMin = null,
+                       ?int $limit = null, ?float $budgetS = null,
+                       ?string $onlyChannel = null): array {
     $prefix = $GLOBALS['db_prefix'] ?? '';
     if ($now === null) $now = time();
     $nowStr = date('Y-m-d H:i:s', $now);
-    $sent = 0; $failed = 0; $considered = 0; $expired = 0;
+    $limit  = max(1, min(500, $limit ?? 200));
+    $deadline = $budgetS !== null ? microtime(true) + max(0.0, $budgetS) : null;
+    $sent = 0; $failed = 0; $considered = 0; $expired = 0; $deferred = 0;
+    $breakerOpen = null;   // resolved lazily, once per sweep
     try {
-        $rows = db_fetch_all(
-            "SELECT * FROM `{$prefix}pending_routed_messages`
-              WHERE status = 'pending'
-                AND scheduled_send_at <= ?
-              ORDER BY scheduled_send_at ASC
-              LIMIT 200", [$nowStr]);
+        $sql  = "SELECT * FROM `{$prefix}pending_routed_messages`
+                  WHERE status = 'pending'
+                    AND scheduled_send_at <= ?";
+        $args = [$nowStr];
+        if ($onlyChannel !== null) { $sql .= " AND channel = ?"; $args[] = $onlyChannel; }
+        $sql .= " ORDER BY scheduled_send_at ASC LIMIT {$limit}";
+        $rows = db_fetch_all($sql, $args);
     } catch (Exception $e) {
-        return ['considered' => 0, 'sent' => 0, 'failed' => 0, 'expired' => 0];
+        return ['considered' => 0, 'sent' => 0, 'failed' => 0, 'expired' => 0, 'deferred' => 0];
     }
 
     foreach ($rows as $r) {
+        // Out of budget. The remaining rows stay pending, which is the whole
+        // point: unfinished work waits in a place an operator can see, it is
+        // never dropped and it never extends the caller's request.
+        //
+        // The margin matters. Stopping only once the deadline has actually
+        // passed lets a row start with a sliver of budget left, and every
+        // timeout downstream has a one-second floor (zero means "no timeout"
+        // to both cURL and Guzzle), so a row begun at the last moment can
+        // still overrun by seconds. Refuse to start one we cannot finish.
+        if ($deadline !== null && ($deadline - microtime(true)) < 0.75) {
+            $deferred = count($rows) - $considered;
+            break;
+        }
         $considered++;
 
         // ── Stale-work cutoff ────────────────────────────────────────────
@@ -149,6 +187,68 @@ function pending_sweep(?int $now = null, ?int $cutoffMin = null): array {
 
         $ok = false;
         $err = null;
+        // A retryable failure keeps the row PENDING rather than marking it
+        // failed. A notification that could not go out because the internet
+        // was down for ninety seconds must still go out; the stale cutoff
+        // above is what bounds the retrying, so this cannot loop forever.
+        $retryable = false;
+
+        // ── Audit-driven notification fan-out ────────────────────────────
+        if (defined('NOTIFY_FANOUT_CHANNEL') && $r['channel'] === NOTIFY_FANOUT_CHANNEL) {
+            // Consult the breaker ONCE per sweep, not once per row. During an
+            // outage a busy board can queue hundreds of these, and without
+            // this the sweep would walk the entire backlog paying a full
+            // timeout for each one, every minute, for the whole outage. The
+            // half-open window is what lets exactly one tick probe and find
+            // the link back.
+            if ($breakerOpen === null) {
+                $breakerOpen = function_exists('notify_breaker_check')
+                    ? notify_breaker_check($now) : ['open' => false];
+            }
+            if (!empty($breakerOpen['open'])) {
+                $deferred++;
+                $considered--;   // not considered: we did not attempt it
+                continue;
+            }
+            if (!function_exists('notify_fanout_replay')) {
+                $err = 'notify_fanout_replay() not loaded';
+            } else {
+                $remaining = $deadline !== null ? max(0.5, $deadline - microtime(true)) : null;
+                $res = notify_fanout_replay($r, $remaining);
+                $ok  = !empty($res['ok']);
+                if (!$ok) {
+                    $err = $res['error'] !== '' ? $res['error'] : 'delivery failed';
+                    // Unreadable rows are permanent; everything else is the
+                    // network, and the network comes back.
+                    $retryable = empty($res['permanent']);
+                    if (function_exists('notify_breaker_record_failure')) {
+                        notify_breaker_record_failure($err, $now);
+                    }
+                } elseif (function_exists('notify_breaker_record_success')) {
+                    notify_breaker_record_success();
+                }
+            }
+            try {
+                if ($ok) {
+                    db_query("UPDATE `{$prefix}pending_routed_messages`
+                                 SET status = 'sent', sent_at = NOW(), send_error = NULL
+                               WHERE id = ?", [$r['id']]);
+                    $sent++;
+                } elseif ($retryable) {
+                    db_query("UPDATE `{$prefix}pending_routed_messages`
+                                 SET send_error = ? WHERE id = ?",
+                             [substr('retrying: ' . ($err ?? 'unknown'), 0, 255), $r['id']]);
+                    $failed++;
+                } else {
+                    db_query("UPDATE `{$prefix}pending_routed_messages`
+                                 SET status = 'failed', send_error = ?
+                               WHERE id = ?", [substr($err ?? 'unknown', 0, 255), $r['id']]);
+                    $failed++;
+                }
+            } catch (Exception $e) {}
+            continue;
+        }
+
         if (function_exists('broker_send')) {
             try {
                 // Phase 44 (Sonar php:S930): broker_send signature is
@@ -188,5 +288,6 @@ function pending_sweep(?int $now = null, ?int $cutoffMin = null): array {
         } catch (Exception $e) {}
     }
     return ['considered' => $considered, 'sent' => $sent,
-            'failed' => $failed, 'expired' => $expired];
+            'failed' => $failed, 'expired' => $expired,
+            'deferred' => max(0, $deferred)];
 }

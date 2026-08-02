@@ -28,6 +28,9 @@
  * still grant it deliberately from the Roles UI afterwards — this runs
  * once per file hash, not on every request.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/db.php';
 

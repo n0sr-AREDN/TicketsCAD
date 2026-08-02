@@ -211,6 +211,37 @@ A future phase (Phase 11+) will add an "emergency lockout" button on the complia
 - HSTS header set when enabled
 - All cookies marked `Secure` when served over HTTPS
 
+### 4.6 Web-server exposure of non-public directories (SC-7, AC-3)
+
+The web root is the application root, so the web server publishes every
+directory in the tree unless configured not to. On 2026-07-30 this was confirmed
+to have disclosed a complete database backup over unauthenticated HTTP on a live
+install — see
+[`security/advisory-2026-07-30-exposed-directories.md`](security/advisory-2026-07-30-exposed-directories.md).
+
+Four independent controls, because no single one covers every deployment:
+
+- **Shipped deny rules** — root `.htaccess` plus `sql/`, `tools/` `.htaccess` and
+  `web.config`, denying `backups/`, `inc/`, `sql/`, `tools/`, `tests/`, `specs/`,
+  `coordination/`, `drafts/`, `apache/`, `vendor/`, `keys/` and `services/`
+  (except the two mesh-bridge scripts the Mesh Console hands out).
+- **This is Apache-only.** **nginx never reads `.htaccess`; neither does IIS.**
+  Those deployments must apply
+  [`nginx/ticketscad-hardening.conf`](nginx/ticketscad-hardening.conf) or the IIS
+  equivalent — see [`WEB-SERVER-HARDENING.md`](WEB-SERVER-HARDENING.md). An
+  operator who assumes the shipped file protects them is not protected.
+- **CLI-only guards** — every script under `sql/` and `tools/` refuses to execute
+  under a web SAPI (`403 CLI only`) before loading configuration or touching the
+  database. Server-independent; gated by `tests/test_web_exposure_hardening.php`.
+- **Backups outside the web root** — `BACKUP_DIR` defaults to `../backups`, a
+  sibling of the install directory, on the same reasoning as `FE_KEYS_DIR`.
+  Archives written by older versions are left in place, stay listable, and are
+  reported by the health check until moved.
+
+Self-verification: `health_check_web_exposure()` probes `backups/`, `sql/` and
+`tools/` over HTTP from the install itself and reports on Settings → Status;
+`health_check_backups()` reports archives found in any served directory.
+
 ---
 
 ## 5. Cryptography (SC-13, SC-28)
@@ -333,7 +364,8 @@ Treat it as a supply-chain incident, not a routine rotation.
    be trusted to prove authorship, and that recipients should re-fetch and
    re-verify.
 3. Re-sign and re-publish the SBOM for every supported release.
-4. Record the incident in `specs/security/` as a dated entry.
+4. Record the incident as a dated entry in the project's security review log, and
+   summarise it in `CHANGELOG.md` for the release that carries the new key.
 
 The blast radius is bounded and worth stating honestly: this key signs an
 inventory document. It does not sign code, releases, or updates, and it grants
@@ -449,6 +481,16 @@ The following CJIS controls are the customer's responsibility:
   needs. Vendor risk assessment, procurement policy, and acceptance testing
   remain the customer's responsibility.
 - **SC-1, SC-2** Networking architecture (firewall, segmentation, ingress filtering)
+  — **and egress filtering.** TicketsCAD ships optional features that originate
+  outbound connections to third parties, including an AI feature that can send
+  amateur-radio transcripts to a commercial LLM API. All are off or unconfigured
+  by default. Every one is enumerated, with the exact content it sends and how to
+  disable it, in
+  [SECURITY.md § What TicketsCAD sends outside your network](../SECURITY.md#what-ticketscad-sends-outside-your-network);
+  the CJIS framing is in [CJIS-POSTURE.md §5.10](CJIS-POSTURE.md#outbound-connections-to-third-party-services).
+  Deciding which of them this deployment may reach — and enforcing it at the
+  firewall rather than only in application settings — is the customer's
+  responsibility.
 - **CA-family** Security Assessment and Authorization (the ATO process)
 
 Tickets CAD provides the technical primitives (authentication, audit log, encryption); the customer agency wraps them in operational policy.

@@ -128,9 +128,63 @@ function backup_retention_count(): int {
     return $n > 0 ? $n : BACKUP_DEFAULT_RETENTION;
 }
 
+/**
+ * Where this install writes new archives.
+ *
+ * Preference order:
+ *   1. The operator's explicit `backup_dir` setting, if any.
+ *   2. BACKUP_DIR (above the web root) once it exists — so the choice is stable
+ *      from the moment the directory is there, whichever user is asking.
+ *   3. BACKUP_DIR when its parent can be written, i.e. it can be created.
+ *   4. BACKUP_DIR_LEGACY (the pre-4.2.3 in-webroot path) when it already
+ *      exists and step 3 is impossible — some shared hosting gives the account
+ *      no writable directory above the web root. Backing up to a served
+ *      directory is bad; NOT backing up is worse, and this path is reported as
+ *      a failure on Settings → Status with the fix, plus backup_harden_dir()
+ *      drops deny rules beside the archives.
+ *   5. BACKUP_DIR, so the failure message names the directory we actually want.
+ */
 function backup_dir(): string {
     $d = backup_setting('backup_dir', '');
-    return $d !== '' ? $d : BACKUP_DIR;
+    if ($d !== '') return $d;
+    if (is_dir(BACKUP_DIR)) return BACKUP_DIR;
+
+    $parent = dirname(BACKUP_DIR);
+    if (is_dir($parent) && is_writable($parent)) return BACKUP_DIR;
+
+    if (defined('BACKUP_DIR_LEGACY') && is_dir(BACKUP_DIR_LEGACY)) {
+        return BACKUP_DIR_LEGACY;
+    }
+    return BACKUP_DIR;
+}
+
+/**
+ * Every directory that may hold archives THIS install has written: the active
+ * one, plus the pre-4.2.3 in-webroot location when it still exists.
+ *
+ * History listing and downloads read from all of them, so moving the default
+ * out of the web root never makes an operator's existing restore points vanish
+ * from the UI. Pruning deliberately does NOT use this — retention only ever
+ * deletes from the ACTIVE directory, so an update cannot delete archives the
+ * operator has not been told about yet.
+ */
+function backup_dirs_all(): array {
+    $dirs = [backup_dir()];
+    if (defined('BACKUP_DIR_LEGACY') && is_dir(BACKUP_DIR_LEGACY)) {
+        $dirs[] = BACKUP_DIR_LEGACY;
+    }
+    if (is_dir(BACKUP_DIR)) {
+        $dirs[] = BACKUP_DIR;
+    }
+    $seen = [];
+    $out  = [];
+    foreach ($dirs as $d) {
+        $k = rtrim(str_replace('\\', '/', $d), '/');
+        if (isset($seen[$k])) continue;
+        $seen[$k] = true;
+        $out[] = $d;
+    }
+    return $out;
 }
 
 /**
@@ -576,10 +630,14 @@ function backup_guard(string $dir): array {
 function backup_run_now(?string $dir = null, bool $skipGuard = false): array {
     $dir = $dir ?: backup_dir();
     if (!is_dir($dir) && !@mkdir($dir, 0750, true) && !is_dir($dir)) {
-        $msg = 'cannot create backup directory: ' . $dir;
+        $msg = 'cannot create backup directory: ' . $dir
+             . ' (create it yourself, or set a different one in Settings → Backup)';
         backup_setting_set('backup_last_status', 'failed: ' . $msg);
         return ['ok' => false, 'path' => null, 'detail' => $msg];
     }
+    // If the archives are landing inside the web root after all, put deny rules
+    // beside them. Best effort; never fatal.
+    backup_harden_dir($dir);
 
     // ── The disk guard. Refuse BEFORE writing a byte. ──────────────────
     // A refusal DOES advance backup_last_run_at ("last attempt"), deliberately.

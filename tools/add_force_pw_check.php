@@ -10,6 +10,8 @@
  * "redirect logged-out user" pattern.
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 $root = realpath(__DIR__ . '/..');
 if (!$root) { fwrite(STDERR, "can't resolve root\n"); exit(1); }
 

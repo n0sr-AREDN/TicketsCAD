@@ -162,5 +162,4 @@ The old permission codes (`action.edit_incident`) still work — they're aliased
 ## See also
 
 - [`RBAC-INTEGRATOR-GUIDE.md`](RBAC-INTEGRATOR-GUIDE.md) — for developers writing new endpoints.
-- `specs/rbac-redesign-2026-05/` — the spec, plan, and tasks that drove this redesign.
 - `tests/test_rbac_v2.php` — 48 regression tests; a useful read if you want to understand the boundaries.

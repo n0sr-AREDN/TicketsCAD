@@ -1162,8 +1162,7 @@ timestamp.
   already carry `talkgroup` so the widget could fan-out per-TG.
 - **Real-time streaming TX (Phase 85b):** currently TX is
   buffer-then-transmit; the dispatcher's voice doesn't reach TG
-  until they release PTT. See `specs/phase-85-dispatch-console/spec.md`
-  R1.
+  until they release PTT.
 - **DMR voice encryption (BP / ARC4):** unsupported; not on the
   amateur side, not on TG 3127.
 - **DSTAR / NXDN / P25:** different protocols, would need separate

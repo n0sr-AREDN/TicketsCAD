@@ -22,6 +22,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/audit.php';
+require_once __DIR__ . '/../inc/dmr_token.php';
 ini_set('display_errors', '0');
 header('Content-Type: application/json');
 
@@ -61,10 +62,10 @@ if (!$channel) {
 
 $bridgeHost = (string) $channel['bridge_host'];
 $bridgePort = (int)    $channel['bridge_port'];
-$token      = (string) $channel['bridge_token'];
+$token      = dmr_bridge_token($channel);
 if ($bridgeHost === '' || $bridgePort <= 0 || $token === '') {
     http_response_code(503);
-    echo json_encode(['error' => 'Channel missing bridge_host / bridge_port / bridge_token']);
+    echo json_encode(['error' => dmr_token_missing_reason($channel)]);
     exit;
 }
 

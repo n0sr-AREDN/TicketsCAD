@@ -111,6 +111,46 @@ you still can: mount yours at `/etc/ticketscad/MMDVM_Bridge.ini` and it wins.
 | `DMR_BEARER_TOKEN` | Must match the CAD channel's token |
 | `DMR_BIND_ADDR` | `127.0.0.1` (same host as CAD) or `0.0.0.0` (remote CAD) |
 | `DMR_LOG_LEVEL` | `INFO`, or `DEBUG` when chasing a problem |
+| `DMR_PIPER_BIN`, `DMR_PIPER_VOICE` | Optional speech engine — see below. Empty by default. |
+
+## Text-to-speech (`/tx/text`)
+
+**This image ships without a speech engine, so `/tx/text` is unavailable by
+default.** Everything else works: live receive, browser push-to-talk
+(`/tx/audio` and `/tx/stream`), `/health`, and the 1 kHz test tone
+(`/tx/test`). Only the paths that ask the bridge to *speak* text need one —
+the **TX Text** button in Settings → Communications → DMR, the weather-radio
+read-out, and the radio-AI responder. Those return HTTP 503 with
+`"error": "tts_not_configured"` and a message naming the two variables below.
+
+Why it is not baked in: Piper voice models are 50-110 MB each, are specific to
+one language and one voice, and carry their own per-voice licences. Including
+one would choose a voice for every operator and grow the image for the majority
+who use the browser push-to-talk path instead.
+
+To enable it, mount a Piper binary and an `.onnx` voice into the container and
+point the two variables at the paths **inside** the container:
+
+```yaml
+# docker-compose.yml
+    volumes:
+      - /opt/piper:/opt/piper:ro
+```
+
+```ini
+# .env
+DMR_PIPER_BIN=/opt/piper/piper
+DMR_PIPER_VOICE=/opt/piper/en_US-lessac-medium.onnx
+```
+
+`docker compose up -d` and the startup log will say
+`text-to-speech enabled (Piper: /opt/piper/piper)` instead of
+`text-to-speech NOT configured`.
+
+Piper releases and voices: <https://github.com/rhasspy/piper>. On a bare-metal
+bridge these same two variables live in
+`/etc/ticketscad/dvswitch-<instance>.env` — see
+[RADIO-DMR-INSTALL.md](RADIO-DMR-INSTALL.md).
 
 ## Troubleshooting
 
@@ -121,6 +161,9 @@ you still can: mount yours at `/etc/ticketscad/MMDVM_Bridge.ini` and it wins.
 | `login stalled in state 1, retrying` | The master isn't responding: wrong host/port, wrong passphrase, DMR ID not authorised, or UDP blocked. |
 | CAD shows the channel offline | Bridge host/port/token mismatch. The token must match `DMR_BEARER_TOKEN` exactly. Check the port is published where the CAD can reach it. |
 | Bridge fine, browser PTT silent | That's the WebSocket relay, not the bridge — start the CAD's `voice` profile. |
+| `curl: (56) Recv failure: Connection reset by peer` on 18091 | Nothing is listening. Either `DMR_BEARER_TOKEN` is empty (the log says so, and the control surface does not start without it) or you are on a build released before this fix, where the surface was wrongly gated on `DMR_PIPER_BIN`/`DMR_PIPER_VOICE` being set. Update; the log line to look for is `HTTP control listening on :18091`. |
+| Every CAD call 401s but the Test dialog works when you paste the token | A build released before this fix stored the token hashed and sent the hash. Update, then either paste your saved token into Settings → Communications → DMR → Test (a successful `/health` adopts it) or rotate the token and update `DMR_BEARER_TOKEN`. |
+| `"error": "tts_not_configured"` from **TX Text** | Expected on a default Docker bridge — see *Text-to-speech* above. |
 
 ## Security
 

@@ -3,6 +3,9 @@
  * Geofence system tests.
  * Usage: /c/xampp/8.2.4/php/php.exe tools/test_geofences.php
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require __DIR__ . '/../config.php';
 require __DIR__ . '/../inc/rbac.php';
 require __DIR__ . '/../inc/audit.php';

@@ -359,25 +359,36 @@ update didn't work".
 > owns `.git` is who runs `git pull` from now on; keep it that way.
 >
 > The web server does need to **own** the two directories it writes to, plus a
-> share of `backups/`:
+> share of the backup folder:
 >
 > ```bash
 > # www-data on Debian/Ubuntu; apache on RHEL/Rocky/Fedora; _www on macOS
 > sudo chown -R www-data:www-data uploads/ cache/
 >
-> mkdir -p backups                       # gitignored — absent on a fresh clone
-> sudo chown -R "$(id -un)":www-data backups/
-> sudo chmod 2770 backups/               # you AND the web server can write
+> mkdir -p ../backups                    # ABOVE the install folder — see below
+> sudo chown -R "$(id -un)":www-data ../backups/
+> sudo chmod 2770 ../backups/            # you AND the web server can write
 > ```
 >
-> `backups/` is deliberately *not* handed to the web server outright: you run
-> `php tools/backup_run.php` as yourself, and giving the folder away is exactly
-> what makes that print `FAILED — could not write archive`.
+> The backup folder is deliberately *not* handed to the web server outright: you
+> run `php tools/backup_run.php` as yourself, and giving the folder away is
+> exactly what makes that print `FAILED — could not write archive`.
 >
-> The encryption keys are **not** in this list. They live one level *above* the
-> install folder (`/var/www/keys` for an app in `/var/www/newui`), so git never
-> touches them — see [docs/INSTALLATION-CHECKLIST.md](INSTALLATION-CHECKLIST.md)
-> Section 6.
+> **It is also one level *above* the install folder** (`/var/www/backups` for an
+> app in `/var/www/newui`), for the same reason the encryption keys are: your web
+> root is the install folder, so a `backups/` inside it was reachable at
+> `https://your-site/backups/`, and each archive is a complete copy of your
+> database. If your install already has archives in the old in-webroot `backups/`
+> folder, move them across now and check nothing is left:
+>
+> ```bash
+> mkdir -p ../backups && mv backups/ticketscad-* ../backups/ && ls backups
+> ```
+>
+> The encryption keys are **not** in this list either. They live one level
+> *above* the install folder (`/var/www/keys` for an app in `/var/www/newui`), so
+> git never touches them — see
+> [docs/INSTALLATION-CHECKLIST.md](INSTALLATION-CHECKLIST.md) Section 6.
 >
 > **If you already see `fatal: detected dubious ownership`** — your folder was
 > chowned to the web server by an earlier install guide. Either run git as that

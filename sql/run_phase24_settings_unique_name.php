@@ -38,6 +38,9 @@
  *
  * Usage: php sql/run_phase24_settings_unique_name.php
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase 24 — settings.name UNIQUE constraint + dedup\n";

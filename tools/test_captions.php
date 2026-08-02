@@ -16,6 +16,9 @@
  *  9. t_js() returns valid JSON
  * 10. Cleanup
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/i18n.php';
 

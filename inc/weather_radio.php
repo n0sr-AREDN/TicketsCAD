@@ -31,6 +31,7 @@
  */
 
 require_once __DIR__ . '/weather_alerts.php';
+require_once __DIR__ . '/dmr_token.php';
 
 /** Extra, off-by-default master switch for unattended keying. */
 function weather_radio_autofire_allowed(): bool
@@ -216,7 +217,7 @@ function weather_radio_tx(array $channel, string $script, ?callable $tx = null):
     }
 
     try {
-        $resp = $tx($url, $payload, (string) ($channel['bridge_token'] ?? ''));
+        $resp = $tx($url, $payload, dmr_bridge_token($channel));
         $ok = ($resp['code'] === 200) && is_array($resp['body']) && !empty($resp['body']['ok']);
         return ['ok' => $ok, 'detail' => $ok ? 'transmitted (auto-fire)' : ('bridge HTTP ' . $resp['code'])];
     } catch (Throwable $e) {

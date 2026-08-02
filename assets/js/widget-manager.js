@@ -10,6 +10,29 @@ var WidgetManager = (function () {
     var saveTimer = null;
     var hiddenWidgets = [];
 
+    // ── Floating widgets ────────────────────────────────────────────────
+    // A widget that positions itself OVER the grid rather than living in it
+    // (Phase 131's net-control check-in panel). GridStack knows nothing about
+    // it, but the widgets toolbar must, because "how do I get this back" has
+    // to have exactly one answer on this screen. Each registrant supplies
+    // show/hide/isOpen and owns its own persistence — the check-in panel also
+    // renders on situation.php, which never loads GridStack or api/layout.php,
+    // so its open/closed state cannot live in this file's hiddenWidgets list.
+    var floatingWidgets = {};
+
+    function registerFloating(id, api) {
+        if (!id || !api) return;
+        floatingWidgets[id] = api;
+        syncFloatingToggle(id, api.isOpen ? api.isOpen() : true);
+    }
+
+    function syncFloatingToggle(id, open) {
+        var btn = document.querySelector('.widget-toggle[data-widget="' + id + '"]');
+        if (!btn) return;
+        if (open) btn.classList.add('active');
+        else      btn.classList.remove('active');
+    }
+
     // Undo stack — stores previous layout states (max 20)
     var undoStack = [];
     var MAX_UNDO = 20;
@@ -136,7 +159,10 @@ var WidgetManager = (function () {
         var toggles = document.querySelectorAll('.widget-toggle');
         toggles.forEach(function (btn) {
             var wid = btn.getAttribute('data-widget');
-            if (hiddenWidgets.indexOf(wid) !== -1) {
+            if (floatingWidgets[wid]) {
+                // State belongs to the widget, not to hiddenWidgets.
+                syncFloatingToggle(wid, floatingWidgets[wid].isOpen());
+            } else if (hiddenWidgets.indexOf(wid) !== -1) {
                 btn.classList.remove('active');
             }
             btn.addEventListener('click', function () {
@@ -334,6 +360,17 @@ var WidgetManager = (function () {
     }
 
     function toggleWidget(widgetId, btn) {
+        // A floating widget is not part of the grid, so there is no layout
+        // change to undo and nothing for api/layout.php to store.
+        if (floatingWidgets[widgetId]) {
+            var fw = floatingWidgets[widgetId];
+            var open = fw.isOpen();
+            if (open) fw.hide(); else fw.show();
+            syncFloatingToggle(widgetId, !open);
+            EventBus.emit(open ? 'widget:hidden' : 'widget:shown', { widget: widgetId });
+            return;
+        }
+
         pushUndo();
         var idx = hiddenWidgets.indexOf(widgetId);
 
@@ -450,6 +487,14 @@ var WidgetManager = (function () {
         document.querySelectorAll('.widget-toggle').forEach(function (btn) {
             btn.classList.add('active');
         });
+
+        // "Reset layout to defaults" must also bring back a floating widget the
+        // operator closed — it is on the same toolbar, so it resets with it.
+        for (var fid in floatingWidgets) {
+            if (!floatingWidgets.hasOwnProperty(fid)) continue;
+            if (!floatingWidgets[fid].isOpen()) floatingWidgets[fid].show();
+            syncFloatingToggle(fid, true);
+        }
 
         // Clear stored layout and map layer preferences
         try {
@@ -580,6 +625,9 @@ var WidgetManager = (function () {
         init: init,
         addWidget: addWidget,
         toggleWidget: toggleWidget,
+        registerFloating: registerFloating,
+        syncFloatingToggle: syncFloatingToggle,
+        isFloating: function (id) { return !!floatingWidgets[id]; },
         getLayout: getLayout,
         saveLayout: saveLayout,
         getWidget: getWidget,

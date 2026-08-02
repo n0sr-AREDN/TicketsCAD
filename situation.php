@@ -560,6 +560,7 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
         // error tiles. maxZoom stays 19 so the base map + markers still zoom
         // in fully. (Eric, 2026-07-05 — #53 follow-up.)
         var radarLayer = L.tileLayer('', { opacity: 0.7, maxZoom: 19, maxNativeZoom: 7, errorTileUrl: '' });
+        var radarTimer = null;
         function refreshRadarFrame() {
             fetch('https://api.rainviewer.com/public/weather-maps.json')
                 .then(function (r) { return r.json(); })
@@ -572,8 +573,19 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
                 })
                 .catch(function () { /* offline / blocked — layer stays empty */ });
         }
-        refreshRadarFrame();
-        setInterval(refreshRadarFrame, 5 * 60 * 1000);
+        // Fetch the frame catalogue only while the radar layer is actually
+        // shown (docs/OFFLINE-OPERATION.md D7). It used to run on every load of
+        // this page and then every five minutes regardless — so a Situation
+        // wall display with radar switched OFF still contacted RainViewer
+        // around the clock. SECURITY.md said this happened only when radar was
+        // enabled; now that is true.
+        radarLayer.on('add', function () {
+            refreshRadarFrame();
+            if (!radarTimer) { radarTimer = setInterval(refreshRadarFrame, 5 * 60 * 1000); }
+        });
+        radarLayer.on('remove', function () {
+            if (radarTimer) { clearInterval(radarTimer); radarTimer = null; }
+        });
 
         // NOAA/NWS MRMS base reflectivity (1 km CONUS, quality-controlled,
         // event-driven ~2-min updates). Unlike RainViewer's cached global
@@ -619,6 +631,27 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
 
         var sitLayersControl = L.control.layers(baseMaps, overlays, { collapsed: true, position: 'topright' }).addTo(map);
 
+        // ── Per-user layer visibility ──
+        // This screen previously persisted NOTHING: every overlay here was
+        // built, added and listed with no code anywhere reading or writing its
+        // state, so a dispatcher's choices lasted exactly until the next
+        // reload. Reconciles against the operator's saved choice (and the
+        // administrator default) using the synchronously-injected
+        // window.MAP_LAYER_PREFS, so there is no fetch and no visible flash.
+        // Units (EOC) / Facilities (EOC) register later, when their groups are
+        // built — see ensureUnitLayer() / ensureFacilityLayer().
+        if (window.MapLayerPrefs) {
+            window.MapLayerPrefs.bind(map, {
+                radar_us:        noaaRadarLayer,
+                radar:           radarLayer,
+                temperature:     weatherTemp,
+                precipitation:   weatherPrecip,
+                wind:            weatherWind,
+                clouds:          weatherClouds,
+                road_conditions: roadConditionsGroup
+            });
+        }
+
         // GH #43 (Phase 110) — fold any configured event map image
         // overlays into the layer control. Each enabled+positioned
         // overlay becomes a toggleable layer sitting above the base
@@ -661,6 +694,9 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
         var eventZonesGroup = L.layerGroup().addTo(map);
         sitLayersControl.addOverlay(eventZonesGroup,
             '<span style="color:#6f42c1">&#9679;</span> Event Zones');
+        if (window.MapLayerPrefs) {
+            window.MapLayerPrefs.register(map, 'event_zones', eventZonesGroup);
+        }
         function _addZoneLayer(z) {
             var geom;
             try { geom = JSON.parse(z.geo_json); } catch (e) { return; }
@@ -711,6 +747,9 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
         var weatherAlertGroup = L.layerGroup().addTo(map);
         sitLayersControl.addOverlay(weatherAlertGroup,
             '<span style="color:#dc3545">&#9650;</span> Weather Alerts');
+        if (window.MapLayerPrefs) {
+            window.MapLayerPrefs.register(map, 'weather_alerts', weatherAlertGroup);
+        }
         var WX_SEV_COLOR = { 'Extreme': '#dc3545', 'Severe': '#fd7e14',
                              'Moderate': '#ffc107', 'Minor': '#6c757d' };
         function _addWeatherAlertLayer(a) {
@@ -1117,12 +1156,16 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
     function ensureUnitLayer() {
         if (!unitMarkers) {
             unitMarkers = L.layerGroup();
-            // Auto-add on start; user can toggle via layer control.
+            // Added per the shipped default; MapLayerPrefs.register below
+            // reconciles it against this user's saved choice.
             unitMarkers.addTo(mapVar());
             if (window._mapLayersControl && !window._eocUnitsInCtl) {
                 window._mapLayersControl.addOverlay(unitMarkers,
                     '<span style="color:#198754">&#9679;</span> Units (EOC)');
                 window._eocUnitsInCtl = true;
+            }
+            if (window.MapLayerPrefs && mapVar()) {
+                window.MapLayerPrefs.register(mapVar(), 'units', unitMarkers);
             }
         }
     }
@@ -1134,6 +1177,12 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
                 window._mapLayersControl.addOverlay(facMarkers,
                     '<span style="color:#0d6efd">&#9679;</span> Facilities (EOC)');
                 window._eocFacsInCtl = true;
+            }
+            // Eric's actual report: "I don't want to see my facilities on my
+            // map but I want to load them if I need them." This registration
+            // is what makes switching them off survive a reload.
+            if (window.MapLayerPrefs && mapVar()) {
+                window.MapLayerPrefs.register(mapVar(), 'facilities', facMarkers);
             }
         }
     }
@@ -2451,6 +2500,10 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
     }
 })();
 </script>
+
+<?php /* Phase 131 — net-control check-ins float above the situation display.
+         Renders nothing without action.net_checkin. */ ?>
+<?php include_once NEWUI_ROOT . '/inc/net-checkin-widget.php'; ?>
 
 <noscript>
     <div class="alert alert-warning m-3">JavaScript is required for the Situation view. Please enable JavaScript in your browser.</div>

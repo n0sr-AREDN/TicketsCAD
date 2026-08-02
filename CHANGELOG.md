@@ -3,6 +3,142 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.3] - 2026-08-02
+
+**A security release. Please update, and please run the one-minute self-check
+below even if you cannot update today.**
+
+Two security advisories are published alongside this release. The first is the
+more serious of the two and affects a default installation:
+
+- **[GHSA-rrp6-pqhj-w5wj](https://github.com/openises/TicketsCAD/security/advisories/GHSA-rrp6-pqhj-w5wj)**
+  — *Critical.* Private directories, including database backups, were served
+  over HTTP on a default install.
+- **[GHSA-984v-rw78-3223](https://github.com/openises/TicketsCAD/security/advisories/GHSA-984v-rw78-3223)**
+  — *Moderate.* The External API's "require TLS" setting did not enforce TLS.
+
+**Upgrading:** `git pull` then `php sql/run_migrations.php`. Docker:
+`git pull && docker compose up -d --build`.
+
+> ### ⚠ If you run behind a reverse proxy, one setting needs your attention
+>
+> This applies if something else terminates HTTPS and passes the request to
+> TicketsCAD — Cloudflare, Nginx Proxy Manager, IIS ARR, a load balancer.
+>
+> The TLS fix works by no longer taking a request header's word for whether the
+> connection was encrypted, and that header is exactly how your proxy tells
+> TicketsCAD the original request was HTTPS. **List your proxy in the
+> `trusted_proxies` setting**, or legitimate External API requests will
+> correctly be refused with `426`. The default is `127.0.0.1,::1`, which covers
+> the same-host case only. The refusal now explains itself rather than failing
+> silently, but you still have to make the change.
+
+### Check your own install — one minute
+
+```bash
+curl -s -o /dev/null -w 'backups %{http_code}\n' https://your-site/backups/
+curl -s -o /dev/null -w 'sql     %{http_code}\n' https://your-site/sql/run_migrations.php
+curl -s -o /dev/null -w 'tools   %{http_code}\n' https://your-site/tools/
+```
+
+`403` or `404` is good. **`200` means you are affected** — see the advisory.
+`301`/`302` is inconclusive; re-run against the address you land on. From this
+release onward TicketsCAD runs these same checks against itself and reports the
+answer on **Settings → Status**, in the *Web exposure* row.
+
+### Security
+
+- **Your database backups were downloadable from the web, with no login.** The
+  install instructions point the web server at the application folder, so every
+  directory in it was published unless an administrator had blocked them by
+  hand — and nothing that shipped told them to. `backups/` was the worst of it:
+  a complete database archive, including every password hash. `sql/` and
+  `tools/` were browsable, `inc/db.php` served the database credentials, and
+  `sql/run_migrations.php` *executed* when requested over HTTP. Confirmed from
+  the public internet against a live install, not inferred. Four independent
+  layers now ship: backups moved above the web root, deny rules in the
+  repository for Apache and IIS, an nginx snippet plus documentation, and a
+  CLI-only guard on every script under `sql/` and `tools/` that works on any
+  web server in any configuration. See GHSA-rrp6-pqhj-w5wj, which includes
+  what to do if your backups directory was exposed.
+- **The External API's "require TLS" setting did not require TLS.** With the
+  setting on, a plain-HTTP request carrying a valid token was answered `200`
+  with real data instead of `426`. Two independent bypasses: the check trusted
+  the caller-supplied `X-Forwarded-Proto` header, which defeats it on **every**
+  web server, and on IIS it additionally never fired at all, because IIS
+  reports plain HTTP by setting a variable to the string `"off"` and the check
+  asked only whether that variable was empty. Reading data still required a
+  valid token, so this is not an authentication bypass — but a control the
+  operator switched on reported success while doing nothing, so integrations
+  were configured over plain HTTP and kept working. Reported privately by
+  [@rjonesbsink](https://github.com/rjonesbsink). See GHSA-984v-rw78-3223.
+- **Saving a Settings panel wiped the stored secret it never showed you.** The
+  panels mask secrets on display, then wrote the mask back on save, silently
+  destroying the stored value.
+- **The CAD sent the DMR bridge a token hash instead of the token**, and the
+  bridge's Docker control surface never started at all.
+- **Subprocesses are now spawned without a shell**, closing a class of command
+  injection, and two probes that had never worked were fixed.
+- **The geocoder gate was itself reachable over HTTP.**
+
+### Added
+
+- **Map tiles can be proxied by your own server.** `tile_mode` is now real: a
+  server-side tile proxy with a per-provider policy, so installs behind a
+  restrictive network — or blocked by a tile provider's Referer rules — can
+  still show a map.
+- **Net check-ins can be captured in one keystroke** and worked entirely from
+  the keyboard, matching the rest of the dispatch interface.
+- **A Telegram channel adapter**, with a test button and a setup guide.
+  Contributed by [@rjonesbsink](https://github.com/rjonesbsink) as a pull
+  request against the public repository.
+- **The Geocoding Provider setting does something.** It was previously
+  presented as a choice that had no effect.
+- **Address lookup is reported on the Status page**, emitter and reader
+  together.
+
+### Fixed
+
+- **An internet outage stalled every dispatch action for 21 seconds.** Outbound
+  calls now have gated timeouts, and the notification sweep no longer pays a
+  full timeout per row. What the product does and does not do without an
+  internet connection is now documented and measured rather than assumed.
+- **Web Push key generation now works on stock Windows PHP**, and Windows/IIS
+  has a setup guide.
+- **Background jobs never ran on Windows**, and the advice for fixing it said
+  to run `systemctl`.
+- **The web-server hardening rules denied `assets/vendor/`**, so Bootstrap and
+  Leaflet returned 403 and the interface rendered unstyled. If you applied the
+  hardening by hand before this release, take the corrected rules.
+- **Two buttons on the unit form submitted the page** instead of running their
+  handler — a `<button>` with no `type` inside a `<form>`.
+- **Deploy no longer takes the operator's backup directory away from them**,
+  and a permission repair can no longer abort an otherwise healthy deploy.
+- **Zello reconnection backoff never escalated**, because transport-level
+  success reset the counter.
+- **A channel's destination is bound to its credential**, not to the message.
+- **Map layers you turned off are remembered**, not only the ones you turned on.
+- **The one label on incident detail that no administrator could translate** is
+  now a caption key like every other.
+- Two schema columns that only a fresh install ever received, and an
+  `owntracks_outbox` column in the same position, are now created on existing
+  installs too.
+- Four reported defects where the product's own documented remedy was itself a
+  dead end.
+
+### Changed
+
+- **New dashboard widgets are held to the interface conventions** by an
+  automated gate, so they look and behave like the existing ones.
+- **The release process can no longer silently revert public-only changes.** A
+  release is a full-tree replace, so a pull request merged only in the public
+  repository used to disappear at the next release with nothing to show for it.
+  The snapshot now compares against the public repository and refuses to
+  publish if it would discard anything.
+- The SBOM now covers two packages our own installer installs but the bill of
+  materials had missed.
+- The README undercounted the test suite by a factor of four.
+
 ## [4.2.2] - 2026-07-30
 
 A security and reliability release. **It closes a privilege-escalation hole in

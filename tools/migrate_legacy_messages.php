@@ -49,6 +49,8 @@
  * Re-runnable: uses INSERT IGNORE keyed on legacy id stored in payload.
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require __DIR__ . '/../config.php';
 
 $args      = $_SERVER['argv'] ?? [];

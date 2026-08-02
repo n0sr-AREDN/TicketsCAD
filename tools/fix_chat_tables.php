@@ -28,6 +28,8 @@
  *   php tools/fix_chat_tables.php
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require __DIR__ . '/../config.php';
 
 $prefix = $GLOBALS['db_prefix'] ?? '';

@@ -113,6 +113,38 @@ The pending-message sweep is identical with the name and ExecStart changed —
 `/usr/bin/php /var/www/newui/tools/pending_messages_tick.php`, and
 `ticketscad-pending-msg.timer` pointing `Unit=` at it.
 
+#### If you use Web Push, SMS, e-mail, Slack or webhooks: run that one every 15 seconds
+
+Since 2026-07-31 the pending-message sweep also **sends the outbound
+notifications**. They used to go out inside the dispatcher's own request, which
+cost 21 seconds per dispatch action whenever the internet was down (measured;
+see `docs/OFFLINE-OPERATION.md` §8, defect D3). Moving them to this job made a
+dispatch action take 0.04s — and made **this timer's interval the delay on
+every callout**.
+
+With the 1-minute interval above, a push notification can be up to a minute
+behind the incident. For a volunteer agency being paged out, that is worth
+tightening:
+
+```ini
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=15s
+AccuracySec=5s
+Persistent=true
+Unit=ticketscad-pending-msg.service
+```
+
+The sweep is cheap when there is nothing to do — one indexed `SELECT` returning
+no rows — so a 15-second interval is not a meaningful load. Leave `par-tick` at
+a minute.
+
+If **no** scheduler is installed, the software does not silently stop notifying
+anybody: the request still queues the notification and then makes one
+best-effort attempt, bounded by a 3-second budget and paused for 60 seconds
+after two consecutive failures. But that is a fallback, not the design.
+Settings → Status → Scheduled jobs will say so, in red.
+
 Install and prove them:
 
 ```bash

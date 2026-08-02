@@ -8,7 +8,15 @@
  * auth/session machinery the endpoint needs.
  *
  * Spec: specs/configurable-tile-providers-2026-06/ (Phase A).
+ *
+ * 2026-07-31: resolve_tile_config() now also reports the mode that will
+ * ACTUALLY be used and, when that is proxy, the same-origin URL to use. Until
+ * this change `$mode` came in, was copied to the output, and was read by
+ * nothing — no JS consumer for it has ever existed in any commit. See
+ * inc/tile-proxy.php for the whole story and the per-provider policy.
  */
+
+require_once __DIR__ . '/tile-proxy.php';
 
 /**
  * Known-provider tile URL templates.
@@ -114,12 +122,38 @@ function resolve_tile_config(string $provider, string $serverUrl, string $apiKey
     $url = tile_sanitize_url($url);
     $isQuadkey = ($url !== '' && strpos($url, '{q}') !== false);
 
+    // Which provider identity does the proxy policy apply to? A legacy install
+    // that set only tile_server_url is effectively 'custom'.
+    $policyKey = $provider;
+    if ($policyKey === '' && $serverUrl !== '') {
+        $policyKey = 'custom';
+    }
+
+    $effective = ($url === '') ? 'direct' : tile_proxy_effective_mode($mode, $policyKey);
+    $verdict   = tile_proxy_verdict($policyKey);
+
+    // The same-origin URL Leaflet should use when proxying. Built here rather
+    // than in JS so exactly one place decides what a proxied tile URL is.
+    $proxyUrl = '';
+    if ($effective === 'proxy') {
+        $proxyUrl = 'api/tile-proxy.php?provider=' . rawurlencode($policyKey)
+                  . '&z={z}&x={x}&y={y}';
+    }
+
     return [
         'tile_provider'   => $provider,
         'tile_server_url' => $serverUrl,
         'tile_url'        => $url,
         'tile_api_key'    => $apiKey,
+        // The CONFIGURED mode, unchanged — existing consumers keep their value.
         'tile_mode'       => $mode,
+        // The mode that will actually be used. Differs from tile_mode whenever
+        // the provider's terms forbid us proxying for them.
+        'tile_effective_mode' => $effective,
+        'tile_proxy_allowed'  => $verdict['allowed'],
+        'tile_proxy_reason'   => $verdict['reason'],
+        'tile_proxy_caveat'   => $verdict['caveat'],
+        'tile_proxy_url'      => $proxyUrl,
         'tile_cache_days' => $cacheDays,
         'tile_is_quadkey' => $isQuadkey,
         'has_custom_tile' => ($url !== ''),

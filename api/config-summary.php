@@ -8,6 +8,8 @@
  * GET /api/config-summary.php
  */
 
+require_once __DIR__ . '/../inc/https.php';   // is_https(), is_https_verified()
+
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 
@@ -50,7 +52,7 @@ foreach ($queries as $key => $sql) {
 $security = [];
 
 // HTTPS status
-$security['https'] = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+$security['https'] = is_https();
 
 // 2FA enabled.
 // Read from the `settings` table (the modern canonical place written

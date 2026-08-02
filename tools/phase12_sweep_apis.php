@@ -27,6 +27,9 @@
  *
  * Usage: php tools/phase12_sweep_apis.php
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 $base = realpath(__DIR__ . '/../api');

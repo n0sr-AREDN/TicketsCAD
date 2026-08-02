@@ -9,6 +9,8 @@
  * in config.php (no additional secrets to manage).
  */
 
+require_once __DIR__ . '/https.php';   // is_https(), is_https_verified()
+
 require_once __DIR__ . '/totp.php';
 
 // ═══════════════════════════════════════════════════════════════
@@ -617,7 +619,7 @@ function tfa_remember_device($userId)
     }
 
     // Set cookie
-    $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+    $secure = is_https();
     setcookie('tfa_remember', $token, [
         'expires'  => time() + ($days * 86400),
         'path'     => '/',

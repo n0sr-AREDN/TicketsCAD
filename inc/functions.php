@@ -12,6 +12,11 @@
 // install created years ago gets the function without editing config.php.
 // See inc/version.php for why the tracked file outranks config.php.
 require_once __DIR__ . '/version.php';
+// is_https() / is_https_verified(). Required HERE, like version.php,
+// because every config.php ever shipped requires inc/functions.php at
+// its bottom — and config.php is gitignored, so that is the only route
+// by which a helper reaches installs we cannot edit.
+require_once __DIR__ . '/https.php';
 
 /**
  * Get a setting value from the `settings` table.

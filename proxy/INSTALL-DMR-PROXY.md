@@ -109,4 +109,3 @@ Cloudflare Tunnel — WebSocket upgrades pass through transparently.
 2. `proxy/DmrProxyApp.php` — onOpen/onMessage/onClose + auth + ptt
 3. `proxy/DmrUpstream.php` — TCP socket + chunked-POST upstream
 4. `~/.claude/skills/realtime-streaming-proxy/SKILL.md` — pattern + anti-patterns
-5. `specs/phase-85c-dmr-websocket-proxy/spec.md` — what was built and why

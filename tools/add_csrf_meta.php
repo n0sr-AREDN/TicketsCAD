@@ -7,6 +7,8 @@
  * Idempotent. Skips files that don't compute $csrf or already have the tag.
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 $root = realpath(__DIR__ . '/..');
 $files = glob($root . '/*.php');
 $added = 0; $skipped = 0;

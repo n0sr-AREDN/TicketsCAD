@@ -157,35 +157,34 @@
         var baseQuery = [street, city, state].filter(Boolean).join(', ');
         var variants = geocodeVariants(baseQuery);
 
-        function buildUrl(q) {
-            var u = 'https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=1&q=' + encodeURIComponent(q);
-            if (map) {
-                var bounds = map.getBounds();
-                u += '&viewbox=' + bounds.getWest().toFixed(4) + ',' + bounds.getNorth().toFixed(4) +
-                     ',' + bounds.getEast().toFixed(4) + ',' + bounds.getSouth().toFixed(4);
-                u += '&bounded=0';
-            }
-            return u;
-        }
+        var viewbox = Geocode.viewboxFromMap(map);
 
         // Try each variant in order; resolve with first non-empty result.
+        //
+        // A provider that is UNREACHABLE now stops the walk immediately. It
+        // used to fall into the same `.catch` as "no match" and try the next
+        // variant after 600ms, so an offline dispatcher pressing Lookup mid-call
+        // sat through every variant — the better part of a minute — before
+        // being told the address was not found, which was not even true. The
+        // rate-limit spacing between variants stays: it is what keeps a public
+        // geocoder's one-request-per-second rule satisfied when the answer
+        // genuinely is "no match, try the next spelling".
         function tryNext(i) {
             if (i >= variants.length) {
                 showAlert('Address not found. Try a different format or click the map.', 'warning');
                 return;
             }
-            fetch(buildUrl(variants[i]))
-                .then(function (r) { return r.json(); })
-                .then(function (results) {
-                    if (!results || results.length === 0) {
-                        // Try the next variant after a small delay so we don't
-                        // flood Nominatim (their TOS asks for ~1 rps).
-                        setTimeout(function () { tryNext(i + 1); }, 600);
-                        return;
-                    }
-                    handleGeocodeResult(results[0], variants[i] !== variants[0]);
-                })
-                .catch(function () { setTimeout(function () { tryNext(i + 1); }, 600); });
+            Geocode.search({ q: variants[i], limit: 1, viewbox: viewbox }).then(function (res) {
+                if (!res.ok) {
+                    showAlert(res.message, 'warning');
+                    return;
+                }
+                if (res.results.length === 0) {
+                    setTimeout(function () { tryNext(i + 1); }, 600);
+                    return;
+                }
+                handleGeocodeResult(res.results[0], variants[i] !== variants[0]);
+            });
         }
         tryNext(0);
     }
@@ -245,13 +244,14 @@
     }
 
     function reverseGeocode(lat, lng) {
-        var url = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng;
-
-        fetch(url)
-            .then(function (r) { return r.json(); })
-            .then(function (result) {
-                if (!result || !result.address) return;
-                var addr = result.address;
+        Geocode.reverse(lat, lng)
+            .then(function (res) {
+                // Best-effort by design: the dispatcher has already placed the
+                // pin, so the incident has a location either way. Silence here
+                // costs nothing; the forward Lookup above is where a failure
+                // has to be spoken aloud.
+                if (!res.ok || res.results.length === 0) return;
+                var addr = res.results[0].address;
 
                 var streetEl = document.getElementById('street');
                 var cityEl   = document.getElementById('city');
@@ -290,10 +290,11 @@
                 if (zipEl && addr.postcode) {
                     zipEl.value = addr.postcode;
                 }
-            })
-            .catch(function () {
-                // Reverse geocode is best-effort — silent fail
             });
+        // No .catch here on purpose. Geocode.reverse() never rejects — it
+        // resolves with { ok:false, message } — so a catch would only swallow a
+        // genuine bug in the handler above, which is the failure shape this
+        // codebase has been bitten by repeatedly.
     }
 
     // ── Load form data from API ──
@@ -1038,6 +1039,12 @@
             }
 
             if (result.success) {
+                // Phase 131 — the incident now EXISTS, so the net check-in
+                // that started it is genuinely worked. Marking it here rather
+                // than at keypress time means an abandoned form leaves the
+                // check-in still waiting to be called on.
+                if (window.NetPrefill) window.NetPrefill.markWorked(result.ticket_id);
+
                 showAlert(
                     '<strong>Incident ' + (result.incident_number || ('#' + result.ticket_id)) + ' created successfully!</strong>' +
                     (result.protocol ? '<br><small>Protocol: ' + escHtml(result.protocol) + '</small>' : '') +
@@ -1407,8 +1414,69 @@
             }
         }
 
+        /**
+         * Phase 131 — resolve a RADIO IDENTIFIER, not just a phone number.
+         *
+         * Skywarn spotters report 2-5 digit numbers ("1234", "2415"); social
+         * and practice nets use callsigns ("nki", "n0nki"). Installs that keep
+         * those people in `constituents` store the value in `reference`, and
+         * api/constituents.php has had an exact `?reference=` lookup since
+         * Phase 73h whose own docblock says it exists for exactly this
+         * Skywarn callback flow.
+         *
+         * NOTHING HAS EVER CALLED IT. The blur handler below only ever asked
+         * `?phone=`, which resolved NEITHER shape:
+         *   "n0nki" -> non-digits stripped -> "0" -> under the 4-digit floor
+         *              -> returned early, no request issued at all
+         *   "1234"  -> LIKE '%1234%' across phone..phone_4 -> matches any
+         *              TELEPHONE NUMBER containing 1234, and can never match
+         *              reference = '1234'
+         * The endpoint's own test passes because it drives the endpoint
+         * directly; the real path never reached it. `/net` puts the identifier
+         * into this very field, so it gets fixed rather than routed around.
+         *
+         * Exact reference match first, then fall through to the unchanged
+         * phone search. A real phone number is not somebody's reference, so
+         * the exact lookup misses and existing behaviour is preserved.
+         */
+        function lookupByReference(raw) {
+            return fetch('api/constituents.php?reference=' + encodeURIComponent(raw), {
+                credentials: 'same-origin'
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data && data.constituent) {
+                    hidePicker();
+                    fillFromConstituent(data.constituent);
+                    return true;
+                }
+                // Several references share the prefix — let the operator pick.
+                var near = (data && data.constituents) ? data.constituents : [];
+                if (near.length > 1) {
+                    renderPicker(near);
+                    return true;
+                }
+                if (near.length === 1) {
+                    hidePicker();
+                    fillFromConstituent(near[0]);
+                    return true;
+                }
+                return false;
+            })
+            .catch(function () { return false; });
+        }
+
         function lookup() {
             var raw = phoneEl.value.trim();
+            if (raw === '') { hidePicker(); return; }
+
+            lookupByReference(raw).then(function (resolved) {
+                if (resolved) return;
+                lookupByPhone(raw);
+            });
+        }
+
+        function lookupByPhone(raw) {
             var digits = raw.replace(/\D/g, '');
             // Match server-side minimum (avoid showing every constituent
             // in the database on partial input).

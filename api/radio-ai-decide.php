@@ -32,6 +32,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/functions.php';
+require_once __DIR__ . '/../inc/dmr_token.php';
 ini_set('display_errors', '0');
 header('Content-Type: application/json');
 
@@ -224,6 +225,16 @@ try {
         exit;
     }
 
+    // The value we can actually present to the bridge (Phase 129 — a token
+    // stored by an older version is a SHA-256 digest and would 401).
+    $bridgeToken = dmr_bridge_token($channel);
+    if ($bridgeToken === '') {
+        $pdo->rollBack();
+        http_response_code(503);
+        echo json_encode(['error' => dmr_token_missing_reason($channel)]);
+        exit;
+    }
+
     // Mark sent BEFORE the TX so we don't double-fire if the operator
     // clicks twice while the bridge is processing. Update with tx
     // metadata after.
@@ -254,7 +265,7 @@ try {
         CURLOPT_TIMEOUT        => 30,
         CURLOPT_HTTPHEADER     => [
             'Content-Type: application/json',
-            'Authorization: Bearer ' . $channel['bridge_token'],
+            'Authorization: Bearer ' . $bridgeToken,
         ],
         CURLOPT_POSTFIELDS     => $payload,
     ]);

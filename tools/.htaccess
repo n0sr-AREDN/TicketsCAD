@@ -1,0 +1,21 @@
+# Nothing in tools/ is part of the web interface.
+#
+# These are command-line maintenance scripts — installers, schema repair,
+# backup/restore, audits, token minting. On 2026-07-30 GET /tools/ returned a
+# directory listing of all 109 of them on a live internet-facing install.
+#
+# This file is defence in depth. It duplicates the block in the root .htaccess
+# on purpose, so the directory stays protected if an operator replaces or loses
+# the root file — and every script here ALSO carries a PHP_SAPI guard, which is
+# the only layer that survives a server that ignores .htaccess entirely.
+#
+# Use RedirectMatch / RewriteRule only: <Directory> and <DirectoryMatch> are
+# illegal in .htaccess (Apache answers 500 for the whole site), and `Options` /
+# `Require` need AllowOverride levels a host may not grant.
+<IfModule mod_alias.c>
+    RedirectMatch 404 (^|/)tools(/|$)
+</IfModule>
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule .* - [F,L]
+</IfModule>

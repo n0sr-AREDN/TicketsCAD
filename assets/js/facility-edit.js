@@ -117,23 +117,18 @@
         }
 
         var query = [street, city, state].filter(Boolean).join(', ');
-        var url = 'https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=1&q=' + encodeURIComponent(query);
 
-        if (map) {
-            var bounds = map.getBounds();
-            url += '&viewbox=' + bounds.getWest().toFixed(4) + ',' + bounds.getNorth().toFixed(4) +
-                   ',' + bounds.getEast().toFixed(4) + ',' + bounds.getSouth().toFixed(4);
-            url += '&bounded=0';
-        }
-
-        fetch(url)
-            .then(function (r) { return r.json(); })
-            .then(function (results) {
-                if (results.length === 0) {
+        Geocode.search({ q: query, limit: 1, viewbox: Geocode.viewboxFromMap(map) })
+            .then(function (res) {
+                if (!res.ok) {
+                    showAlert(res.message, 'warning');
+                    return;
+                }
+                if (res.results.length === 0) {
                     showAlert('Address not found. Try a different format or click the map.', 'warning');
                     return;
                 }
-                var r = results[0];
+                var r = res.results[0];
                 var lat = parseFloat(r.lat);
                 var lng = parseFloat(r.lon);
                 setMarker(lat, lng);
@@ -154,20 +149,14 @@
                         }
                     }
                 }
-            })
-            .catch(function () {
-                showAlert('Geocoding failed. Please try again or click the map.', 'danger');
             });
     }
 
     function reverseGeocode(lat, lng) {
-        var url = 'https://nominatim.openstreetmap.org/reverse?format=json&addressdetails=1&lat=' + lat + '&lon=' + lng;
-
-        fetch(url)
-            .then(function (r) { return r.json(); })
-            .then(function (result) {
-                if (!result || result.error) return;
-                var addr = result.address || {};
+        Geocode.reverse(lat, lng)
+            .then(function (res) {
+                if (!res.ok || !res.results.length) return;
+                var addr = res.results[0].address;
 
                 var streetEl = document.getElementById('street');
                 var cityEl = document.getElementById('city');
@@ -190,10 +179,10 @@
                         }
                     }
                 }
-            })
-            .catch(function () {
-                // Reverse geocode failure is non-critical
             });
+        // Reverse geocode failure is non-critical — the pin is already placed.
+        // No .catch: Geocode.reverse() resolves with { ok:false }, so one would
+        // only hide a bug in the handler above.
     }
 
     // ── Load dropdown options ──

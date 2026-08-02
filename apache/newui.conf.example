@@ -33,10 +33,46 @@
     DirectoryIndex index.php login.php
 
     <Directory /var/www/newui>
-        Options Indexes FollowSymLinks
+        # -Indexes: never generate a directory listing. This template used to
+        # say `Options Indexes FollowSymLinks`, and that is exactly how
+        # GET /backups/ came to return a browsable list of database dumps on a
+        # live install (2026-07-30). There is no page in TicketsCAD that needs
+        # an auto-generated index.
+        Options -Indexes +FollowSymLinks
+        # AllowOverride All (or at minimum FileInfo) is REQUIRED: the deny
+        # rules TicketsCAD ships in .htaccess, sql/.htaccess and tools/.htaccess
+        # are silently ignored on AllowOverride None.
         AllowOverride All
         Require all granted
     </Directory>
+
+    # ── Directories that are not part of the web interface ──
+    # The same set the shipped .htaccess denies, restated here so the install is
+    # protected even if AllowOverride is later tightened or .htaccess is lost.
+    # <DirectoryMatch> is legal in a vhost (it is NOT legal in .htaccess — Apache
+    # answers 500 for the whole site if you put it there).
+    #
+    # inc/ holds db.php with the database credentials; backups/ holds full
+    # database dumps; sql/ and tools/ hold command-line scripts including the
+    # migration runner. None of them is fetched by the browser.
+    <DirectoryMatch "^/var/www/newui/(apache|backups|coordination|drafts|inc|keys|specs|sql|tests|tools|vendor)(/|$)">
+        Require all denied
+    </DirectoryMatch>
+
+    # services/ is denied except the bridge scripts the Mesh Console tells
+    # operators to fetch with curl. A live install also keeps listener.ini
+    # (APRS-IS passcode), .env files and services/*/logs/ under here.
+    <DirectoryMatch "^/var/www/newui/services/">
+        Require all denied
+    </DirectoryMatch>
+    # Re-open just the bridge sources. <FilesMatch> is merged AFTER <Directory*>,
+    # so this allow wins over the deny above — for .py files only, and only
+    # inside these two directories.
+    <DirectoryMatch "^/var/www/newui/services/(meshtastic|meshcore)/">
+        <FilesMatch "\.py$">
+            Require all granted
+        </FilesMatch>
+    </DirectoryMatch>
 
     # Defense-in-depth on the uploads directory — never execute PHP from
     # there even if a file lands with the wrong extension somehow.

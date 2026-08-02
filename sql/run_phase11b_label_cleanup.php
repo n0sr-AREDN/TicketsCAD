@@ -17,6 +17,9 @@
  * Safety: Idempotent. Repeats are no-ops because the new wording is
  *         already in the table after the first run.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase 11b — purge 'Level/Levels' from captions\n";

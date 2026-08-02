@@ -22,6 +22,8 @@
  * is the polite version — one download instead of 250k API hits.
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 $opts = getopt('', ['url:', 'dry']);

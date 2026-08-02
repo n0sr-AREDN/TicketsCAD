@@ -81,6 +81,10 @@ $userPerms = rbac_user_permissions();
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo asset_v('assets/css/dashboard.css'); ?>">
     <link rel="stylesheet" href="assets/css/unit-tracking.css?v=<?php echo asset_v('assets/css/unit-tracking.css'); ?>">
     <link rel="stylesheet" href="assets/css/widgets.css?v=<?php echo asset_v('assets/css/widgets.css'); ?>">
+    <!-- The one definition of the widget-header action bars (View [V] / Edit
+         [E] / …). Its own file because situation.php needs it too and does not
+         load widgets.css. -->
+    <link rel="stylesheet" href="assets/css/action-bar.css?v=<?php echo asset_v('assets/css/action-bar.css'); ?>">
     <link rel="stylesheet" href="assets/css/zello-widget.css?v=<?php echo asset_v('assets/css/zello-widget.css'); ?>">
     <!-- radio-widget.css moved to inc/navbar.php so it's loaded on every page -->
     <link rel="stylesheet" href="assets/css/chat.css?v=<?php echo asset_v('assets/css/chat.css'); ?>">
@@ -178,6 +182,14 @@ $userPerms = rbac_user_permissions();
 <?php if (dash_can('time_entries', $userPerms)): ?>
                 <button class="btn btn-sm btn-outline-secondary widget-toggle active" data-widget="time_entries" title="<?php echo e(t('dash.widget.time_entries', 'My time (volunteer hours)')); ?>">
                     <i class="bi bi-clock-history"></i>
+                </button>
+<?php endif; ?>
+<?php /* Phase 131 — the net-control check-in panel floats over the grid rather
+         than sitting in it, but it toggles from here like every other widget.
+         Before this existed it had a dismiss button and no way back. */ ?>
+<?php if (function_exists('rbac_can') && rbac_can('action.net_checkin')): ?>
+                <button class="btn btn-sm btn-outline-secondary widget-toggle active" data-widget="net_checkins" title="<?php echo e(t('dash.widget.net_checkins', 'Check-Ins')); ?>">
+                    <i class="bi bi-broadcast-pin"></i>
                 </button>
 <?php endif; ?>
             </div>
@@ -561,6 +573,9 @@ $__allowedWidgets = array_values(array_filter(
 <script src="assets/js/screen-prefs.js?v=<?php echo asset_v('assets/js/screen-prefs.js'); ?>"></script>
 <script src="assets/js/facility-status.js?v=<?php echo asset_v('assets/js/facility-status.js'); ?>"></script>
 <script src="assets/js/widget-manager.js?v=<?php echo asset_v('assets/js/widget-manager.js'); ?>"></script>
+<?php /* Phase 131 — net-control check-ins float above the widgets. Renders
+         nothing without action.net_checkin. */ ?>
+<?php include_once NEWUI_ROOT . '/inc/net-checkin-widget.php'; ?>
 <script src="assets/js/app.js?v=<?php echo asset_v('assets/js/app.js'); ?>"></script>
 <script src="assets/js/zello-widget.js?v=<?php echo asset_v('assets/js/zello-widget.js'); ?>"></script>
 <!-- radio-widget.js moved to inc/navbar.php so it loads on every page -->

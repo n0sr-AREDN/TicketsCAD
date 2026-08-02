@@ -21,6 +21,8 @@
  * Usage: php tools/phase12_rbac_order_fix.php
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 $base = realpath(__DIR__ . '/..');
 
 $pages = [

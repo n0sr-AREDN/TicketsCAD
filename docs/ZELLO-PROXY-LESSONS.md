@@ -58,14 +58,68 @@ Eric's install uses **Zello Work**. Network name: `odymed`. Default channel: `Di
 | 1000 | normal                     | Zello closed gracefully (rare — usually paired with another cause) | Exponential backoff                                       |
 | 1006 | abnormal                   | TCP-level drop, no WSS close frame                             | Exponential backoff                                           |
 | 3001 | unable to verify           | Fatal auth error. Credentials wrong OR JWT expired OR network name mismatch | **STOP. Do not auto-reconnect.** Log clearly, wait for operator fix + daemon restart |
+| 3002 | **not authorized**         | Zello refused the logon. Observed following a 3003 kick, and it **cleared on its own** — the account was busy elsewhere, not misconfigured | Fixed **45 s** cool-off. Do *not* latch `fatalAuth`: a transient state must not require a daemon restart |
 | 3003 | kicked                     | Another session logged in with the same username on the same channel | Wait **30 s**, then retry once. Reset attempt counter — don't count kicks against exponential |
+| 3004 | banned                     | Not observed. Implemented defensively — retrying cannot help and spends the connect budget | Same as 3001: latch `fatalAuth`, stop |
 
-**Never observed but plausible per Zello docs:**
-- 3002 — server closing (maintenance)
-- 3004 — banned
+### 3002 is *not* "server closing (maintenance)"
+
+This table previously listed `3002 — server closing (maintenance)` under "never
+observed but plausible per Zello docs". It has now been observed
+(openises/TicketsCAD#19, a consumer-network install), and Zello sends it with the
+literal reason string **`not authorized`**. It is an auth rejection.
+
+The sequence that produced it, which is worth recognising because the cause is
+several minutes upstream of the symptom:
+
+```
+12:40:25  Authenticated successfully
+12:59:31  PTT — 55 Opus frames sent upstream, fine
+13:05:29  Connection closed: 3003 kicked          <- another session took the username
+13:05:29  Kicked (3003) — waiting 30s
+13:05:59  (reconnect)
+13:06:01  Connection closed: 3002 not authorized  <- and every attempt after
+```
+
+Credentials were never the problem: with the proxy stopped, a standalone logon
+using the stored issuer and private key returned `{"success":true,"seq":1}` first
+try, and restarting the proxy authenticated immediately. So 3002 here is a
+transient post-kick state.
+
+**Still unobserved:**
 - 3005 — protocol error (probably means we sent something malformed)
 
-Add these to `ZelloUpstream::onClose` when they appear.
+Add it to the close handler when it appears. Note the related trap at the bottom
+of this document: Zello answers *client-side* protocol errors by closing with
+**3001**, which latches `fatalAuth` — so a malformed frame we send stops the
+proxy until someone restarts it.
+
+### The backoff counter must be reset by LOGON, not by connect
+
+Chasing 3002 exposed a bug that is not specific to it, and is the more important
+of the two.
+
+`reconnectAttempts` was reset in the connect-success callback — the moment the
+TCP/TLS handshake and WebSocket upgrade completed. But `sendLogon()` runs
+*after* that, and an auth rejection arrives *after* that. So for any
+post-handshake failure the sequence was:
+
+1. transport connects → `reconnectAttempts = 0`
+2. `sendLogon()`
+3. Zello closes with 3002
+4. `scheduleReconnect()` computes `min(30, pow(2, 0))` = **1 second**
+
+The counter could never climb. Every retry logged `attempt 1`, `maxReconnectAttempts`
+was unreachable, and the loop was unbounded: **33 rejected logons in six and a
+half minutes**, throttled only by the separate 3-connects-per-60s self-limiter —
+a safety net doing backoff's job. This affected `1006` mid-session drops
+identically.
+
+The reset now lives at the `authenticated` transition in
+`handleUpstreamMessage()`, i.e. on application-layer success. **Reset the
+counter on the success you actually care about, not on the first success in the
+sequence.** A transport that connects and is then refused has not succeeded at
+anything worth resetting for.
 
 ## The 22:37 CDT incident (2026-06-30) — reference case study
 

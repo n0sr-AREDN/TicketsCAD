@@ -14,6 +14,11 @@
 # UPGRADING FROM A COMPOSE FILE WITHOUT `app_backups`: any backup already sitting
 # in the old container is in its writable layer and will NOT migrate into the new
 # volume. Rescue it BEFORE the first rebuild — see docs/DOCKER.md §4.
+#
+# UPGRADING FROM A COMPOSE FILE THAT MOUNTED app_backups AT /var/www/html/backups:
+# the volume itself carries over unchanged — only the path it is mounted at moves
+# (v4.2.3 took backups out of the web root). Nothing to rescue; the same archives
+# appear at the new location.
 services:
   db:
     image: mariadb:11
@@ -59,19 +64,40 @@ services:
     volumes:
       - app_uploads:/var/www/html/uploads
       - app_cache:/var/www/html/cache
-      - app_backups:/var/www/html/backups   # database backups — MUST be a volume:
-                                            # `up -d --build` recreates the container
-                                            # and destroys its writable layer, so an
-                                            # unmounted backups/ takes your pre-update
-                                            # restore point with it.
+      - app_backups:/var/www/backups    # database backups. TWO reasons for this line:
+                                        #  1. MUST be a volume: `up -d --build`
+                                        #     recreates the container and destroys its
+                                        #     writable layer, so an unmounted backups
+                                        #     dir takes your pre-update restore point
+                                        #     with it.
+                                        #  2. Mounted OUTSIDE /var/www/html — the
+                                        #     Apache DocumentRoot — since v4.2.3. A
+                                        #     backup inside the web root was
+                                        #     downloadable by anyone who guessed the
+                                        #     filename (see docs/security/
+                                        #     advisory-2026-07-30-exposed-directories.md).
       - app_keys:/var/www/keys          # 2FA + RSA field-encryption keys (out of webroot)
+      - app_tile_cache:/var/www/tile-cache
+                                        # Map tiles fetched by api/tile-proxy.php.
+                                        # Mounted OUTSIDE /var/www/html on purpose: this
+                                        # cache is a record of which map areas — and so
+                                        # roughly which incident locations — this
+                                        # install has viewed. Inside the web root it
+                                        # would be readable without logging in, which is
+                                        # precisely what proxy mode exists to prevent.
+                                        # A volume rather than the container's writable
+                                        # layer so `up -d --build` does not throw the
+                                        # cache away and make the install re-fetch every
+                                        # tile at once — a load spike upstream providers
+                                        # specifically ask us not to cause.
       # To supply your own config.php instead of the env-generated one, mount it:
       # - ./config.php:/var/www/html/config.php:ro
       #
       # Prefer backups on the HOST (easy to copy off-box, survives `down -v`)?
       # Replace the app_backups line above with a bind mount and drop the named
-      # volume from the `volumes:` block at the bottom:
-      # - ./backups:/var/www/html/backups
+      # volume from the `volumes:` block at the bottom. Keep the container side
+      # at /var/www/backups — /var/www/html is served.
+      # - ./backups:/var/www/backups
 
   # ── Optional voice features: browser push-to-talk over Zello + DMR ──────────
   #   Start with:   docker compose --profile voice up -d
@@ -125,3 +151,4 @@ volumes:
   app_cache:
   app_backups:
   app_keys:
+  app_tile_cache:

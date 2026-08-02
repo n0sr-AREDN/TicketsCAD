@@ -36,6 +36,26 @@ function prefs_screen_defaults(): array {
             'sort' => ['col' => '', 'dir' => 'asc'],
             'options' => [
                 'recent_close_mins' => 30,
+
+                // Phase 131 (owner review 2026-08-01) — where the net-control
+                // check-in panel sits, and whether it is open. It floats over
+                // the grid rather than living in it, so GridStack's
+                // dashboard_layouts row (grid CELL coordinates for grid items,
+                // plus a hidden list) has nowhere to put pixel geometry, and
+                // localStorage — what the chat and Zello panels use — is per
+                // browser, not per user. This options block already exists for
+                // exactly this: arbitrary per-user, per-screen scalars. The
+                // panel also renders on situation.php, which never loads
+                // GridStack or api/layout.php at all; keeping all of its state
+                // here is what lets the two screens agree.
+                //
+                // -1 means "never placed" → centre of the viewport.
+                //  0 means "no explicit size" → the stylesheet's size.
+                'net_panel_left' => -1,
+                'net_panel_top'  => -1,
+                'net_panel_w'    => 0,
+                'net_panel_h'    => 0,
+                'net_panel_open' => 1,
             ],
         ],
 

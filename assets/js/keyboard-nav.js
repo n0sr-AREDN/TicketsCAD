@@ -91,6 +91,27 @@
                 blurWidget();
             }
         });
+
+        // …and which panel takes it WITHOUT a click.
+        //
+        // focusedWidget was sticky: only a click somewhere else cleared it. A
+        // panel that focuses itself programmatically — the net-control
+        // check-in list does, on `/net` and on load — left this handler still
+        // believing the Responders widget was live, and BOTH handlers then ran
+        // on the same keystroke, because preventDefault() does not stop a
+        // second listener on the same node. One ArrowDown moved the check-in
+        // selection AND panned the map to a unit nobody had selected; `d`
+        // deleted a check-in AND opened the Responders dispatch screen,
+        // navigating the operator off the dashboard in the middle of a net.
+        //
+        // An element marked data-kb-region declares that it owns the keyboard
+        // while focus is inside it, so the dashboard stands down. Symmetric
+        // with the click handler above, and it covers any future panel.
+        document.addEventListener('focusin', function (e) {
+            if (e.target && e.target.closest && e.target.closest('[data-kb-region]')) {
+                blurWidget();
+            }
+        });
     }
 
     function focusWidget(type) {
@@ -134,6 +155,11 @@
             return;
         }
         if (e.ctrlKey || e.metaKey || e.altKey) return;
+        // Belt and braces with the focusin handler above: if focus is inside a
+        // region that owns the keyboard, this handler is not the one to act —
+        // even if the focusin never fired (focus set before init, an element
+        // refocused while already focused, script order).
+        if (e.target && e.target.closest && e.target.closest('[data-kb-region]')) return;
         if (!focusedWidget) return;
         if (!window.DashboardActions) return;
 

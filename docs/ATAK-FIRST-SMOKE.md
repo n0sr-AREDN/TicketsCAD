@@ -116,7 +116,6 @@ For deeper diagnostics: `sudo journalctl -u <name-of-the-bridge-service-on-your-
 | Mesh Console | https://your-server.example.com/mesh-console.php |
 | ATAK admin panel | https://your-server.example.com/settings.php#atak-tak |
 | Operator guide (long form) | [docs/ATAK-SETUP.md](ATAK-SETUP.md) |
-| Phase 91 spec | specs/phase-91-atak-interop/spec.md |
 
 ---
 

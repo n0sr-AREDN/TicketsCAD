@@ -113,6 +113,17 @@ class ZelloUpstream
     private $connectWindowSec = 60;
 
     /**
+     * GH openises/TicketsCAD#19 — fixed cool-off after a 3002
+     * "not authorized" close. Long enough that a busy account has time to
+     * settle, short enough that a dispatcher is not left without Zello for a
+     * whole shift over a transient state. Deliberately a fixed delay rather
+     * than exponential: 3002 is not a "the network is flaky" failure, it is
+     * "try again in a minute".
+     * @var int
+     */
+    private $notAuthorizedCooloffSec = 45;
+
+    /**
      * @param LoopInterface $loop          ReactPHP event loop
      * @param array         $config        Zello settings (zello_ws_url, zello_username, etc.)
      * @param callable      $onMessage     Called with decoded JSON for each incoming message
@@ -229,7 +240,11 @@ class ZelloUpstream
             function (WebSocket $conn) {
                 $this->connecting = false; // Phase 99ai — release guard on success
                 $this->upstream = $conn;
-                $this->reconnectAttempts = 0;
+                // NOTE: reconnectAttempts is deliberately NOT reset here.
+                // See the reset at the authenticated-transition in
+                // handleUpstreamMessage(). Resetting on transport success
+                // pinned the backoff at 1s for every post-handshake failure
+                // (GH openises/TicketsCAD#19).
                 $this->rateLimitedUntil = null;
                 \plog("[Upstream] WebSocket connected");
                 ($this->onStatus)('connected', 'WebSocket connected, authenticating...');
@@ -242,7 +257,15 @@ class ZelloUpstream
                     \plog("[Upstream] Connection closed: {$code} {$reason}");
                     $this->upstream = null;
                     $this->authenticated = false;
-                    ($this->onStatus)('disconnected', "Connection closed: {$reason}");
+                    // GH openises/TicketsCAD#19 item 4 — carry the numeric
+                    // code as well as the reason. The operator-visible symptom
+                    // of the 3002 loop was "PTT denied: Not connected to Zello
+                    // upstream", which says nothing about why; "Connection
+                    // closed: 3002 not authorized" would have named it at once.
+                    // $reason is frequently empty (notably on 1006), so build
+                    // the detail from whichever parts exist.
+                    $closeDetail = trim(($code === null ? '' : (string) $code) . ' ' . (string) $reason);
+                    ($this->onStatus)('disconnected', 'Connection closed: ' . ($closeDetail !== '' ? $closeDetail : 'no code or reason given'));
 
                     // Phase 99ai (Eric beta 2026-06-30) — Zello close-code
                     // semantics observed in the 22:37 CDT reconnect storm:
@@ -257,19 +280,35 @@ class ZelloUpstream
                     //     the same way and eat into the rate-limit budget.
                     //     Latch $fatalAuth and stop until operator fixes.
                     //
+                    //   3002 "not authorized" — see closeCodePolicy().
+                    //   3004 "banned" — see closeCodePolicy().
                     //   others — treat as transient, use normal exponential.
+                    //
+                    // The decision itself lives in the pure static
+                    // closeCodePolicy() below so it can be driven by a test
+                    // without an event loop or a live Zello connection.
                     $codeInt = is_numeric($code) ? (int) $code : 0;
-                    if ($codeInt === 3003) {
-                        \plog("[Upstream] Kicked (3003) — another session took our username. Waiting 30s before reconnect to avoid a kick loop.");
-                        ($this->onStatus)('kicked', 'Kicked by another session — waiting 30s');
+                    $policy  = self::closeCodePolicy($codeInt, $this->notAuthorizedCooloffSec);
+
+                    if ($policy['log'] !== '') {
+                        \plog('[Upstream] ' . $policy['log']);
+                    }
+                    // An empty status means "the generic 'disconnected' fired
+                    // above says everything there is to say" — don't stack a
+                    // second badge change on top of it.
+                    if ($policy['status'] !== '') {
+                        ($this->onStatus)($policy['status'], $policy['detail']);
+                    }
+
+                    if ($policy['reset_attempts']) {
                         $this->reconnectAttempts = 0;
-                        $this->scheduleReconnectIn(30);
+                    }
+                    if ($policy['fatal']) {
+                        $this->fatalAuth = true;
                         return;
                     }
-                    if ($codeInt === 3001) {
-                        \plog("[Upstream] Fatal auth error (3001 unable to verify) — auto-reconnect disabled. Check Zello credentials + zello_network in Settings.");
-                        ($this->onStatus)('auth_failed', 'Zello rejected credentials — check Settings');
-                        $this->fatalAuth = true;
+                    if ($policy['action'] === 'fixed') {
+                        $this->scheduleReconnectIn($policy['delay']);
                         return;
                     }
                     $this->scheduleReconnect();
@@ -531,6 +570,18 @@ class ZelloUpstream
             if ($data['success']) {
                 if (!$this->authenticated) {
                     $this->authenticated = true;
+                    // GH openises/TicketsCAD#19 — the backoff counter resets
+                    // HERE, on the application-layer success, not on the
+                    // transport connect. A logon rejection (3002) or a
+                    // mid-session 1006 happens AFTER the WebSocket upgrade
+                    // succeeds, so resetting at transport-connect meant the
+                    // counter could never climb: every retry computed
+                    // min(30, pow(2, 0)) = 1 second, maxReconnectAttempts was
+                    // unreachable, and the only thing throttling the loop was
+                    // the 3-connects-per-60s self-limiter doing backoff's job.
+                    // Observed in the field as 33 rejected logons in 6.5
+                    // minutes, every one logged "attempt 1".
+                    $this->reconnectAttempts = 0;
                     $refreshUrl = $data['refresh_token_url'] ?? '';
                     \plog("[Upstream] Authenticated successfully");
 
@@ -700,6 +751,105 @@ class ZelloUpstream
     }
 
     /**
+     * What to do about a WSS close code. Pure — no state, no side effects —
+     * so it can be driven directly by tests/test_zello_close_codes.php
+     * without an event loop, a network, or a live Zello account.
+     *
+     * GH openises/TicketsCAD#19. Returns:
+     *   action          'fatal' | 'fixed' | 'backoff'
+     *   delay           seconds, meaningful only when action === 'fixed'
+     *   fatal           latch fatalAuth and stop reconnecting entirely
+     *   reset_attempts  zero the exponential-backoff counter
+     *   status          status code for the widget; '' = don't fire one
+     *   detail          human-readable detail for that status
+     *   log             proxy-log line; '' = nothing beyond the generic one
+     *
+     * Codes, and why each is treated the way it is:
+     *
+     *   3001 "unable to verify" — fatal auth error. Reconnecting with the same
+     *     credentials fails the same way and eats the rate-limit budget.
+     *
+     *   3002 "not authorized" — observed in the field, and NOT the "server
+     *     closing (maintenance)" the Zello docs guessed at. It arrived on the
+     *     reconnect after a 3003 kick and cleared on its own: a standalone
+     *     logon with the same issuer + private key succeeded first try while
+     *     the proxy was stopped. So the account was busy elsewhere rather than
+     *     misconfigured. Cool off like 3003 rather than latching fatalAuth
+     *     like 3001 — a transient state must not require a daemon restart.
+     *
+     *   3003 "kicked" — another session took the username. Reconnecting
+     *     instantly makes us fight the winner, which Zello punishes with
+     *     another kick. Wait, and don't count the kick against exponential.
+     *
+     *   3004 "banned" — not observed; handled defensively. Retrying cannot
+     *     help, so it gets 3001's treatment rather than exponential backoff.
+     *
+     *   anything else (1000, 1006, 3005, non-numeric) — transient, exponential.
+     *
+     * @return array{action:string,delay:int,fatal:bool,reset_attempts:bool,status:string,detail:string,log:string}
+     */
+    public static function closeCodePolicy(int $code, int $notAuthorizedCooloffSec = 45): array
+    {
+        $base = [
+            'action'         => 'backoff',
+            'delay'          => 0,
+            'fatal'          => false,
+            'reset_attempts' => false,
+            'status'         => '',
+            'detail'         => '',
+            'log'            => '',
+        ];
+
+        if ($code === 3003) {
+            return array_merge($base, [
+                'action'         => 'fixed',
+                'delay'          => 30,
+                'reset_attempts' => true,
+                'status'         => 'kicked',
+                'detail'         => 'Kicked by another session — waiting 30s',
+                'log'            => 'Kicked (3003) — another session took our username. Waiting 30s before reconnect to avoid a kick loop.',
+            ]);
+        }
+
+        if ($code === 3002) {
+            $wait = $notAuthorizedCooloffSec;
+            return array_merge($base, [
+                'action' => 'fixed',
+                'delay'  => $wait,
+                'status' => 'rate_limited',
+                'detail' => "Zello refused the logon (3002 not authorized) — retrying in {$wait}s",
+                'log'    => "Not authorized (3002) — Zello refused the logon. Usually the account is in use elsewhere; waiting {$wait}s. If it persists, check the Zello credentials in Settings.",
+            ]);
+        }
+
+        if ($code === 3001 || $code === 3004) {
+            $banned = ($code === 3004);
+            return array_merge($base, [
+                'action' => 'fatal',
+                'fatal'  => true,
+                'status' => 'auth_failed',
+                'detail' => $banned
+                    ? 'Zello banned this account — check Settings'
+                    : 'Zello rejected credentials — check Settings',
+                'log'    => 'Fatal auth error (' . ($banned ? '3004 banned' : '3001 unable to verify')
+                            . ') — auto-reconnect disabled. Check Zello credentials + zello_network in Settings, then restart the proxy.',
+            ]);
+        }
+
+        return $base;
+    }
+
+    /**
+     * The exponential-backoff delay for a given attempt count, capped at 30s.
+     * Pure, and public so a test can drive the real curve rather than
+     * re-implementing it (GH openises/TicketsCAD#19).
+     */
+    public static function backoffDelay(int $attempts): int
+    {
+        return (int) min(30, pow(2, max(0, $attempts)));
+    }
+
+    /**
      * Schedule a reconnection attempt with exponential backoff.
      */
     private function scheduleReconnect(): void
@@ -721,7 +871,7 @@ class ZelloUpstream
             return;
         }
 
-        $delay = min(30, pow(2, $this->reconnectAttempts));
+        $delay = self::backoffDelay($this->reconnectAttempts);
         $this->reconnectAttempts++;
         \plog("[Upstream] Reconnecting in {$delay}s (attempt {$this->reconnectAttempts})");
         ($this->onStatus)('reconnecting', "Reconnecting in {$delay}s...");

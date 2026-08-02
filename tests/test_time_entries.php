@@ -198,10 +198,29 @@ if ($mid > 0) {
         } else {
             tefail('summary: week bucket', "got $w");
         }
-        if ($m >= $w && $y >= $m) {
-            tepass('summary: month >= week and year >= month (monotonic)');
+        // `month >= week` is NOT true in general, and asserting it made this
+        // file fail on the first of every month. An ISO week straddles the
+        // month boundary, so hours in the same week can sit in two different
+        // months. This test seeds one entry at -3 hours and one at midnight
+        // today; run at 05:06 on the 1st, the first lands in the previous month
+        // and the arithmetic is w=3, m=1, y=3 — which is correct, and was
+        // reported as a defect. That is CI failing for about one day in thirty
+        // on an invariant the calendar never promised.
+        //
+        // What IS always true is that the year contains both, since every week
+        // and month bucket here is already filtered to YEAR(NOW()).
+        if ($y >= $m && $y >= $w) {
+            tepass('summary: year bucket contains both the week and month buckets');
         } else {
-            tefail('summary monotonic', "w=$w m=$m y=$y");
+            tefail('summary containment', "w=$w m=$m y=$y");
+        }
+        // And each bucket must contain the entry that is unambiguously in it:
+        // the entry seeded at midnight today is in this week AND this month
+        // whatever the date, so both buckets must be non-empty.
+        if ($m >= 1.0) {
+            tepass("summary: this-month bucket has hours ($m h)");
+        } else {
+            tefail('summary: month bucket', "got $m — the entry seeded at midnight today is always in this month");
         }
     } catch (Throwable $e) {
         tefail('summary buckets', $e->getMessage());

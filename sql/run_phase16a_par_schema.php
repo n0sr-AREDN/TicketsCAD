@@ -36,6 +36,9 @@
  *
  * Usage: php sql/run_phase16a_par_schema.php
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase 16a — PAR schema\n";

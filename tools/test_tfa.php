@@ -9,6 +9,8 @@
  *     or: /c/xampp/8.2.4/php/php.exe test_tfa.php
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/totp.php';
 require_once __DIR__ . '/../inc/tfa.php';

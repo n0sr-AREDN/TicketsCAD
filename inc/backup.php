@@ -12,8 +12,89 @@
  *   $zipFile = backup_create_zip($sqlFile, $configJson, '/path/to/output.zip');
  */
 
-// Default backup directory on filesystem
-define('BACKUP_DIR', NEWUI_ROOT . '/backups');
+// ── Where backup archives live ───────────────────────────────────────────────
+//
+// ABOVE the web root: a sibling of the install directory, the same shape
+// FE_KEYS_DIR (inc/field-encrypt.php) already uses for the encryption keys.
+//
+// Until v4.2.3 this was NEWUI_ROOT . '/backups' — INSIDE the served tree. The
+// documented install points the web root at the application root, so on
+// 2026-07-30 an unauthenticated `GET /backups/<archive>.zip` returned a 110 MB
+// database dump from a live, internet-facing install, and `GET /backups/` gave
+// a browsable index of every archive. A backup is the single most concentrated
+// copy of everything in the system; it must not be one URL away.
+//
+// The fence (.htaccess / nginx / IIS rules) ships too, but no single fence
+// covers every install — nginx ignores .htaccess entirely and Apache ignores it
+// under AllowOverride None. So the files moved rather than relying on it.
+//
+// BACKUP_DIR_LEGACY is kept deliberately: archives an older install already
+// wrote inside the web root stay visible and downloadable in Settings → Backup,
+// and pruning never touches them. Nothing is moved or deleted automatically —
+// that is the operator's decision, and the Status page tells them it needs
+// making. See docs/WEB-SERVER-HARDENING.md and
+// docs/security/advisory-2026-07-30-exposed-directories.md.
+define('BACKUP_DIR', dirname(NEWUI_ROOT) . '/backups');
+define('BACKUP_DIR_LEGACY', NEWUI_ROOT . '/backups');
+
+/**
+ * Is a path inside the served application tree (and therefore potentially
+ * reachable over HTTP)? Used by the health check and by backup_harden_dir().
+ */
+function backup_dir_is_web_served(string $dir): bool
+{
+    $n    = function (string $p): string { return rtrim(str_replace('\\', '/', $p), '/'); };
+    $real = @realpath($dir);
+    $dirN = $n($real !== false ? $real : $dir);
+    $rootReal = @realpath(NEWUI_ROOT);
+    $rootN    = $n($rootReal !== false ? $rootReal : NEWUI_ROOT);
+    return $dirN === $rootN || strpos($dirN, $rootN . '/') === 0;
+}
+
+/**
+ * If a backup directory ends up inside the web root anyway — an operator who
+ * pointed the `backup_dir` setting there, or the compatibility fallback on a
+ * host where the parent directory cannot be written — drop deny rules beside
+ * the archives so at least Apache and IIS refuse to serve them.
+ *
+ * Best effort by design: a failure here must never stop a backup from being
+ * taken. The Status page reports the exposure either way.
+ */
+function backup_harden_dir(string $dir): void
+{
+    try {
+        if (!is_dir($dir) || !backup_dir_is_web_served($dir)) {
+            return;
+        }
+        $ht = rtrim($dir, '/\\') . '/.htaccess';
+        if (!file_exists($ht)) {
+            @file_put_contents($ht,
+                "# Database backups. Never serve these over HTTP.\n"
+                . "# Written automatically because this directory sits inside the web root;\n"
+                . "# see docs/WEB-SERVER-HARDENING.md. nginx ignores this file — use\n"
+                . "# docs/nginx/ticketscad-hardening.conf there.\n"
+                . "<IfModule mod_alias.c>\n"
+                . "    RedirectMatch 404 (^|/)backups(/|\$)\n"
+                . "</IfModule>\n"
+                . "<IfModule mod_rewrite.c>\n"
+                . "    RewriteEngine On\n"
+                . "    RewriteRule .* - [F,L]\n"
+                . "</IfModule>\n");
+        }
+        $wc = rtrim($dir, '/\\') . '/web.config';
+        if (!file_exists($wc)) {
+            @file_put_contents($wc,
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                . "<!-- Database backups. IIS ignores .htaccess; this is the equivalent. -->\n"
+                . "<configuration>\n  <system.webServer>\n"
+                . "    <authorization><deny users=\"*\" /></authorization>\n"
+                . "    <directoryBrowse enabled=\"false\" />\n"
+                . "  </system.webServer>\n</configuration>\n");
+        }
+    } catch (Throwable $e) {
+        error_log('[backup] could not harden backup directory: ' . $e->getMessage());
+    }
+}
 
 /**
  * Generate a full SQL dump of the database to a file.

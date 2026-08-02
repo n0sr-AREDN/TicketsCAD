@@ -1,0 +1,19 @@
+# Geocoder call-site audit baseline — tools/geocode_audit.php
+#
+# Format: <relative path> :: <trimmed source line>
+#
+# This file is EMPTY on purpose, and should stay that way. Exactly one file in
+# the browser may know a geocoder's address (assets/js/geocode.js); everything
+# else calls Geocode.search() / Geocode.reverse().
+#
+# Before 2026-07-31 there were eleven hardcoded copies of
+# nominatim.openstreetmap.org across six page scripts, which is what made the
+# Settings "Geocoding Provider" dropdown inert, made offline address lookup
+# impossible, and sent every incident address to a third party from each
+# dispatcher's own IP.
+#
+# Adding a line here is declaring that a page may contact a geocoder directly.
+# Before you do: an administrator's chosen provider may be a server on their
+# own network, and in the shipped server mode the Content Security Policy does
+# not permit the browser to reach a geocoder at all — so a baselined call site
+# will be broken in the browser as well as flagged here.

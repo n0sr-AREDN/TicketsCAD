@@ -58,6 +58,8 @@
  *   php tools/legacy_level_audit.php --all    # include baselined finds
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 chdir(__DIR__ . '/..');
 $showAll = in_array('--all', $argv ?? [], true);
 

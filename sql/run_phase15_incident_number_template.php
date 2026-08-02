@@ -17,6 +17,9 @@
  *
  * Usage: php sql/run_phase15_incident_number_template.php
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase 15 — Incident-number template + storage\n";

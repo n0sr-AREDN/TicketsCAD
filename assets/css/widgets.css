@@ -363,46 +363,11 @@
 }
 
 /* ── Action Bar (incidents + responders + facilities widget headers) ──
-   a beta tester beta 2026-06-29: the Responders action bar inherited
-   none of these styles before (selector was .incident-action-bar
-   only) so the V/E/D/S/N buttons defaulted to Bootstrap's full
-   .btn sizing and looked huge next to everything else. Phase 115
-   (Eric 2026-07-06): the Facilities action bar hit the exact same
-   trap — added .facility-action-bar here so all three share the
-   same compact styling. */
-.incident-action-bar .btn-xs,
-.responder-action-bar .btn-xs,
-.facility-action-bar .btn-xs {
-    padding: 0.1rem 0.35rem;
-    font-size: 0.65rem;
-    line-height: 1.3;
-    border-radius: 0.2rem;
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    white-space: nowrap;
-}
-
-.incident-action-bar .btn-xs kbd,
-.responder-action-bar .btn-xs kbd,
-.facility-action-bar .btn-xs kbd {
-    font-size: 0.55rem;
-    padding: 0 3px;
-    border-radius: 2px;
-    background: rgba(var(--bs-emphasis-color-rgb), 0.08);
-    border: 1px solid rgba(var(--bs-emphasis-color-rgb), 0.15);
-    color: var(--bs-body-secondary);
-    font-weight: normal;
-    line-height: 1.3;
-    margin-left: 2px;
-}
-
-.incident-action-bar .action-label,
-.responder-action-bar .action-label,
-.facility-action-bar .action-label {
-    font-size: 0.6rem;
-    letter-spacing: 0.02em;
-}
+   MOVED to assets/css/action-bar.css on 2026-08-01. The rules were here,
+   and only index.php loads this file — but the Phase 131 check-in panel
+   carries the same action bar and renders on situation.php too, where it
+   would have been unstyled. Their new home is loaded by both screens.
+   Add a new bar to the selector lists there; never copy the rules. */
 
 /* ── Keyboard Focus Indicator ── */
 .grid-stack-item-content[data-kb-focused="true"] {

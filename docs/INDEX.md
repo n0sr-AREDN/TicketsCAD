@@ -31,6 +31,7 @@ We follow the [Diátaxis](https://diataxis.fr) framework: four kinds of document
 
 - **[Quick-start: first 10 minutes](#) (in-app: `quick-start.php`)** — login, set up your profile, send your first dispatch
 - **[Training curriculum](TRAINING-CURRICULUM.md)** — 24-module course covering every operational area, from welcome to mobile to integrations
+- **Watch the training modules** — every module below is published as a video in the TicketsCAD playlist: https://www.youtube.com/playlist?list=PLeOKl8VFMO3ZmqFQ7Yxn8QZl2cqNfMLyh
 - **New user welcome** — start here if you've never used TicketsCAD before
 - **Login + 2FA setup** — TOTP enrollment, backup codes, "remember device"
 - **Creating an incident** — the new-incident form end-to-end
@@ -48,11 +49,12 @@ We follow the [Diátaxis](https://diataxis.fr) framework: four kinds of document
 
 - **[Installation checklist](INSTALLATION-CHECKLIST.md)** — blank Debian/Ubuntu VM → working dispatch, 60 minutes
 - **[Quick install for evaluators](INSTALL.md)** — older single-file install notes
-- **Installing on a fresh VM (training script)** — the same path in tutorial form
+- **Installing on a fresh VM (training module)** — the same path in tutorial form, on video in the training playlist
 - **[Upgrading from v3.44](UPGRADING-FROM-V3.md)** — legacy → v4 migration with rollback
 - **[Upgrade rollback](../tools/upgrade/ROLLBACK.md)** — recover from a failed upgrade
 - **[RSA proxy install (Linux)](../proxy/INSTALL-LINUX.md)** — field-encryption proxy for HTTP deployments
 - **[Fresh install guide](INSTALL.md)** — end-to-end procedure for a blank-slate host
+- **[Windows + IIS install](INSTALL-WINDOWS-IIS.md)** — the four things that differ from the Debian/Apache guide: `OPENSSL_CONF`, `disable_functions`, MySQL 8.0 vs MariaDB, and `.htaccess` not being read
 
 ### Integrations and field hardware
 
@@ -60,34 +62,34 @@ We follow the [Diátaxis](https://diataxis.fr) framework: four kinds of document
 - **[DVSwitch DMR bridge setup](DVSWITCH-ADMIN-GUIDE.md)** — Analog_Bridge + MMDVM_Bridge + md380-emu + Piper + Vosk (deeper architecture reference)
 - **[Radio AI — admin guide](RADIO-AI-ADMIN-GUIDE.md)** — Phase 85f Claude-on-amateur-radio: listener daemon, approval API, settings, security
 - **[Radio AI — operator guide](RADIO-AI-USER-GUIDE.md)** — review/approve/edit/reject AI-drafted voice responses; dry-run + auto-approve safeties
-- **Radio AI — security review** — threat model, SonarQube results, manual endpoint review, secrets handling, audit trail
 - **[Meshtastic bridge](MESH-BRIDGE-GUIDE.md)** — LoRa mesh bridge service
 - **[APRS-IS persistent listener](APRS-LISTENER-SETUP.md)** — Python service replacing 5-minute polling
 - **[OwnTracks + Traccar location ingest](TRACCAR-SETUP.md)** — HTTP-direct, per-device tokens, "pick your path"
 - **[OwnTracks config push](OWNTRACKS-CONFIG-PUSH.md)** — server-driven device configuration
 - **[Map configuration](map-configuration.md)** — tile providers, base map, weather overlays
-- **Integrations training module** — broker channels in tutorial form
+- **Integrations training module** — broker channels in tutorial form, on video in the training playlist
 
 ### Ongoing operations
 
 - **[Maintenance runbook](MAINTENANCE-RUNBOOK.md)** — daily / weekly / monthly tasks
 - **[Backup + recovery runbook](BACKUP-RECOVERY-RUNBOOK.md)** — browser-download, filesystem-save, cron, restore
-- **Backups training module** — tutorial form
+- **Backups training module** — tutorial form, on video in the training playlist
 - **[Security policy](SECURITY-POLICY.md)** — security posture, key handling, incident response
 - **[Access chain](ACCESS-CHAIN.md)** — auth, RBAC, and per-resource access model
 - **[Troubleshooting](TROUBLESHOOTING.md)** — symptom → cause → fix catalogue
+- **[Running without the internet](OFFLINE-OPERATION.md)** — what works, degrades and breaks offline; what happens when an upstream link fails mid-incident; offline map tiles and geocoding
 
 ### People, permissions, scheduling
 
-- **User management** — create/edit/disable user accounts
+- **User management** — create/edit/disable user accounts (training module, on video in the training playlist)
 - **[RBAC overview](RBAC-GUIDE.md)** — roles, permissions, the 65-permission grid
-- **Custom roles** — create a role with exactly the perms you want
-- **Time-bound delegation + audit** — temporary grants with expiry
-- **Roster (personnel)** — FCC lookups, callsigns, organisations
-- **Teams + ICS certs** — NIMS resource typing
+- **Custom roles** — create a role with exactly the perms you want (training module)
+- **Time-bound delegation + audit** — temporary grants with expiry (training module)
+- **Roster (personnel)** — FCC lookups, callsigns, organisations (training module)
+- **Teams + ICS certs** — NIMS resource typing (training module)
 - **[Scheduling](scheduling.md)** — shifts and events
-- **Time-keeping** — clock-in workflow
-- **Equipment + vehicles** — fleet tracking
+- **Time-keeping** — clock-in workflow (training module)
+- **Equipment + vehicles** — fleet tracking (training module)
 
 ---
 
@@ -129,34 +131,16 @@ We follow the [Diátaxis](https://diataxis.fr) framework: four kinds of document
 - **[Architecture overview](../README.md)** — repo readme: stack, layout, conventions
 - **[Routing engine reference](ROUTING-ENGINE-REFERENCE.md)** — cross-protocol message routing internals
 - **[RBAC integrator guide](RBAC-INTEGRATOR-GUIDE.md)** — design decisions, how to add new permissions
+- **[UI conventions](UI-CONVENTIONS.md)** — the interface conventions `tools/ui_consistency_audit.php` enforces, and the evidence behind each
 
 ---
 
 ## Specs and decision records
 
-The `specs/` tree records every non-trivial decision. Read these when you need to understand why something works the way it does.
-
-- **Current state** — what's shipped, what's open
-- **Handoff** — what the next session should pick up
-- **Constitution** — non-negotiable project rules
-- **Future phases** — queued work
-
-Major phase directories under `specs/`:
-
-| Directory | What it covers |
-|---|---|
-| `security-audit-2026-04/` | 8-file security audit (spec, endpoint inventory, findings, audit report, handoff) |
-| `rbac-redesign-2026-05/` | RBAC v2 design |
-| `legacy-upgrade-2026-05/` | Legacy → v4 migration design |
-| `phase-08-i18n-2026-06/` | i18n implementation |
-| `phase-09-force-pw-change-2026-06/` | Force password change |
-| `phase-10-cjis-hardening-2026-06/` | CJIS hardening |
-| `phase-11-rbac-canonical-2026-06/` | RBAC made canonical |
-| `phase-12-sunset-legacy-levels-2026-06/` | Legacy `user.level` deprecation |
-| `phase-16-par-checks-2026-06/` | PAR check engine |
-| `dvswitch-proxy-2026-06/` | DMR bridge |
-| `odmrtp-2026-06/` | Open DMR Terminal Protocol research + integration spec |
-| `broker-schema-2026-06/` | Awaiting Eric: broker/chat_messages schema decision |
+Design history and phase specifications are kept in the maintainer's private
+development repository and are not part of the public distribution. If you need
+the reasoning behind a particular design decision, ask by opening a GitHub issue
+and it can be summarised for you.
 
 ---
 

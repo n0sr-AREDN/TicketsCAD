@@ -8,6 +8,9 @@
  * Usage: /c/xampp/8.2.4/php/php.exe test_login_security.php
  */
 // Start a session for CLI testing (session_id() needs this)
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }

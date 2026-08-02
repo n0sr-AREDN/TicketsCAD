@@ -114,7 +114,7 @@ So your CEO might be a User (admin login) but not a Member (not on the dispatch 
 
 When a Member clocks in for a shift (via the navbar toggle), the system auto-creates a Responder unit for them. That Responder is a "personal resource" — a dispatchable unit representing the person themselves, distinct from any vehicle.
 
-This lets dispatchers assign people who aren't in a fire engine without needing to model that person as a vehicle. See Training m18.
+This lets dispatchers assign people who aren't in a fire engine without needing to model that person as a vehicle. The time-keeping training module walks through it: https://www.youtube.com/playlist?list=PLeOKl8VFMO3ZmqFQ7Yxn8QZl2cqNfMLyh
 
 ### Can I have a user with NO role?
 
@@ -128,7 +128,7 @@ Yes. Settings → Roles & Permissions → New Role. Pick a name, description, an
 
 You can grant a user a role with an expiry date. After the expiry, the hourly cron (`rbac-expire-grants.php`) removes the grant automatically. Use it for temporary elevation — "give Bob Dispatcher role for tonight's exercise only".
 
-See Training m14.
+The time-bound delegation training module covers this in the video playlist: https://www.youtube.com/playlist?list=PLeOKl8VFMO3ZmqFQ7Yxn8QZl2cqNfMLyh
 
 ---
 
@@ -197,7 +197,7 @@ If your install has legacy users with MD5/SHA1/plaintext hashes from v3.44, the 
 
 Click **New Incident** in the navbar (or hit `N` on the keyboard, or type `/inc` in the command bar). Fill out the form — it's keyboard-first so you can dispatch fast.
 
-See Training m03 for the full walkthrough.
+The "Creating an incident" training module has the full walkthrough on video: https://www.youtube.com/playlist?list=PLeOKl8VFMO3ZmqFQ7Yxn8QZl2cqNfMLyh
 
 ### What's the difference between "incident" and "ticket"?
 
@@ -256,7 +256,7 @@ Two paths:
 
 ### Why don't my chat messages persist?
 
-Most likely the broker/`chat_messages` shadow-schema issue documented in `specs/broker-schema-2026-06/decision-memo.md`. Run the recovery migration in [TROUBLESHOOTING.md § chat-doesnt-persist](TROUBLESHOOTING.md#chat-doesnt-persist).
+Most likely the broker/`chat_messages` shadow-schema issue. Run the recovery migration in [TROUBLESHOOTING.md § chat-doesnt-persist](TROUBLESHOOTING.md#chat-doesnt-persist).
 
 ---
 
@@ -282,7 +282,7 @@ Default Vosk model (`vosk-model-small-en-us-0.15`, 40 MB) is fine for tactical s
 
 ### Why not ODMRTP instead of DVSwitch?
 
-The Open DMR Terminal Protocol would let TicketsCAD connect directly to BrandMeister, bypassing the MMDVM_Bridge layer. It's researched but not yet implemented — see `specs/odmrtp-2026-06/research.md`.
+The Open DMR Terminal Protocol would let TicketsCAD connect directly to BrandMeister, bypassing the MMDVM_Bridge layer. It's researched but not yet implemented.
 
 DVSwitch works today and supports any digital-radio network MMDVM_Bridge handles (DMR, P25, NXDN, YSF). ODMRTP would be BrandMeister-only.
 
@@ -292,7 +292,22 @@ DVSwitch works today and supports any digital-radio network MMDVM_Bridge handles
 
 ### Does the mobile app work offline?
 
-The PWA caches static assets so the UI shell loads offline, but every API call requires connectivity. Field units in genuine no-signal areas can't dispatch (or be dispatched) until they're back online.
+No. Nothing is cached for offline use, and the app does not load at all without a
+connection to your TicketsCAD server. Field units in genuine no-signal areas
+cannot dispatch, or be dispatched, until they are back online.
+
+This page used to say the PWA "caches static assets so the UI shell loads
+offline". That was never true — `sw.js` handles push notifications and has no
+caching at all — and after review it is not something we intend to add. A
+dispatch console that *renders* but has no data is more dangerous than one that
+plainly fails to load: an empty incident list looks exactly like "no active
+incidents". The reasoning is recorded at the top of `sw.js`.
+
+Note the distinction that matters in practice: **"offline" here means no route
+to your server.** Losing the *internet* while the server is on the same LAN is a
+different, much better-behaved situation — the CAD keeps working, and only map
+backgrounds, address lookup and weather degrade. See
+[`OFFLINE-OPERATION.md`](OFFLINE-OPERATION.md).
 
 For mesh-network deployments where the mobile device talks via Meshtastic, the mesh handles the connectivity layer.
 
@@ -438,7 +453,6 @@ Not currently. The project is community-maintained. If your org wants commercial
 
 ### Where can I see what's coming?
 
-- `specs/future-phases.md` — queued phases
 - [GitHub releases](https://github.com/openises/TicketsCAD/releases) — what's shipped
 - [GitHub Issues](https://github.com/openises/TicketsCAD/issues) — open requests + bugs
 

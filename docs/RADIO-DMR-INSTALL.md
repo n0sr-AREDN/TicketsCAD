@@ -355,7 +355,6 @@ All four are systemd-managed and survive host reboots.
 - [DVSWITCH-ADMIN-GUIDE.md](DVSWITCH-ADMIN-GUIDE.md) — deeper architecture + per-channel ops
 - [RADIO-AI-ADMIN-GUIDE.md](RADIO-AI-ADMIN-GUIDE.md) — Claude-on-amateur-radio feature (Phase 85f)
 - [RADIO-AI-USER-GUIDE.md](RADIO-AI-USER-GUIDE.md) — operator-facing AI approval workflow
-- RADIO-AI-SECURITY-REVIEW.md — threat model
 - [services/dvswitch/install-bridge.sh](../services/dvswitch/install-bridge.sh) — the install script itself
 - [services/dvswitch/hbp-client.env.example](../services/dvswitch/hbp-client.env.example) — env template
 - [apache/newui.conf.example](../apache/newui.conf.example) — Apache vhost template

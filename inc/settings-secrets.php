@@ -60,4 +60,31 @@ if (!function_exists('is_secret_setting_key')) {
             $name
         );
     }
+
+    /**
+     * True if $value carries no new credential — i.e. it is blank, or it is one
+     * of the placeholders the UI renders IN PLACE OF a stored secret.
+     *
+     * Because `GET settings` returns `<key>_set` rather than the value, the
+     * browser never holds a real secret and therefore CANNOT echo one back. So
+     * a blank (or placeholder) arriving at the save path always means "I did
+     * not retype it" — never "clear it". Writing it through blanks a working
+     * credential; see openises/TicketsCAD#7.
+     *
+     * Consequence worth knowing: a secret cannot be CLEARED by emptying its box
+     * (that has never worked — collectSettingsFromForm() has skipped blank
+     * data-secret fields since 2026-06-25). Deleting the `settings` row is the
+     * deliberate way to unset one.
+     */
+    function is_masked_secret_value($value): bool {
+        if (!is_scalar($value)) return true;          // arrays/null carry nothing
+        $v = trim((string) $value);
+        if ($v === '') return true;
+        // Runs of the glyphs used to mask a stored value: • ● * · ×
+        if (preg_match('/^[\x{2022}\x{25CF}\x{00B7}\x{00D7}*]+$/u', $v)) return true;
+        // Literal sentinels rendered by the UI (see push_vapid_private_set).
+        return in_array(strtolower($v), [
+            '(set, hidden)', '(not set)', '(stored)', '(unchanged)', 'stored',
+        ], true);
+    }
 }

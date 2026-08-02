@@ -304,6 +304,7 @@ function _build_sidebar(string $base, string $current): string
         ],
         'For administrators' => [
             ['INSTALLATION-CHECKLIST',      'Installation checklist'],
+            ['WEB-SERVER-HARDENING',        'Web server hardening'],
             ['MAINTENANCE-RUNBOOK',         'Maintenance runbook'],
             ['TROUBLESHOOTING',             'Troubleshooting'],
             ['BACKUP-RECOVERY-RUNBOOK',     'Backup + recovery'],

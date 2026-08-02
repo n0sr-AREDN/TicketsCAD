@@ -34,6 +34,8 @@
  * migrations yet" and shows a Settings banner with a Run button.
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/db.php';
 
@@ -177,18 +179,55 @@ $failed = 0;
 // migration (run_equipment_personal.php does this) doesn't terminate
 // our orchestrator. Isolation also avoids leaked globals, function
 // redefinitions across migrations, and PDO connection-state surprises.
+/**
+ * Run a program as a list of discrete arguments; return [outputLines, exitCode].
+ *
+ * NO SHELL IS INVOLVED — the argv-array form of proc_open() goes straight to
+ * execvp()/CreateProcess(). That is why the escapeshellarg() calls that used to
+ * wrap these paths are gone rather than merely relocated: escapeshellarg() is a
+ * shell-QUOTING function, and with no shell to strip them the child would be
+ * handed literal quote characters and fail to find the script.
+ *
+ * (The comment this replaces claimed array-form proc_open "isn't universally
+ * available on the PHP-CLI versions we target". It has been available since PHP
+ * 7.4 and this project requires 8.0+.)
+ *
+ * Also replaces exec(), which hardened Windows/IIS hosts remove via
+ * disable_functions, turning a migration run into a bare fatal.
+ *
+ * stdout and stderr are pointed at the SAME temp file — literally what the old
+ * `2>&1` did — so interleaving is preserved and the child can never deadlock
+ * against a full pipe buffer while we read the other stream.
+ */
+function migration_run_argv(array $cmdArgv): array
+{
+    $sink = tmpfile();
+    if ($sink === false) {
+        return [['(could not open a temporary file to capture output)'], 127];
+    }
+    $descriptors = [0 => ['pipe', 'r'], 1 => $sink, 2 => $sink];
+    $pipes = [];
+    $proc = proc_open($cmdArgv, $descriptors, $pipes);
+    if (!is_resource($proc)) {
+        fclose($sink);
+        return [['(failed to start the migration subprocess)'], 127];
+    }
+    fclose($pipes[0]);                 // child sees EOF on stdin at once
+    $exit = proc_close($proc);
+    rewind($sink);
+    $combined = rtrim((string) stream_get_contents($sink), "\r\n");
+    fclose($sink);
+    $lines = ($combined === '') ? [] : preg_split('/\r\n|\r|\n/', $combined);
+    return [$lines, $exit];
+}
+
 $phpBin = PHP_BINARY ?: 'php';
 foreach ($pending as $name => $m) {
     echo "── Running {$name} ──\n";
     $start = microtime(true);
 
-    // Quote the path correctly for the shell. proc_open with an array
-    // argv would be cleaner but isn't universally available on the
-    // PHP-CLI versions we target. escapeshellarg covers spaces / quotes.
-    $cmd = escapeshellarg($phpBin) . ' ' . escapeshellarg($m['path']) . ' 2>&1';
-    $outLines = [];
-    $exitCode = 0;
-    exec($cmd, $outLines, $exitCode);
+    $migrationPath = $m['path'];
+    list($outLines, $exitCode) = migration_run_argv([$phpBin, $migrationPath]);
     $logTail = implode("\n", $outLines);
     if ($logTail === '') $logTail = '(no output captured)';
 

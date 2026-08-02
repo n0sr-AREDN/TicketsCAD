@@ -52,6 +52,32 @@
         }).then(function (r) { return r.json(); });
     };
 
+    /**
+     * Save SOME of a screen's `options` without disturbing the rest.
+     *
+     * prefs_set() replaces the whole JSON blob for the row, so a caller that
+     * posts `options: {mine: 1}` silently deletes every other option on that
+     * screen. The dashboard screen now has more than one writer — the
+     * Incidents widget's "keep closed N min" and the net-control panel's
+     * remembered position and size — and whichever saved last was wiping the
+     * other. Read-modify-write is the fix; it is not atomic, but these are
+     * per-user preferences written by one operator's own browser, so a lost
+     * update needs two of that user's tabs racing on the same screen.
+     */
+    Prefs.saveOptions = function (screen, partialOptions) {
+        return Prefs.load(screen).then(function (prefs) {
+            var merged = (prefs && prefs.options) ? prefs.options : {};
+            for (var k in partialOptions) {
+                if (partialOptions.hasOwnProperty(k)) merged[k] = partialOptions[k];
+            }
+            return Prefs.save(screen, {
+                columns: (prefs && prefs.columns) ? prefs.columns : [],
+                sort:    (prefs && prefs.sort)    ? prefs.sort    : { col: '', dir: 'asc' },
+                options: merged
+            });
+        });
+    };
+
     Prefs.reset = function (screen) {
         var meta = document.querySelector('meta[name="csrf-token"]');
         var csrf = meta ? meta.getAttribute('content') : '';

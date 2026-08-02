@@ -16,5 +16,7 @@
  * data are snapshotted to *_legacy_YYYYMMDD before conversion.
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 chdir(__DIR__ . '/..');
 require_once __DIR__ . '/../tools/fix_chat_tables.php';

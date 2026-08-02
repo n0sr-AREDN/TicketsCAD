@@ -5,6 +5,8 @@
  * Usage: php sql/run_scheduling_permissions.php
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "=== Scheduling Permissions Migration ===\n\n";

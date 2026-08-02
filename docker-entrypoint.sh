@@ -25,11 +25,15 @@ else
     echo "[entrypoint] config.php present (mounted) — leaving it untouched."
 fi
 
-# 2. Writable runtime dirs + persistent keys (keys live OUTSIDE the webroot) --
-#    backups/ is here because compose mounts it as the app_backups volume: the
-#    directory must exist and be writable by www-data (Settings → Backup) AND by
-#    a `docker compose exec app php tools/backup_run.php` run.
-for d in "$APP/uploads" "$APP/cache" "$APP/backups" "$APP/../keys"; do
+# 2. Writable runtime dirs + persistent keys ---------------------------------
+#    Both ../backups and ../keys live OUTSIDE the webroot ($APP is the Apache
+#    DocumentRoot). Backups moved out in v4.2.3: inside it, an archive was
+#    downloadable by anyone who guessed the filename.
+#    ../backups must exist and be writable by www-data (Settings → Backup) AND
+#    by a `docker compose exec app php tools/backup_run.php` run.
+#    ../tile-cache is the map-tile proxy's cache — also outside the webroot,
+#    because it records which map areas this install has viewed.
+for d in "$APP/uploads" "$APP/cache" "$APP/../backups" "$APP/../keys" "$APP/../tile-cache"; do
     mkdir -p "$d"
     chown -R www-data:www-data "$d" 2>/dev/null || true
     chmod -R 775 "$d" 2>/dev/null || true

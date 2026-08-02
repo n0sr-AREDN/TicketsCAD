@@ -10,6 +10,9 @@
  *           Safe to run multiple times.
  * Output:   [OK]/[SKIP]/[WARN] per column migration.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase C: Org-Scope Schema Migrations\n";

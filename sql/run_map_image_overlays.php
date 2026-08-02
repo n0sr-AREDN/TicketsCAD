@@ -16,6 +16,9 @@
  *           checks before INSERT. Safe to re-run.
  * Output:   [OK]/[--] per step; [ERR] + exit(1) on failure.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 $prefix = $GLOBALS['db_prefix'] ?? '';

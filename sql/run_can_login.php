@@ -9,6 +9,9 @@
  * Safety:   Idempotent. Checks information_schema before ALTER. Safe to re-run.
  * Output:   [OK] if column added, [SKIP] if already exists, [WARN] on error.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 $prefix = $GLOBALS['db_prefix'] ?? '';

@@ -14,6 +14,8 @@
  * ignored UPDATE would have printed PASS. Both are fixed here.
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require __DIR__ . '/../config.php';
 require __DIR__ . '/../inc/audit.php';
 

@@ -465,4 +465,3 @@ The current configuration UI requires hand-editing the JSON predicate. The next 
 - `tests/test_router_recipients.php` — 20-test regression suite for the resolver
 - `api/rbac.php?action=permission_audit` — Where permission codes for `rbac_can` come from
 - `/roles-matrix.php` — Browse permission codes by category
-- `specs/phase-99v-routing-engine-recipients/spec.md` — Original design spec

@@ -24,6 +24,8 @@
  * Suggested cadence: run once during initial DVSwitch deployment.
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 chdir(__DIR__ . '/..');
 require_once 'config.php';
 $dbInc = file_exists('inc/db.inc.php') ? 'inc/db.inc.php' : 'inc/db.php';
@@ -42,6 +44,9 @@ $stmts = [
         `bridge_host`     VARCHAR(128) NOT NULL,
         `bridge_port`     INT NOT NULL DEFAULT 5000,
         `bridge_token`    CHAR(64) NOT NULL,
+        -- 'plain' (usable) or 'legacy_hash' (a pre-Phase-129 SHA-256 digest
+        -- that cannot be presented to the bridge). See inc/dmr_token.php.
+        `bridge_token_format` VARCHAR(16) NOT NULL DEFAULT 'plain',
         `usrp_listen_port` INT NOT NULL,
         `usrp_send_port`   INT NOT NULL,
         `link_mode`       ENUM('rx_only','tx_only','bidirectional')

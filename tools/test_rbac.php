@@ -2,6 +2,9 @@
 /**
  * RBAC Integration Tests
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require __DIR__ . '/../config.php';
 require_once __DIR__ . '/../tests/_test_admin.php';
 $ADMIN_UID = test_admin_user_id();

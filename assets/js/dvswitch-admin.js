@@ -85,6 +85,16 @@
         }
         if (!parseInt(c.has_token, 10)) {
             statusBadge += ' <span class="badge bg-warning text-dark">no token</span>';
+        } else if (parseInt(c.token_needs_regen, 10)) {
+            // Phase 129 — the stored token is a pre-fix SHA-256 hash. It
+            // looks present but cannot be sent to the bridge, so every
+            // unattended call 401s. Say that plainly rather than leaving
+            // the operator to chase a 401 with no explanation.
+            statusBadge += ' <span class="badge bg-danger" title="'
+                + 'This token was stored hashed by an older version and cannot be sent '
+                + 'to the bridge. Use Test and paste the token you saved at mint time '
+                + '(a successful probe adopts it), or rotate the token and update the '
+                + 'bridge\'s DMR_BEARER_TOKEN.">token unusable</span>';
         }
         var mode = ({
             rx_only: 'RX', tx_only: 'TX', bidirectional: 'RX+TX',
@@ -296,10 +306,13 @@
         testModal && testModal.show();
     }
 
+    // Phase 129 — the token box is now OPTIONAL on all three tests. The CAD
+    // stores a token it can present, so the server falls back to it. Pasting
+    // a value is how you repair a channel whose stored token is a legacy
+    // hash: a successful /health probe adopts what you typed.
     function runHealthTest() {
         var id = $('dvsTestId').value;
         var tok = encodeURIComponent($('dvsTestToken').value.trim());
-        if (!tok) { alert('Paste the bearer token first'); return; }
         $('dvsTestResult').textContent = 'probing…';
         fetch('api/dvswitch.php?action=channel_test_health&id=' + id + '&token=' + tok,
               { credentials: 'same-origin' })
@@ -316,7 +329,6 @@
     function runTxTest() {
         var id = parseInt($('dvsTestId').value, 10);
         var tok = $('dvsTestToken').value.trim();
-        if (!tok) { alert('Paste the bearer token first'); return; }
         $('dvsTestResult').textContent = 'sending tone…';
         fetch('api/dvswitch.php', {
             method: 'POST', credentials: 'same-origin',
@@ -337,7 +349,6 @@
         var id = parseInt($('dvsTestId').value, 10);
         var tok = $('dvsTestToken').value.trim();
         var text = ($('dvsTxTextBody').value || '').trim();
-        if (!tok)  { alert('Paste the bearer token first'); return; }
         if (!text) { alert('Type something to speak first'); return; }
         $('dvsTestResult').textContent = 'synthesising + transmitting…';
         fetch('api/dvswitch.php', {

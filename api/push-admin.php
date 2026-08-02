@@ -224,19 +224,41 @@ if ($method === 'POST') {
             exit;
         }
 
+        // GH TicketsCAD#8: the old code called the library directly and echoed
+        // whatever it threw, which on stock Windows PHP is "Unable to create
+        // the key" — accurate and unactionable, while openssl_error_string()
+        // was sitting right there saying "configuration file routines::no such
+        // file". vapid_generate_keypair() prefers the library exactly as
+        // before, falls back to generating with an explicit openssl.cnf when
+        // the host cannot find its own, and only if BOTH fail returns a message
+        // that names the cause and the repair.
+        require_once __DIR__ . '/../inc/vapid-keygen.php';
+
         try {
-            $keys = \Minishlink\WebPush\VAPID::createVapidKeys();
+            $keys = vapid_generate_keypair();
             _push_save_setting('push_vapid_public_key',  $keys['publicKey']);
             _push_save_setting('push_vapid_private_key', $keys['privateKey']);
 
-            echo json_encode([
+            $response = [
                 'ok'                    => true,
                 'push_vapid_public_key' => $keys['publicKey'],
                 'note'                  => 'Existing browser subscriptions remain valid; new registrations after this rotation use the new public key. Force-clear all subscriptions to require re-consent.'
-            ]);
+            ];
+            if (($keys['via'] ?? '') === 'openssl-direct') {
+                // Say when the fallback did the work. It succeeded, so this is
+                // not a warning — but an admin who later runs the CLI tool or
+                // upgrades PHP should know their host needs OPENSSL_CONF.
+                $response['note'] .= ' Note: this host\'s OpenSSL could not find its own'
+                    . ' configuration file, so the key was generated using '
+                    . ($keys['config'] ?? 'a located openssl.cnf')
+                    . '. The key is valid and nothing further is required, but see'
+                    . ' docs/INSTALL-WINDOWS-IIS.md — other OpenSSL-dependent features'
+                    . ' on this host may hit the same thing.';
+            }
+            echo json_encode($response);
         } catch (Throwable $e) {
             http_response_code(500);
-            echo json_encode(['error' => 'VAPID keypair generation failed: ' . $e->getMessage()]);
+            echo json_encode(['error' => $e->getMessage()]);
         }
         exit;
     }

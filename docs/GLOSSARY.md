@@ -273,7 +273,7 @@ The bell-icon panel in the navbar that captures every [SSE](#sse-server-sent-eve
 ## O
 
 ### ODMRTP
-*Open DMR Terminal Protocol* — a BrandMeister-published UDP protocol (over their "Rewind" framing) that lets a software client connect directly to BrandMeister as a terminal, bypassing physical hotspot hardware. Authentication via SHA-256 challenge-response. Voice frames are AMBE mode 33 (27-byte triplets). See `specs/odmrtp-2026-06/research.md`.
+*Open DMR Terminal Protocol* — a BrandMeister-published UDP protocol (over their "Rewind" framing) that lets a software client connect directly to BrandMeister as a terminal, bypassing physical hotspot hardware. Authentication via SHA-256 challenge-response. Voice frames are AMBE mode 33 (27-byte triplets). Researched but not yet implemented — see the "Future: ODMRTP direct-to-network" section of [DVSWITCH-ADMIN-GUIDE.md](DVSWITCH-ADMIN-GUIDE.md).
 
 ### Organisation (org)
 A row in `organisations`. Groups members under an agency. Permissions and visibility can be scoped per-org.

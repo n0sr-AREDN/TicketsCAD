@@ -1988,6 +1988,124 @@ foreach ($personnelSections as $sec) {
             </form>
         </div>
 
+        <!-- ── Net Check-Ins (Phase 131, 2026-07-31) ──────────────── -->
+        <div class="config-panel" id="panel-net-checkins">
+            <div class="config-panel-title">
+                <i class="bi bi-broadcast-pin text-primary"></i> Net-Control Check-Ins
+            </div>
+            <p class="text-body-secondary small mb-3">
+                The <code>/net</code> command captures a round of radio check-ins in one
+                keystroke — <code>/net 1234 tornado / 3344 hail / 6543 wind damage</code> —
+                and floats the list over the situational display so net control can read it
+                back and then work each station in turn. Each operator's list is their own.
+                The defaults below match how one Skywarn net runs; they are not the only
+                reasonable way to run one.
+            </p>
+
+            <form id="netCheckinForm">
+                <div class="settings-group">
+                    <div class="settings-group-title">The list</div>
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label for="netCfgHistoryCount" class="form-label form-label-sm">
+                                Historical items shown
+                            </label>
+                            <input type="number" class="form-control form-control-sm"
+                                   id="netCfgHistoryCount" data-key="net_checkin_history_count"
+                                   min="0" max="200" value="10">
+                            <div class="form-text small">
+                                Worked and deleted check-ins stay arrow-navigable so an operator
+                                can undo a mistake. 0 hides the history view entirely.
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="netCfgOrder" class="form-label form-label-sm">
+                                Order the list by
+                            </label>
+                            <select class="form-select form-select-sm" id="netCfgOrder"
+                                    data-key="net_checkin_order">
+                                <option value="arrival">Arrival sequence (default)</option>
+                                <option value="priority">Operator-set priority</option>
+                            </select>
+                            <div class="form-text small">
+                                Most nets work stations in the order they checked in. Some
+                                work the worst report first.
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="netCfgRetention" class="form-label form-label-sm">
+                                Keep finished entries (days)
+                            </label>
+                            <input type="number" class="form-control form-control-sm"
+                                   id="netCfgRetention" data-key="net_checkin_retention_days"
+                                   min="0" max="365" value="7">
+                            <div class="form-text small">
+                                How long an entry stays recoverable after it is worked or
+                                deleted. 0 keeps them forever. Waiting check-ins are never
+                                removed, however long the net runs.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <div class="settings-group-title">On screen</div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox"
+                               id="netCfgAutofocus" data-key="net_checkin_autofocus">
+                        <label class="form-check-label" for="netCfgAutofocus">
+                            Take keyboard focus automatically when check-ins are waiting
+                        </label>
+                    </div>
+                    <div class="form-text">
+                        On by default, so the operator can start arrowing through the list the
+                        moment the situational screen loads. Turn it off for a shared wall
+                        display, where stealing focus from whoever is driving would be rude.
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <div class="settings-group-title">Command syntax</div>
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label for="netCfgSeparator" class="form-label form-label-sm">
+                                Entry separator
+                            </label>
+                            <input type="text" class="form-control form-control-sm"
+                                   id="netCfgSeparator" data-key="net_checkin_separator"
+                                   maxlength="1" value="/">
+                            <div class="form-text small">
+                                One character, not a digit or a space. Within each entry the
+                                first word is the identifier and the rest is the note.
+                            </div>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="form-check form-switch mt-4">
+                                <input class="form-check-input" type="checkbox"
+                                       id="netCfgDigitGuard" data-key="net_checkin_separator_digit_guard">
+                                <label class="form-check-label" for="netCfgDigitGuard">
+                                    Treat a digit-flanked separator as literal text
+                                </label>
+                            </div>
+                            <div class="form-text small">
+                                NWS hail sizes are fractional inches &mdash; <code>1/4"</code> pea,
+                                <code>3/4"</code> penny, <code>1 1/2"</code> walnut &mdash; so on a
+                                hail net the <code>/</code> separator turns up inside perfectly
+                                legitimate notes. With this on (default),
+                                <code>6543 hail 3/4"</code> stays one entry while
+                                <code>1234 tornado / 3344 hail</code> still splits into two.
+                                Irrelevant if you chose a different separator above.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="bi bi-check-lg me-1"></i>Save Check-In Settings
+                </button>
+            </form>
+        </div>
+
         <!-- ── Security Labels (Phase 18b, 2026-06-11) ────────────── -->
         <div class="config-panel" id="panel-security-labels">
             <div class="config-panel-title">
@@ -2434,28 +2552,110 @@ foreach ($personnelSections as $sec) {
                         </div>
                     </div>
                 </div>
+                <!-- ── Geocoding (address lookup) ────────────────────────
+                     Until 2026-07-31 the two fields here were written and read
+                     by NOTHING: every address lookup went straight from the
+                     dispatcher's browser to nominatim.openstreetmap.org no
+                     matter what was selected. They are real now — see
+                     inc/geocode.php and api/geocode.php. -->
                 <div class="settings-group">
-                    <div class="settings-group-title">Geocoding</div>
+                    <div class="settings-group-title">Geocoding (address lookup)</div>
                     <div class="row g-2">
                         <div class="col-md-6">
-                            <label for="setGeoProvider" class="form-label form-label-sm">Geocoding Provider</label>
-                            <select class="form-select form-select-sm" id="setGeoProvider" data-key="geocoding_provider">
-                                <option value="nominatim">Nominatim / OSM (free, no key needed)</option>
-                                <option value="locationiq">LocationIQ</option>
-                                <option value="geoapify">Geoapify</option>
-                                <option value="google">Google Maps</option>
-                                <option value="here">HERE</option>
+                            <label for="setGeoMode" class="form-label form-label-sm">
+                                How lookups are performed
+                                <i class="bi bi-question-circle text-body-secondary" tabindex="0"
+                                   data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                                   data-bs-content="Through this server: the browser asks TicketsCAD, TicketsCAD asks the geocoder. Results are cached and rate-limited centrally, the API key never reaches the browser, and you can point at a geocoder on your own network so address lookup keeps working with no internet. Direct from each browser: the old behaviour — every dispatcher's browser contacts the provider itself, disclosing the address being typed from each of their IP addresses. Off: no address lookup at all; dispatchers set locations by clicking the map."
+                                   title="Geocoding mode"></i>
+                            </label>
+                            <select class="form-select form-select-sm" id="setGeoMode" data-key="geocoding_mode">
+                                <option value="server">Through this server &mdash; recommended</option>
+                                <option value="direct">Direct from each dispatcher's browser</option>
+                                <option value="off">Off &mdash; no address lookup (air-gapped installs)</option>
                             </select>
                         </div>
                         <div class="col-md-6">
+                            <label for="setGeoProvider" class="form-label form-label-sm">Geocoding Provider</label>
+                            <select class="form-select form-select-sm" id="setGeoProvider" data-key="geocoding_provider">
+                                <optgroup label="Free — no key required">
+                                    <option value="nominatim">Nominatim / OpenStreetMap (public)</option>
+                                </optgroup>
+                                <optgroup label="Your own server — works with no internet">
+                                    <option value="nominatim_self">Nominatim &mdash; self-hosted</option>
+                                    <option value="photon">Photon &mdash; self-hosted</option>
+                                </optgroup>
+                                <optgroup label="Commercial — API key required">
+                                    <option value="locationiq">LocationIQ</option>
+                                    <option value="geoapify">Geoapify</option>
+                                    <option value="google">Google Maps</option>
+                                    <option value="here">HERE</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-md-6" id="geoUrlWrap">
+                            <label for="setGeoUrl" class="form-label form-label-sm">Your geocoding server address</label>
+                            <input type="text" class="form-control form-control-sm" id="setGeoUrl"
+                                   data-key="geocoding_url" maxlength="255" autocomplete="off"
+                                   placeholder="http://10.0.0.20:8080">
+                            <div class="form-text">
+                                Only used by the self-hosted providers. See
+                                <code>docs/OFFLINE-OPERATION.md</code> &sect;6 for how to stand one up.
+                            </div>
+                        </div>
+                        <div class="col-md-6" id="geoKeyWrap">
                             <label for="setGeoKey" class="form-label form-label-sm">Geocoding API Key (if applicable)</label>
                             <div class="input-group input-group-sm">
                                 <input type="password" class="form-control" id="setGeoKey" data-key="geocoding_api_key" data-secret="1" maxlength="128" autocomplete="off">
                                 <button class="btn btn-outline-secondary secret-reveal" type="button" data-target="setGeoKey" title="Reveal / hide"><i class="bi bi-eye"></i></button>
                                 <button class="btn btn-outline-secondary secret-copy" type="button" data-target="setGeoKey" title="Copy to clipboard"><i class="bi bi-clipboard"></i></button>
                             </div>
+                            <div class="form-text">
+                                Kept on the server. It is never sent to a dispatcher's browser.
+                            </div>
                         </div>
                     </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-md-4">
+                            <label for="setGeoCacheHours" class="form-label form-label-sm">Keep results for (hours)</label>
+                            <input type="number" class="form-control form-control-sm" id="setGeoCacheHours"
+                                   data-key="geocoding_cache_hours" min="1" max="8760" placeholder="24">
+                            <div class="form-text">
+                                Caching is not just a speed-up &mdash; OpenStreetMap's usage policy
+                                <em>requires</em> it.
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="setGeoThrottle" class="form-label form-label-sm">Minimum gap between lookups (ms)</label>
+                            <input type="number" class="form-control form-control-sm" id="setGeoThrottle"
+                                   data-key="geocoding_min_interval_ms" min="0" max="10000"
+                                   placeholder="(provider default)">
+                            <div class="form-text">
+                                Leave blank to use the provider's own published limit
+                                (1000&nbsp;ms for public Nominatim, none for your own server).
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="setGeoUserAgent" class="form-label form-label-sm">Identify this server as</label>
+                            <input type="text" class="form-control form-control-sm" id="setGeoUserAgent"
+                                   data-key="geocoding_user_agent" maxlength="160" autocomplete="off"
+                                   placeholder="(auto — app, version and host)">
+                            <div class="form-text">
+                                Nominatim blocks generic User-Agents. Leave blank unless asked to change it.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 mt-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="btnGeoTest">
+                            <i class="bi bi-play-circle me-1"></i>Test address lookup
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="btnGeoClearCache">
+                            <i class="bi bi-trash3 me-1"></i>Clear cached results
+                        </button>
+                    </div>
+                    <div class="mt-2" id="geocodeStatus"></div>
                 </div>
 
                 <!-- PRE-RELEASE-FIXES #8 — External incident feed onboarding -->
@@ -2562,6 +2762,22 @@ foreach ($personnelSections as $sec) {
                         </select>
                     </div>
                 </div>
+                <!-- D4 (2026-07-31) — say something when the basemap dies -->
+                <div class="row g-2 mt-1">
+                    <div class="col-md-8">
+                        <label for="setMapOfflineBanner" class="form-label form-label-sm">
+                            When map backgrounds stop loading
+                            <i class="bi bi-question-circle text-body-secondary" tabindex="0"
+                               data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                               data-bs-content="During an internet outage the map background goes grey while incidents, units, facilities and geofences all keep working. Without a message, a dispatcher reasonably concludes the CAD has failed and starts restarting things mid-incident. The banner says 'Map background unavailable — incident data is still live' and clears itself as soon as tiles load again. Turn it off for an unattended wall display where nobody is there to read it."
+                               title="Map background unavailable"></i>
+                        </label>
+                        <select class="form-select form-select-sm" id="setMapOfflineBanner" data-key="map_offline_banner">
+                            <option value="1">Tell the dispatcher the map background is unavailable (recommended)</option>
+                            <option value="0">Say nothing — just show the grey map</option>
+                        </select>
+                    </div>
+                </div>
                 <div class="d-flex gap-2 mt-3">
                     <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-check-lg me-1"></i>Save Map Defaults</button>
                 </div>
@@ -2642,14 +2858,22 @@ foreach ($personnelSections as $sec) {
                         <div class="col-md-4">
                             <label for="setTileMode" class="form-label form-label-sm">Tile Mode</label>
                             <select class="form-select form-select-sm" id="setTileMode" data-key="tile_mode">
-                                <option value="proxy" selected>Proxy (route through server cache) — recommended</option>
+                                <option value="proxy" selected>Proxy (this server fetches tiles) — recommended</option>
                                 <option value="direct">Direct (browser fetches from provider)</option>
                             </select>
-                            <div class="form-text small">Proxy is the default — it caches tiles on the server (keeps maps working during brief Internet outages, hides your API key from the browser, lower latency on warm cache).</div>
+                            <div class="form-text small">
+                                In <strong>proxy</strong> mode this server fetches map tiles and caches
+                                them, so a dispatcher's browser never contacts the tile provider —
+                                which otherwise reveals the map area being viewed, and therefore
+                                roughly where incidents are, for the whole shift.
+                                <strong>Proxy mode only applies to providers whose terms permit it</strong>
+                                (see the table below); everything else falls back to direct.
+                            </div>
                         </div>
                         <div class="col-md-3">
                             <label for="setTileCacheDays" class="form-label form-label-sm">Cache Duration (days)</label>
-                            <input type="number" class="form-control form-control-sm" id="setTileCacheDays" data-key="tile_cache_days" min="0" max="365" placeholder="60">
+                            <input type="number" class="form-control form-control-sm" id="setTileCacheDays" data-key="tile_cache_days" min="0" max="365" placeholder="30">
+                            <div class="form-text small">Ceiling on how long a cached tile is reused. The provider's own cache headers are honoured when they ask for less.</div>
                         </div>
                         <div class="col-md-5">
                             <label for="setTileApiKey" class="form-label form-label-sm">Map Tile API Key (if required)</label>
@@ -2657,12 +2881,75 @@ foreach ($personnelSections as $sec) {
                                    placeholder="Only needed for Google, Bing, Mapbox">
                         </div>
                     </div>
+
+                    <!-- Cache bounds. The disk is a shared resource on a dispatch
+                         server; a tile cache that grows without limit is an outage
+                         waiting for a busy shift. -->
+                    <div class="row g-2 mt-1">
+                        <div class="col-md-4">
+                            <label for="setTileCacheMaxMb" class="form-label form-label-sm">Cache Size Limit (MB)</label>
+                            <input type="number" class="form-control form-control-sm" id="setTileCacheMaxMb"
+                                   data-key="tile_cache_max_mb" min="16" max="102400" placeholder="512">
+                            <div class="form-text small">Least-recently-used tiles are deleted once the cache passes this size.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="setTileCacheMinFreeMb" class="form-label form-label-sm">Keep Disk Free (MB)</label>
+                            <input type="number" class="form-control form-control-sm" id="setTileCacheMinFreeMb"
+                                   data-key="tile_cache_min_free_mb" min="0" max="1048576" placeholder="1024">
+                            <div class="form-text small">The proxy stops <em>writing</em> new tiles when free space would drop below this. It keeps serving maps either way.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="setTileProxyUa" class="form-label form-label-sm">Proxy User-Agent</label>
+                            <input type="text" class="form-control form-control-sm" id="setTileProxyUa"
+                                   data-key="tile_proxy_user_agent" maxlength="160" autocomplete="off"
+                                   placeholder="(auto — names this app + your host)">
+                            <div class="form-text small">
+                                OpenStreetMap requires a genuine, contactable identifier and blocks
+                                generic ones. Leave blank for an automatic value, or set something
+                                like <code>Metro ARES CAD (dispatch@example.org)</code>.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Live cache usage + per-provider policy, from
+                         api/tile-proxy.php?action=status -->
+                    <div class="mt-3" id="tileProxyStatus"></div>
                 </div>
 
                 <div class="d-flex gap-2">
                     <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-check-lg me-1"></i>Save Tile Settings</button>
                 </div>
             </form>
+
+            <!-- ── Default map layer visibility ──────────────────────────────
+                 Which overlays a map starts with for someone who has never
+                 changed them. Deliberately SEPARATE from the tile settings
+                 above: that decides where basemap bytes come from, this
+                 decides which overlays are switched on.
+
+                 This is a DEFAULT, not a policy. Any user can switch a layer
+                 on or off for themselves and it is remembered per user, on the
+                 server; changing it here never overwrites someone's choice.
+                 Users get back here with "Reset to default" in the map's own
+                 layer control. -->
+            <div class="settings-group mb-3" id="mapLayerDefaultsGroup">
+                <div class="settings-group-title">Default Layer Visibility</div>
+                <div class="form-text small mb-2">
+                    The layers a map shows for a user who has not customised them.
+                    Individual users can still turn any layer on or off for
+                    themselves &mdash; their choice is stored per user and is not
+                    affected by changes here.
+                </div>
+                <div id="mapLayerDefaultsList" class="row g-2">
+                    <div class="col-12 text-body-secondary small">Loading&hellip;</div>
+                </div>
+                <div class="d-flex gap-2 mt-2 align-items-center">
+                    <button type="button" class="btn btn-sm btn-success" id="btnSaveMapLayerDefaults">
+                        <i class="bi bi-check-lg me-1"></i>Save Layer Defaults
+                    </button>
+                    <span class="small" id="mapLayerDefaultsStatus"></span>
+                </div>
+            </div>
 
             <!-- Provider setup reference -->
             <details class="small text-body-secondary mt-3">
@@ -6888,7 +7175,9 @@ foreach ($personnelSections as $sec) {
                         <div class="col-md-8">
                             <label class="form-label form-label-sm">Bot Token</label>
                             <div class="input-group input-group-sm">
-                                <input type="password" class="form-control font-monospace" id="setTelegramToken" placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11">
+                                <input type="password" class="form-control font-monospace" id="setTelegramToken"
+                                       data-key="telegram_bot_token" data-secret="1" autocomplete="off"
+                                       placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11">
                                 <button class="btn btn-outline-secondary secret-reveal" type="button" data-target="setTelegramToken" title="Reveal / hide"><i class="bi bi-eye"></i></button>
                                 <button class="btn btn-outline-secondary secret-copy" type="button" data-target="setTelegramToken" title="Copy"><i class="bi bi-clipboard"></i></button>
                             </div>
@@ -6896,7 +7185,8 @@ foreach ($personnelSections as $sec) {
                         </div>
                         <div class="col-md-4">
                             <label class="form-label form-label-sm">Chat ID</label>
-                            <input type="text" class="form-control form-control-sm" id="setTelegramChat" placeholder="-100123456789">
+                            <input type="text" class="form-control form-control-sm" id="setTelegramChat"
+                                   data-key="telegram_chat_id" placeholder="-100123456789">
                             <div class="form-text small">Group IDs start with <code>-100</code>. Personal/DM IDs are positive.</div>
                         </div>
                     </div>
@@ -7943,13 +8233,26 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                     <div class="modal-body">
                         <input type="hidden" id="dvsTestId" value="">
                         <p class="small text-body-secondary mb-2">
-                            Paste the bearer token you saved when you minted this channel.
-                            We don't store the plaintext, so each test requires the token.
+                            Leave the token box empty and these tests use the channel's
+                            stored bearer &mdash; the same value TicketsCAD sends on every
+                            unattended call, so a green result here means live audio and
+                            push-to-talk will work too.
                         </p>
                         <div class="mb-2">
-                            <label class="form-label form-label-sm">Bridge bearer token</label>
+                            <label class="form-label form-label-sm">
+                                Bridge bearer token <span class="text-body-secondary">(optional)</span>
+                            </label>
                             <input type="password" class="form-control form-control-sm"
-                                   id="dvsTestToken" placeholder="paste 64-char hex">
+                                   id="dvsTestToken" placeholder="leave empty to use the stored token">
+                            <div class="form-text small">
+                                Only needed if this channel is marked <strong>token unusable</strong>
+                                &mdash; its token was stored hashed by a version released before this fix and
+                                cannot be sent to the bridge. Paste the value you saved when the
+                                channel was created: if <em>Test /health</em> succeeds, that proves
+                                the bridge accepts it and TicketsCAD stores it, with no bridge
+                                restart. Otherwise rotate the token and update the bridge's
+                                <code>DMR_BEARER_TOKEN</code>.
+                            </div>
                         </div>
                         <div class="d-flex gap-2 mb-3 flex-wrap">
                             <button type="button" class="btn btn-sm btn-outline-primary" id="dvsTestHealthBtn">

@@ -12,6 +12,9 @@
  * Prereqs:  Phase 8 i18n migrations already applied.
  * Safety:   Idempotent. INSERT IGNORE on (caption_key, lang).
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase 9 i18n — force-password-change captions\n";

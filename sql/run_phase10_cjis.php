@@ -16,6 +16,9 @@
  * Safety:   Idempotent. Guards all ALTER / CREATE with
  *           information_schema lookups. INSERT IGNORE for settings.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase 10 — CJIS hardening migration\n";

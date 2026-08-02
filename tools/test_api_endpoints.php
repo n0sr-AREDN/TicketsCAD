@@ -4,6 +4,9 @@
  * Tests that API endpoints respond correctly with proper auth
  * @requires-http — hits http://localhost via a live Apache; skipped when NEWUI_TEST_NO_HTTP=1
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require __DIR__ . '/../config.php';
 
 echo "=== API Endpoint Tests ===\n\n";

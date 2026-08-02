@@ -9,6 +9,9 @@
  * Safety:   Idempotent. SQL uses CREATE TABLE IF NOT EXISTS. Safe to re-run.
  * Output:   Table creation confirmations and statement count.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/db.php';
 

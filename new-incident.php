@@ -507,6 +507,9 @@ $csrf     = csrf_token();
 <!-- App JS -->
 <script src="assets/js/theme-manager.js?v=<?php echo asset_v('assets/js/theme-manager.js'); ?>"></script>
 <script src="assets/js/new-incident.js?v=<?php echo asset_v('assets/js/new-incident.js'); ?>"></script>
+<?php /* Phase 131 — prefills #phone + #description when the operator arrived
+         here from a net check-in (?net_entry=N). No-op otherwise. */ ?>
+<script src="assets/js/net-prefill.js?v=<?php echo asset_v('assets/js/net-prefill.js'); ?>"></script>
 
 </body>
 </html>

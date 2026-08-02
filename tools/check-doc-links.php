@@ -18,6 +18,8 @@
  * Exit:   0 = clean, 1 = problems found, 2 = bad invocation.
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 $root = rtrim(str_replace('\\', '/', realpath($argv[1] ?? '.')), '/');
 if (!$root || !is_dir($root)) { fwrite(STDERR, "not a directory: " . ($argv[1] ?? '.') . "\n"); exit(2); }
 

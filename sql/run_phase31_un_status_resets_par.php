@@ -23,6 +23,9 @@
  *
  * Idempotent. Safe to re-run.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase 31 — un_status.resets_par\n";

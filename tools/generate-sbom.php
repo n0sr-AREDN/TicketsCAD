@@ -47,6 +47,8 @@
 
 declare(strict_types=1);
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 $root = realpath(__DIR__ . '/..');
 if ($root === false) {
     fwrite(STDERR, "[FAIL] cannot resolve application root\n");
@@ -331,6 +333,107 @@ function isNotShipped(string $absPath): bool
 
     /* services/<service>/bench/ — benchmark harnesses, also excluded. */
     return (bool) preg_match('#^services/[^/]+/bench/#', $p);
+}
+
+/**
+ * Join shell/Dockerfile line continuations so one logical command is one string.
+ *
+ * Everything below depends on this. The package lists this generator has to
+ * read are wrapped across lines almost without exception —
+ *
+ *     pip install --quiet \
+ *         numpy onnxruntime piper-tts
+ *
+ * — so a scanner that reads physical lines sees "pip install --quiet" and finds
+ * no packages at all. That is not a hypothetical: `onnxruntime` and `piper-tts`
+ * were installed by this project's own installer and missing from its own SBOM,
+ * on exactly that line, while the project published a claim that the document
+ * covered the whole dependency chain.
+ *
+ * @return string[] logical lines
+ */
+function joinContinuations(string $src): array
+{
+    return preg_split('/\r?\n/', (string) preg_replace('/\\\\\r?\n/', ' ', $src)) ?: [];
+}
+
+/**
+ * Extract the package names from one install command.
+ *
+ * Given a logical line and a regex matching the install verb, returns the bare
+ * package tokens that follow it: option flags, redirections, shell variables and
+ * anything path-like are dropped, and the argument list is cut at the first
+ * shell operator so a chained `&& docker-php-ext-configure gd` cannot leak "gd"
+ * in as an apt package.
+ *
+ * DELIBERATELY CONSERVATIVE. A token this cannot resolve with confidence — a
+ * `$VARIABLE` package name, a local `.deb` path, a glob — is skipped rather than
+ * guessed at. A name invented by a parser is worse than a name absent: it sends
+ * a reader looking for vulnerability data about software that does not exist,
+ * and this project has already published one wrong component identifier. Where
+ * skipping loses something real, the component is declared explicitly instead
+ * (see the downloaded-artifacts section), with its evidence cited.
+ *
+ * @return string[] package names, in the order written
+ */
+function installArgs(string $line, string $verbRegex): array
+{
+    /* A commented-out or narrative line is not an install command. Skipping it
+     * is not tidiness: `services/aprs/install.sh` line 7 is the prose comment
+     * "apt install python3-pip + pip install aprslib + ...", which without this
+     * guard put `install`, `pip` and two PyPI names into the SBOM as Debian
+     * packages. A parser artifact in a bill of materials is exactly the false
+     * identifier this file's header rule forbids. */
+    if (preg_match('#^\s*(?:\#|//)#', $line)) return [];
+
+    if (!preg_match($verbRegex, $line, $m, PREG_OFFSET_CAPTURE)) return [];
+    $rest = substr($line, $m[0][1] + strlen($m[0][0]));
+
+    /* Stop at the first shell operator, redirection or comment. */
+    $rest = preg_split('/\s(?:&&|\|\||[;|>]|#)/', $rest, 2)[0];
+
+    $out = [];
+    foreach (preg_split('/\s+/', trim($rest)) ?: [] as $tok) {
+        $tok = trim($tok, "\"'");
+        if ($tok === '') continue;
+        if ($tok[0] === '-') continue;                      // option flag
+        if (str_contains($tok, '$')) continue;              // shell variable
+        if (str_contains($tok, '/')) continue;              // path, URL, local file
+        if (str_contains($tok, '=')) continue;              // VAR=value
+        if (str_contains($tok, '*')) continue;              // glob
+        /* Package names: letters, digits, and . _ + - only. */
+        if (!preg_match('/^[A-Za-z][A-Za-z0-9._+-]*$/', $tok)) continue;
+        /* Package-manager sub-commands, which can never be package names. The
+         * list is deliberately this short: `python3`, `pip` and `curl` all look
+         * like sub-commands and are all genuinely installed by this project's
+         * scripts, so a longer stop-list would silently drop real components —
+         * the precise failure this whole section exists to end. */
+        if (in_array($tok, ['install', 'update', 'upgrade', 'remove', 'purge',
+                            'clean', 'autoremove'], true)) continue;
+        $out[] = $tok;
+    }
+    return $out;
+}
+
+/**
+ * Every file in the tree that can install software: shell scripts, Dockerfiles,
+ * and the JavaScript that GENERATES an installer for the operator to run
+ * (assets/js/mesh-console.js emits a bash script containing a pip line — the
+ * packages in it are as real as any other, and no manifest anywhere names them).
+ *
+ * @return string[] absolute paths
+ */
+function installerFiles(string $root): array
+{
+    $files = scanFiles($root, '/\.(sh|bat)$/i');
+    foreach (scanFiles($root, '/(^|[\/\\\\])Dockerfile(\.[^\/\\\\]+)?$/i') as $f) {
+        $files[] = $f;
+    }
+    $generated = $root . '/assets/js/mesh-console.js';
+    if (is_file($generated)) $files[] = $generated;
+    usort($files, fn(string $a, string $b): int
+        => str_replace('\\', '/', $a) <=> str_replace('\\', '/', $b));
+    return $files;
 }
 
 /** Absolute path to the vendored, unmodified official CycloneDX schemas. */
@@ -888,6 +991,66 @@ $pyImportMap = [
     'serial'          => ['pyserial', 'BSD-3-Clause'],
 ];
 
+/* Licences for packages this project INSTALLS but never imports, so they reach
+ * the SBOM through the install-script scan below rather than through
+ * $pyImportMap. Stated only where the upstream licence is unambiguous; the rest
+ * are left null and rendered as an explicit unknown. */
+$pyScriptLicense = [
+    'onnxruntime'  => 'MIT',
+    'piper-tts'    => 'MIT',
+    'pip'          => 'MIT',
+    /* Left unknown deliberately rather than filled in from recollection. */
+    'meshcore-cli' => null,
+    'esptool'      => null,
+];
+
+/* ------------------------------------------------------------------ *
+ * 4a. Packages installed by this project's OWN scripts
+ * ------------------------------------------------------------------ *
+ * The two scans above see a package only if a requirements file pins it or a
+ * .py file imports it. Neither is true of the largest install path in this
+ * repository: `services/dvswitch/install-bridge.sh` pip-installs its
+ * dependencies directly, and `services/aprs/install.sh` does the same.
+ *
+ * This is the gap that mattered. `onnxruntime` and `piper-tts` were installed
+ * by install-bridge.sh line 299 — on the same pip line as `numpy`, which WAS
+ * listed because a .py file imports it — and were absent from this SBOM while
+ * the project publicly claimed the document covered the whole dependency chain
+ * with no minimum depth. Anyone who diffed the installer against SBOM.txt found
+ * it in about two minutes. The fix is not to add two names: it is to read the
+ * installers, so the next package added to one cannot repeat it.
+ */
+$pyInstallScripts = [];   // package => [script paths that install it]
+foreach (installerFiles($root) as $f) {
+    $rel = relPath($f, $root);
+    foreach (joinContinuations((string) @file_get_contents($f)) as $line) {
+        foreach (installArgs($line, '/(?:^|[\s"\'\/])pip[23]?["\']?\s+install\s+/') as $pkg) {
+            $pyInstallScripts[strtolower($pkg)][] = $rel;
+        }
+    }
+}
+
+/* Packages the scanner structurally CANNOT see, declared explicitly with the
+ * evidence that puts them here. Both are real runtime dependencies with no
+ * manifest anywhere in the tree:
+ *
+ *  - meshcore-cli is appended to a pip line by JavaScript string concatenation
+ *    when the operator picks the MeshCore protocol, so it is not on the same
+ *    source line as the `pip install` verb and no line-based scan can reach it.
+ *  - esptool is never imported and never pip-installed by us; it is executed as
+ *    `python -m esptool` against whatever environment the bridge runs in. It is
+ *    a hard dependency of node provisioning that nothing in this repository
+ *    declares.
+ *
+ * Declaring them here is the honest alternative to a cleverer parser that would
+ * still miss the next case. The test at tests/test_sbom_installer_coverage.php
+ * scans independently and fails if anything reaches an installer without
+ * reaching this document by one route or the other. */
+$pyDeclared = [
+    'meshcore-cli' => 'assets/js/mesh-console.js',
+    'esptool'      => 'services/meshcore/configure_node.py',
+];
+
 $pyConstraints = [];   // package => declared constraint from a requirements file
 $pyUsedIn      = [];   // package => [relative paths]
 
@@ -912,6 +1075,14 @@ foreach (scanFiles($root . '/services', '/\.py$/i') as $pyPath) {
         }
     }
 }
+/* Fold in the install-script findings and the explicit declarations. */
+foreach ($pyInstallScripts as $pkg => $paths) {
+    foreach ($paths as $p) $pyUsedIn[$pkg][] = $p;
+}
+foreach ($pyDeclared as $pkg => $evidence) {
+    $pyUsedIn[strtolower($pkg)][] = $evidence;
+}
+
 /* Deterministic package order and, within each package, deterministic file
  * order — the "Used by:" list is truncated to six entries, so an unstable
  * order would change which files are even mentioned. */
@@ -919,6 +1090,12 @@ ksort($pyUsedIn);
 
 $pyByPkg = [];
 foreach ($pyImportMap as $meta) $pyByPkg[strtolower($meta[0])] = $meta[1];
+foreach ($pyScriptLicense as $pkg => $lic) {
+    /* An import-map licence wins: it was there first and is equally evidenced. */
+    if (!array_key_exists(strtolower($pkg), $pyByPkg)) {
+        $pyByPkg[strtolower($pkg)] = $lic;
+    }
+}
 
 foreach ($pyUsedIn as $pkg => $paths) {
     $paths      = array_values(array_unique($paths));
@@ -947,7 +1124,15 @@ foreach ($pyUsedIn as $pkg => $paths) {
                          . ($constraint !== null
                              ? 'The declared constraint is "' . $constraint . '", which bounds but '
                              . 'does not determine the installed version. '
-                             : 'No requirements file pins this package. ')
+                             : (isset($pyInstallScripts[$pkg])
+                                 ? 'No requirements file pins this package; it is installed by '
+                                 . implode(', ', array_values(array_unique($pyInstallScripts[$pkg])))
+                                 . ' with no version constraint written, so pip resolves whatever '
+                                 . 'is current on PyPI at the moment the operator runs the '
+                                 . 'installer. Stating a version here would be a guess, and a '
+                                 . 'guessed version is a false attestation. '
+                                 : 'No requirements file pins this package and no installer in '
+                                 . 'this repository names a version for it. '))
                          . 'The resolved version is therefore known only on the operator\'s host; '
                          . 'operators should generate a deployment SBOM (for example with '
                          . '"pip freeze") to capture it.',
@@ -1070,7 +1255,254 @@ foreach ($dockerImages as $img => $where) {
 }
 
 /* ================================================================== *
- * 6b. Specification data vendored into this repository
+ * 6a. Operating-system packages installed by our Dockerfiles and installers
+ * ================================================================== *
+ * The container images this project builds, and the installers it ships, run
+ * `apt-get install` with package lists written in this repository. Those
+ * packages are in the delivered image and on the operator's host because we put
+ * them there, so they are components of this software by the same test applied
+ * everywhere else in this file: we ship it, or we install it.
+ *
+ * Scanned from the files rather than listed here, for the same reason as the
+ * pip scan above — a list maintained by hand goes stale the first time somebody
+ * adds a package and does not think about the SBOM.
+ *
+ * NOT included: packages that only a DOCUMENT tells the operator to install
+ * (docs/INSTALL.md's apache2/php/mariadb-server line, for instance). Those are
+ * the platform the operator supplies, which this SBOM has always excluded and
+ * says so in its coverage statement. The line drawn here is "code in this
+ * repository installs it", which is checkable by anyone.
+ */
+$aptPkgs = [];   // package => [files that install it]
+foreach (installerFiles($root) as $f) {
+    $rel = relPath($f, $root);
+    foreach (joinContinuations((string) @file_get_contents($f)) as $line) {
+        foreach (installArgs($line, '/(?:^|[\s"\'])apt(?:-get)?\s+install\s+/') as $pkg) {
+            $aptPkgs[strtolower($pkg)][] = $rel;
+        }
+    }
+}
+ksort($aptPkgs);
+foreach ($aptPkgs as $pkg => $where) {
+    $where = array_values(array_unique($where));
+    sort($where);
+    $components[] = component([
+        'key'           => 'deb:' . $pkg,
+        'name'          => $pkg,
+        'version'       => null,
+        'purl'          => 'pkg:deb/' . $pkg,
+        'identifiers'   => ['pkg:deb/' . $pkg],
+        'group'         => 'os-packages',
+        'description'   => 'Operating-system package installed by ' . implode(', ', $where) . '.',
+        'unknown'       => ['Component Version', 'Component Producer', 'Component License',
+                            'Component Hash Value', 'Component Hash Algorithm'],
+        'unknownReason' => 'Installed with apt at image-build or install time and not distributed '
+                         . 'with this software. No version is written in the installing file, so '
+                         . 'apt resolves whatever the host\'s configured archive currently serves; '
+                         . 'the SBOM author cannot state a version, a producer, a licence or a '
+                         . 'hash from this tree, because all four depend on which distribution and '
+                         . 'which archive snapshot the operator builds against. Operators who need '
+                         . 'these should generate an SBOM from the built image (for example with '
+                         . '"syft" or "trivy"), which reads the package database and resolves all '
+                         . 'of them exactly.',
+    ]);
+}
+
+/* ================================================================== *
+ * 6b. Artifacts downloaded at install time or first use
+ * ================================================================== *
+ * Binaries, models and reference datasets that are not in this repository and
+ * are not installed by a package manager — they are fetched from a URL by our
+ * own scripts and code. A package manager at least records what it installed;
+ * nothing records these, which makes them the least visible components in the
+ * system and the ones most worth writing down.
+ *
+ * Declared rather than scanned. The URLs are assembled from shell variables
+ * across several lines and reached by three alternative code paths, so a scan
+ * would produce either nothing or something invented. Every entry below cites
+ * the file and the source it is read from, so a reader can check the claim
+ * against the tree. NONE of them is version-pinned, and each says so with the
+ * specific reason — a mutable branch, a "latest" redirect, a rolling dump.
+ */
+$downloaded = [
+    [
+        'name'      => 'Piper voice model (en_US-lessac-medium)',
+        'purl'      => 'pkg:huggingface/rhasspy/piper-voices',
+        'type'      => 'machine-learning-model',
+        'publisher' => 'Rhasspy',
+        'license'   => null,
+        'sourceUrl' => 'https://huggingface.co/rhasspy/piper-voices',
+        'evidence'  => 'services/dvswitch/install-bridge.sh (voice id at line 107, fetched from '
+                     . 'huggingface.co/rhasspy/piper-voices at lines 325-329)',
+        'reason'    => 'Fetched from the "main" branch of a Hugging Face repository, which is a '
+                     . 'moving reference rather than a release: the bytes served under that path '
+                     . 'can change without any identifier in this tree changing. There is no '
+                     . 'version to state and no published hash to record. The voice is selectable '
+                     . 'with PIPER_VOICE, so an operator may hold a different model entirely.',
+    ],
+    [
+        'name'      => 'Vosk speech-recognition model (vosk-model-small-en-us-0.15)',
+        'purl'      => 'pkg:generic/vosk-model-small-en-us@0.15',
+        'type'      => 'machine-learning-model',
+        'publisher' => 'Alpha Cephei',
+        'license'   => null,
+        'sourceUrl' => 'https://alphacephei.com/vosk/models',
+        'evidence'  => 'services/dvswitch/example.env (DMR_VOSK_MODEL), consumed by '
+                     . 'services/dvswitch/bridge.py; download documented in '
+                     . 'docs/DVSWITCH-ADMIN-GUIDE.md',
+        'reason'    => 'Optional: speech-to-text is off unless the operator sets DMR_VOSK_MODEL. '
+                     . 'The model version 0.15 appears in the archive filename and is recorded '
+                     . 'above on that evidence, but the archive carries no published checksum for '
+                     . 'the SBOM author to record, and the operator chooses which model to '
+                     . 'install. The licence of the model weights is not stated in this tree and '
+                     . 'is not asserted here.',
+    ],
+    [
+        'name'      => 'faster-whisper model weights',
+        'purl'      => 'pkg:huggingface/Systran/faster-whisper-base',
+        'type'      => 'machine-learning-model',
+        'publisher' => null,
+        'license'   => null,
+        'sourceUrl' => 'https://huggingface.co/Systran',
+        'evidence'  => 'services/dvswitch/bridge.py and services/dvswitch/echo_bot.py — the '
+                     . 'library downloads the weights on first inference',
+        'reason'    => 'Not fetched by this project at all: the faster-whisper library downloads '
+                     . 'the weights into the operator\'s Hugging Face cache the first time '
+                     . 'transcription runs. Which repository and revision that resolves to is '
+                     . 'decided by the library at runtime, so no version, producer, licence or '
+                     . 'hash can be stated from this tree. The model size is configurable, so the '
+                     . 'identifier above records the default the code requests, not a guarantee '
+                     . 'of what an operator has.',
+    ],
+    [
+        'name'      => 'md380-emu (AMBE vocoder emulator)',
+        'purl'      => 'pkg:generic/md380-emu',
+        'type'      => 'application',
+        'publisher' => null,
+        'license'   => null,
+        'sourceUrl' => 'https://github.com/travisgoodspeed/md380tools',
+        'evidence'  => 'services/dvswitch/install-bridge.sh lines 161-199 (three alternative '
+                     . 'acquisition paths) and services/dvswitch/docker/Dockerfile lines 36-53 '
+                     . '(.deb from the DVSwitch apt repository, unpacked with dpkg-deb -x)',
+        'reason'    => 'Obtained by one of four routes depending on how the operator installs — '
+                     . 'copied from a peer host, built from a "--depth 1" clone of the md380tools '
+                     . 'default branch, downloaded from an operator-supplied MD380_URL, or '
+                     . 'extracted from a .deb matched by a glob in the DVSwitch repository. None '
+                     . 'of the four pins a version, so no version, hash or producer can be stated '
+                     . 'here; the licence of the resulting binary depends on which route was '
+                     . 'taken. This is the least reproducible component in the system and is '
+                     . 'recorded as such rather than omitted.',
+    ],
+    [
+        'name'      => 'FCC ULS licence database (amateur and GMRS)',
+        'purl'      => 'pkg:generic/fcc-uls',
+        'type'      => 'data',
+        'publisher' => 'United States Federal Communications Commission',
+        'license'   => null,
+        'sourceUrl' => 'https://data.fcc.gov/download/pub/uls/complete/',
+        'evidence'  => 'tools/update-lookup-data.php and tools/refresh-lookups.php '
+                     . '(l_amat.zip, l_gmrs.zip)',
+        'reason'    => 'Optional reference data for callsign lookups, downloaded by an operator-run '
+                     . 'tool. The FCC publishes it as a rolling dump at a fixed URL with no version '
+                     . 'identifier and no published checksum, so the only thing that distinguishes '
+                     . 'one copy from another is when it was fetched. It is US Government work and '
+                     . 'not subject to copyright, which is not the same as carrying an SPDX '
+                     . 'licence identifier, so none is asserted.',
+    ],
+    [
+        'name'      => 'GeoNames postal-code dataset (US)',
+        'purl'      => 'pkg:generic/geonames-postal-us',
+        'type'      => 'data',
+        'publisher' => 'GeoNames',
+        'license'   => null,
+        'sourceUrl' => 'https://download.geonames.org/export/zip/',
+        'evidence'  => 'tools/update-lookup-data.php and tools/refresh-lookups.php (US.zip)',
+        'reason'    => 'Optional reference data, downloaded by an operator-run tool from a fixed '
+                     . 'URL that always serves the current export. No version identifier and no '
+                     . 'published checksum accompany it. GeoNames publishes under a Creative '
+                     . 'Commons licence, but the exact version of that licence is not recorded in '
+                     . 'this tree and is not asserted from memory.',
+    ],
+];
+foreach ($downloaded as $d) {
+    $unknown = ['Component Hash Value', 'Component Hash Algorithm'];
+    if ($d['publisher'] === null) $unknown[] = 'Component Producer';
+    if ($d['license']   === null) $unknown[] = 'Component License';
+    /* Only the Vosk entry carries a version, and only because the archive
+     * filename states one. */
+    $version = null;
+    if (preg_match('/@([0-9][^\s]*)$/', (string) $d['purl'], $vm)) $version = $vm[1];
+    if ($version === null) $unknown[] = 'Component Version';
+
+    $components[] = component([
+        'key'           => 'artifact:' . $d['name'],
+        'name'          => $d['name'],
+        'version'       => $version,
+        'type'          => $d['type'],
+        'publisher'     => $d['publisher'],
+        'license'       => $d['license'],
+        'purl'          => $d['purl'],
+        'sourceUrl'     => $d['sourceUrl'],
+        'identifiers'   => [$d['purl']],
+        'group'         => 'downloaded-artifacts',
+        'description'   => 'Downloaded at install time or first use, not distributed with this '
+                         . 'software. Evidence: ' . $d['evidence'] . '.',
+        'unknown'       => $unknown,
+        'unknownReason' => $d['reason'],
+    ]);
+}
+
+/* ================================================================== *
+ * 6c. Build- and verification-time tooling fetched from a network
+ * ================================================================== *
+ * Not shipped and not run by the application — but fetched from a third-party
+ * registry by this repository's own automation, which makes them part of the
+ * chain that produces and checks what we publish. The npm packages are the
+ * sharper case: they are fetched by THIS GENERATOR, on the path that validates
+ * the SBOM. A bill of materials whose own validator is an undeclared dependency
+ * is exactly the sort of omission this document exists to prevent.
+ */
+$buildTools = [
+    ['ajv-cli',                  'pkg:npm/ajv-cli@5',                'MIT',
+     'tools/generate-sbom.php (npx --yes -p ajv-cli@5, --validate path)',        '5'],
+    ['ajv-formats',              'pkg:npm/ajv-formats@3',            'MIT',
+     'tools/generate-sbom.php (npx --yes -p ajv-formats@3, --validate path)',    '3'],
+    ['actions/checkout',         'pkg:github/actions/checkout@v7',   'MIT',
+     '.github/workflows/qa.yml',                                                 'v7'],
+    ['shivammathur/setup-php',   'pkg:github/shivammathur/setup-php@v2', 'MIT',
+     '.github/workflows/qa.yml',                                                 'v2'],
+];
+foreach ($buildTools as [$name, $purl, $license, $evidence, $constraint]) {
+    $components[] = component([
+        'key'           => 'buildtool:' . $name,
+        'name'          => $name,
+        'version'       => null,
+        'license'       => $license,
+        'type'          => 'application',
+        'purl'          => $purl,
+        'sourceUrl'     => str_starts_with($purl, 'pkg:npm/')
+                         ? 'https://www.npmjs.com/package/' . $name
+                         : 'https://github.com/' . $name,
+        'identifiers'   => [$purl],
+        'group'         => 'build-tooling',
+        'description'   => 'Fetched from a third-party registry at build or verification time by '
+                         . $evidence . '. Not shipped with this software and not loaded by the '
+                         . 'application at runtime.',
+        'unknown'       => ['Component Version', 'Component Producer',
+                            'Component Hash Value', 'Component Hash Algorithm'],
+        'unknownReason' => 'Referenced by the major-version constraint "' . $constraint . '", which '
+                         . 'bounds but does not determine what is fetched: the registry resolves it '
+                         . 'to whatever the newest matching release is at the moment the job runs. '
+                         . 'The SBOM author therefore cannot state the resolved version, its '
+                         . 'publisher at that moment, or a hash of the fetched bytes. This is a '
+                         . 'real supply-chain exposure in the build path and is recorded here '
+                         . 'rather than left out because it is only build tooling.',
+        'notes'         => ['Declared constraint: ' . $constraint],
+    ]);
+}
+
+/* ================================================================== *
+ * 6d. Specification data vendored into this repository
  * ================================================================== *
  * The official CycloneDX schemas under tools/schema/cyclonedx/ are third-party
  * files that we distribute. They are not application code and nothing loads
@@ -1402,9 +1834,21 @@ $bom = [
             ['name'  => 'ticketscad:coverage',
              'value' => 'Covers PHP Composer dependencies (with transitive relationships), '
                       . 'vendored browser libraries, browser libraries loaded from a CDN at '
-                      . 'runtime, optional Python service dependencies, derived GPL source, and '
-                      . 'optional container base images. Excludes non-code assets and the '
-                      . 'operator-supplied platform (PHP runtime, web server, database).'],
+                      . 'runtime, optional Python service dependencies (including those installed '
+                      . 'only by this project\'s own install scripts), derived GPL source, '
+                      . 'operating-system packages installed by our Dockerfiles and installers, '
+                      . 'artifacts downloaded at install time or first use (vocoder binary, '
+                      . 'speech and voice models, reference datasets), build- and '
+                      . 'verification-time tooling fetched from a registry, and optional container '
+                      . 'base images. '
+                      . 'EXCLUDED, deliberately and not silently: (1) the operator-supplied '
+                      . 'platform — PHP runtime, web server, database — and packages that only a '
+                      . 'document instructs the operator to install, because those are the '
+                      . 'operator\'s environment rather than something this repository installs; '
+                      . '(2) non-code assets; (3) third-party hosted SERVICES the software can be '
+                      . 'configured to call, which are not components and are enumerated instead '
+                      . 'in SECURITY.md under "What TicketsCAD sends outside your network", '
+                      . 'including the optional AI features and every one of them off by default.'],
             ['name'  => 'ticketscad:regenerate', 'value' => 'php tools/generate-sbom.php'],
             /* CISA: SBOM Author Signature. Recorded here so that a recipient
              * holding only this file knows a signature exists, what covers it,
@@ -1438,6 +1882,10 @@ $groupLabels = [
     'derived-source'    => 'Derived source (third-party code ported into this tree)',
     'vendored-spec'     => 'Specification data shipped in this repository',
     'container-base'    => 'Container base images (optional Docker deployment)',
+    'os-packages'       => 'Operating-system packages installed by our Dockerfiles and installers',
+    'downloaded-artifacts' => 'Artifacts downloaded at install time or first use '
+                            . '(binaries, models, reference data)',
+    'build-tooling'     => 'Build- and verification-time tooling fetched from a registry',
 ];
 
 $unknownCount = 0;

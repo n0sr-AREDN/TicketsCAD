@@ -222,6 +222,34 @@ sudo systemctl reload apache2
 
 If `configtest` complains about `proxy_wstunnel` not being loaded, re-run `sudo a2enmod proxy proxy_wstunnel` (it's needed for the DMR `/dmr-ws` location — comment that block out if you're not running radio).
 
+### Running Windows and IIS?
+
+This guide is Debian/Apache. Four things behave differently enough on
+Windows/IIS to cost you a day each — `OPENSSL_CONF` (Web Push key generation),
+`disable_functions` producing empty responses, MySQL 8.0 versus MariaDB, and IIS
+not reading `.htaccess`. They are collected in
+[`INSTALL-WINDOWS-IIS.md`](INSTALL-WINDOWS-IIS.md); the rest of this page still
+applies.
+
+### Not using Apache? Read this before you go further
+
+**The web root is the application root**, so your web server publishes every
+directory in the tree unless it is told not to — including `backups/` (complete
+database dumps), `inc/` (holds your database password), and `sql/` + `tools/`
+(command-line scripts). TicketsCAD ships the rules to stop that, but **they only
+work on Apache**:
+
+| Your server | What protects you |
+|---|---|
+| Apache | The shipped `.htaccess` files — but only if your `<Directory>` block sets `AllowOverride All` (or `FileInfo`). The vhost template above does. |
+| **nginx** | **Nothing, until you install [`docs/nginx/ticketscad-hardening.conf`](nginx/ticketscad-hardening.conf).** nginx never reads `.htaccess`. |
+| **IIS** | `sql/web.config` + `tools/web.config` ship; add hidden segments for `backups` and `inc`. IIS ignores `.htaccess`. |
+| Caddy | See [`WEB-SERVER-HARDENING.md`](WEB-SERVER-HARDENING.md). |
+
+Full instructions, and a three-command test to confirm it worked, are in
+[`docs/WEB-SERVER-HARDENING.md`](WEB-SERVER-HARDENING.md). TicketsCAD also runs
+that test against itself and reports it on Settings → Status.
+
 ---
 
 ## Step 6 — Apply database schema + seeds
@@ -311,6 +339,9 @@ You should be able to do all of these on a clean install:
 - [ ] Creating a fake incident from the dashboard works
 - [ ] `sudo -u www-data php sql/run_migrations.php --list` reports `Pending: 0`
 - [ ] `sudo apache2ctl configtest` reports `Syntax OK`
+- [ ] The private directories are NOT served — each of these prints `403` or `404`, never `200`:
+      `for p in backups/ sql/run_migrations.php tools/; do curl -s -o /dev/null -w "$p %{http_code}\n" https://your.host.name/$p; done`
+      (Settings → Status shows the same check under "Web exposure".)
 - [ ] `journalctl -u apache2 --since "10 min ago" | grep -iE "error|warn"` is quiet
 
 ---
@@ -343,6 +374,7 @@ You should be able to do all of these on a clean install:
 
 - [UPGRADING-FROM-V3.md](UPGRADING-FROM-V3.md) — upgrade path from v3.44 (preserves data)
 - [INSTALLATION-CHECKLIST.md](INSTALLATION-CHECKLIST.md) — printable pre-flight + post-flight checklist
+- [WEB-SERVER-HARDENING.md](WEB-SERVER-HARDENING.md) — which directories must not be served, and which file does that on Apache / nginx / IIS / Caddy
 - [SECURITY-POLICY.md](SECURITY-POLICY.md) — what the security model assumes about your deployment
 - [BACKUP-RECOVERY-RUNBOOK.md](BACKUP-RECOVERY-RUNBOOK.md) — what to back up and how to restore
 - [MAINTENANCE-RUNBOOK.md](MAINTENANCE-RUNBOOK.md) — log rotation, cache purging, member purges

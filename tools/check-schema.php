@@ -20,6 +20,8 @@
 
 declare(strict_types=1);
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 chdir(__DIR__ . '/..');
 require_once 'config.php';
 require_once 'inc/db.php';
@@ -33,6 +35,44 @@ $quiet  = in_array('--quiet', $argvv, true);
 function say(string $s = ''): void
 {
     echo $s . "\n";
+}
+
+/**
+ * Run a program as a list of discrete arguments; return [outputLines, exitCode].
+ *
+ * NO SHELL IS INVOLVED. The argv-array form of proc_open() goes straight to
+ * execvp()/CreateProcess(), so shell metacharacters in an element are inert
+ * data. The escapeshellarg() calls that used to wrap these paths are therefore
+ * gone rather than moved — escapeshellarg() quotes FOR a shell, and with no
+ * shell to unquote them the child would receive literal quote characters.
+ *
+ * The `array` type hint is the enforcement: handing this a command string is a
+ * TypeError, not a shell invocation. Do not relax it to `string` or `mixed`.
+ *
+ * Replaces exec(), which hardened Windows/IIS hosts remove via
+ * disable_functions. stdout and stderr share one temp file — exactly what the
+ * old `2>&1` did — so ordering survives and no pipe can deadlock.
+ */
+function run_via_proc_open(array $cmdArgv): array
+{
+    $sink = tmpfile();
+    if ($sink === false) {
+        return [['(could not open a temporary file to capture output)'], 127];
+    }
+    $descriptors = [0 => ['pipe', 'r'], 1 => $sink, 2 => $sink];
+    $pipes = [];
+    $proc = proc_open($cmdArgv, $descriptors, $pipes);
+    if (!is_resource($proc)) {
+        fclose($sink);
+        return [['(failed to start the subprocess)'], 127];
+    }
+    fclose($pipes[0]);
+    $exit = proc_close($proc);
+    rewind($sink);
+    $combined = rtrim((string) stream_get_contents($sink), "\r\n");
+    fclose($sink);
+    $lines = ($combined === '') ? [] : preg_split('/\r\n|\r|\n/', $combined);
+    return [$lines, $exit];
 }
 
 /**
@@ -115,10 +155,7 @@ if (!is_file($runner)) {
 }
 
 $php = PHP_BINARY ?: 'php';
-$cmd = escapeshellarg($php) . ' ' . escapeshellarg($runner) . ' --force 2>&1';
-$out = [];
-$rc  = 0;
-exec($cmd, $out, $rc);
+list($out, $rc) = run_via_proc_open([$php, $runner, '--force']);
 foreach ($out as $line) {
     say('  ' . $line);
 }
@@ -136,9 +173,7 @@ if ($rc !== 0) {
 // manifest, and a repair that "passes" only because of stale state is worthless.
 say('Re-checking in a fresh process...');
 say();
-$out2 = [];
-$rc2  = 0;
-exec(escapeshellarg($php) . ' ' . escapeshellarg(__FILE__) . ' 2>&1', $out2, $rc2);
+list($out2, $rc2) = run_via_proc_open([$php, __FILE__]);
 foreach ($out2 as $line) {
     say('  ' . $line);
 }

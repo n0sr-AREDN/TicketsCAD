@@ -45,10 +45,7 @@
 
 declare(strict_types=1);
 
-if (php_sapi_name() !== 'cli') {
-    http_response_code(403);
-    exit("This script must be run from the command line.\n");
-}
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/backup_schedule.php';

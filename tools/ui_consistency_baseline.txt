@@ -1,0 +1,342 @@
+# UI-consistency audit baseline — tools/ui_consistency_audit.php
+#
+# One finding key per line. A key listed here is KNOWN, REVIEWED interface debt
+# that the audit must not fail on; anything not listed fails the build. That
+# split is the whole point: existing debt does not block work, NEW drift does.
+#
+# WHY THE AUDIT EXISTS (Eric, 2026-07-31)
+# ---------------------------------------
+# A newly shipped widget was reviewed on a live system and found inconsistent
+# with every other widget in the product — action hotkeys as a run of text along
+# the bottom instead of labelled keycap buttons in the header, a dismiss control
+# with no way to reopen, and per-user state in a newly invented store while
+# dashboard_layouts and user_screen_prefs already existed. In Eric's words: "I
+# do not want the software to appear as if we have multiple developers who have
+# never seen this software before or ever talked to each other, working on the
+# same codebase."
+#
+# FORMAT
+# ------
+#     <rule-id>: <path> :: <whitespace-collapsed excerpt of the offending source>
+#
+# Line numbers are deliberately absent so an entry survives reformatting and
+# code moving up or down a file. The excerpt is present so a SECOND, different
+# violation in an already-baselined file is a NEW key and still fails — a
+# per-file key would have let a file be waived once and drift forever.
+#
+# `php tools/ui_consistency_audit.php --rules` prints the convention behind
+# every rule id. docs/UI-CONVENTIONS.md explains the reasoning, with the
+# file:line evidence each rule was derived from.
+#
+# BEFORE ADDING A KEY HERE
+# ------------------------
+# Adding a line is declaring that this piece of interface is deliberately
+# unlike the rest of the product. Almost always the cheaper answer is to follow
+# the convention — these are not stylistic preferences, they are the reason the
+# application looks like one application:
+#
+#   theme-color       a hardcoded hex is the same colour in dark mode. If the
+#                     surface genuinely has no theme (print output), exclude it
+#                     in the tool with a reason rather than baselining it.
+#   control-size      dispatch forms are compact by design.
+#   form-button-type  this one is a live bug, not a style point: a <button>
+#                     with no type inside a <form> submits and reloads the page
+#                     (GH #84). Fix it; do not baseline it.
+#   state-store       per-user layout/column state saved only in the browser
+#                     does not follow the dispatcher to another machine.
+#
+# A legitimate entry names a considered exception and says why, in a comment
+# above it — as the schema, api-contract, legacy-level and clock baselines do.
+#
+# THE SNAPSHOT BELOW
+# ------------------
+# Generated 2026-08-01 against the tree as it stood, and it is a picture of real
+# debt rather than a formality. The concentration is one rule: hardcoded colours
+# that cannot follow the theme, mostly in the older per-page stylesheets
+# (radio-widget, dashboard, config, callboard, mobile) written before the
+# Bootstrap-variable convention settled. Several of them are literally the
+# Bootstrap palette values typed out by hand (#0d6efd, #198754, #6c757d), which
+# is the drift in its purest form.
+#
+# Two entries are worth pulling out, because they are defects rather than style:
+#
+#   form-button-type: unit-edit.php — btnAddSource and btnAssignPersonnelEdit
+#   sit inside <form id="unitForm"> with no type=, so they submit the form and
+#   reload the page. That is GH #84 again, in the same file GH #84 was reported
+#   against ("the unit-edit OwnTracks button immediately refreshes the page").
+#   They are baselined only because this session owns the audit and not that
+#   file; they should be fixed, not waived.
+#
+#   state-store: aprs-map.php — the APRS page runs its own GridStack and saves
+#   the tile layout and column config to localStorage alone, so an operator's
+#   arrangement is stranded on one browser. The dashboard solves the same
+#   problem through api/layout.php.
+
+# ── widget-registry (1) ───────────────────────────────────────────────
+# ACCEPTED. The Phase 131 check-in panel is a floating overlay, not a grid
+# tile: it renders on the dashboard AND on situation.php, which has no
+# GridStack at all. It carries a widgets-toolbar toggle so it has a re-open
+# path — which is the point of the rule — but deliberately no DEFAULT_LAYOUT
+# entry, icon, template or saved geometry, because it is not laid out by the
+# grid. This is the "floating panel with a toolbar toggle" case the rule
+# describes, and it is the right shape for it.
+widget-registry: assets/js/widget-manager.js :: net_checkins registered outside DEFAULT_LAYOUT: .widget-toggle button (index.php)
+
+# ── widget-header (1) ───────────────────────────────────────────────
+# DEBT. aprs-map.php runs a second, private GridStack (two tiles, ~90 lines of
+# page-local CSS re-implementing grid styling) instead of the dashboard's
+# widget system, so its tile headers are hand-built and have no refresh
+# control. Worth folding into the shared engine; too large for a passing fix.
+widget-header: aprs-map.php :: <div class="card-header"
+
+# ── hotkey-affordance (1) ───────────────────────────────────────────────
+# ACCEPTED. A single <kbd>Esc</kbd> hint beside the navbar search field. One
+# keycap labelling the field you are already in is a hint; the rule is about a
+# run of them acting as an action legend for a panel, which is what belongs in
+# the header as buttons.
+hotkey-affordance: inc/navbar.php :: 1 <kbd> outside an action button
+
+# ── state-store (2) ───────────────────────────────────────────────
+# DEBT. Same root cause as the widget-header entry above: aprs-map.php's
+# private GridStack persists its tile layout and column config to localStorage
+# alone, so an operator's arrangement is stranded on one browser. The dashboard
+# solves exactly this through api/layout.php -> dashboard_layouts.
+state-store: aprs-map.php :: localStorage.setItem('aprsGridLayout')
+state-store: aprs-map.php :: localStorage.setItem('aprsListColConfig')
+
+# ── form-button-type (2) ───────────────────────────────────────────────
+# NOT ACCEPTED — these are live defects, listed only because the session that
+# added this audit did not own unit-edit.php. Both sit inside <form
+# id="unitForm"> (unit-edit.php:104) with no type=, so clicking either submits
+# the form and reloads the page instead of running its handler. That is GH #84
+# again, in the very file GH #84 was reported against ("the unit-edit OwnTracks
+# button immediately refreshes the page"). Fix them and delete these two lines.
+
+# ── control-size (24) ───────────────────────────────────────────────
+control-size: assets/js/mobile.js :: form-control without form-control-sm in class="form-control"
+control-size: beta-tester.php :: form-control without form-control-sm in class="form-control"
+control-size: beta-tester.php :: form-select without form-select-sm in class="form-select"
+control-size: callboard.php :: form-select without form-select-sm in class="form-select"
+control-size: constituents.php :: form-control without form-control-sm in class="form-control d-none phone-type-custom"
+control-size: facility-board.php :: form-select without form-select-sm in class="form-select"
+control-size: facility-edit.php :: form-control without form-control-sm in class="form-control"
+control-size: index.php :: form-control without form-control-sm in class="form-control"
+control-size: login.php :: form-control without form-control-sm in class="form-control tfa-code-input"
+control-size: login.php :: form-control without form-control-sm in class="form-control"
+control-size: mesh-console.php :: form-control without form-control-sm in class="form-control font-monospace"
+control-size: mesh-console.php :: form-control without form-control-sm in class="form-control"
+control-size: mobile.php :: form-control without form-control-sm in class="form-control"
+control-size: net-control.php :: form-control without form-control-sm in class="form-control"
+control-size: net-control.php :: form-select without form-select-sm in class="form-select"
+control-size: new-incident.php :: form-control without form-control-sm in class="form-control"
+control-size: new-incident.php :: form-select without form-select-sm in class="form-select"
+control-size: profile.php :: form-control without form-control-sm in class="form-control tfa-code-input"
+control-size: settings.php :: form-control without form-control-sm in class="form-control font-monospace"
+control-size: settings.php :: form-control without form-control-sm in class="form-control form-control-color"
+control-size: settings.php :: form-control without form-control-sm in class="form-control"
+control-size: sop.php :: form-control without form-control-sm in class="form-control sop-editor"
+control-size: unit-edit.php :: form-control without form-control-sm in class="form-control"
+control-size: weather-alerts.php :: form-control without form-control-sm in class="form-control"
+
+# ── theme-color (201) ───────────────────────────────────────────────
+theme-color: api/ics-forms.php :: style="background:#dc3545;color:#fff;padding:2px 6px;border-radius:3px;"
+theme-color: api/ics-forms.php :: style="background:#e5e5e5"
+theme-color: aprs-map.php :: style="position:relative;width:28px;height:28px;' + 'border-radius:50%;background:#fff;border:' + borderWidth + ' sol...
+theme-color: assets/css/callboard.css :: background-color: #0d6efd
+theme-color: assets/css/callboard.css :: background-color: #198754
+theme-color: assets/css/callboard.css :: background-color: #6c757d
+theme-color: assets/css/callboard.css :: background-color: #6f42c1
+theme-color: assets/css/callboard.css :: background-color: #8b0000
+theme-color: assets/css/callboard.css :: background-color: #dc3545
+theme-color: assets/css/callboard.css :: background-color: #fd7e14
+theme-color: assets/css/callboard.css :: background-color: #ffc107
+theme-color: assets/css/callboard.css :: border-left: #198754
+theme-color: assets/css/callboard.css :: border-left: #dc3545
+theme-color: assets/css/callboard.css :: border-left: #ffc107
+theme-color: assets/css/callboard.css :: color: #000
+theme-color: assets/css/callboard.css :: color: #fff
+theme-color: assets/css/config.css :: background-color: #cfe2ff
+theme-color: assets/css/config.css :: background-color: #dbeafe
+theme-color: assets/css/config.css :: background-color: #f1f3f5
+theme-color: assets/css/config.css :: background-color: #f8f9fa
+theme-color: assets/css/config.css :: background: #fff
+theme-color: assets/css/config.css :: border-bottom: #2980b9
+theme-color: assets/css/config.css :: border-bottom: #adb5bd
+theme-color: assets/css/config.css :: border-bottom: #dee2e6
+theme-color: assets/css/config.css :: border-color: #2980b9
+theme-color: assets/css/config.css :: border-right: #dee2e6
+theme-color: assets/css/config.css :: border-top: #dee2e6
+theme-color: assets/css/config.css :: border: #2980b9
+theme-color: assets/css/config.css :: border: #adb5bd
+theme-color: assets/css/config.css :: border: #ced4da
+theme-color: assets/css/config.css :: color: #212529
+theme-color: assets/css/config.css :: color: #2980b9
+theme-color: assets/css/config.css :: color: #495057
+theme-color: assets/css/config.css :: color: #6c757d
+theme-color: assets/css/config.css :: color: #9ca3af
+theme-color: assets/css/config.css :: color: #adb5bd
+theme-color: assets/css/config.css :: outline: #2980b9
+theme-color: assets/css/console-designer.css :: color: #000
+theme-color: assets/css/console-designer.css :: color: #fff
+theme-color: assets/css/console.css :: color: #fff
+theme-color: assets/css/dashboard.css :: background-color: #2980b9
+theme-color: assets/css/dashboard.css :: background-color: #2c3e50
+theme-color: assets/css/dashboard.css :: background-color: #34495e
+theme-color: assets/css/dashboard.css :: background-color: #dbeafe
+theme-color: assets/css/dashboard.css :: background-color: #e2e6ea
+theme-color: assets/css/dashboard.css :: background-color: #e9ecef
+theme-color: assets/css/dashboard.css :: background-color: #f1f3f5
+theme-color: assets/css/dashboard.css :: background-color: #ffffff
+theme-color: assets/css/dashboard.css :: background: #fd7e14
+theme-color: assets/css/dashboard.css :: background: #fff
+theme-color: assets/css/dashboard.css :: border-bottom: #2980b9
+theme-color: assets/css/dashboard.css :: border-bottom: #adb5bd
+theme-color: assets/css/dashboard.css :: border-color: #2980b9
+theme-color: assets/css/dashboard.css :: border-color: #7f8c8d
+theme-color: assets/css/dashboard.css :: border: #adb5bd
+theme-color: assets/css/dashboard.css :: border: #dee2e6
+theme-color: assets/css/dashboard.css :: border: #fff
+theme-color: assets/css/dashboard.css :: color: #1a1a1a
+theme-color: assets/css/dashboard.css :: color: #3498db
+theme-color: assets/css/dashboard.css :: color: #495057
+theme-color: assets/css/dashboard.css :: color: #95a5a6
+theme-color: assets/css/dashboard.css :: color: #bdc3c7
+theme-color: assets/css/dashboard.css :: color: #ecf0f1
+theme-color: assets/css/dashboard.css :: color: #fff
+theme-color: assets/css/facilities.css :: border: #fff
+theme-color: assets/css/facility-board.css :: background-color: #198754
+theme-color: assets/css/facility-board.css :: background-color: #6c757d
+theme-color: assets/css/facility-board.css :: background-color: #dc3545
+theme-color: assets/css/facility-board.css :: background-color: #ffc107
+theme-color: assets/css/facility-board.css :: border-left: #198754
+theme-color: assets/css/facility-board.css :: border-left: #dc3545
+theme-color: assets/css/facility-board.css :: border-left: #ffc107
+theme-color: assets/css/facility-board.css :: border: #ccc
+theme-color: assets/css/facility-board.css :: color: #000
+theme-color: assets/css/facility-board.css :: color: #fff
+theme-color: assets/css/help.css :: background-color: #0d6efd
+theme-color: assets/css/help.css :: background-color: #f8f9fa
+theme-color: assets/css/help.css :: border-bottom: #dee2e6
+theme-color: assets/css/help.css :: border-right: #dee2e6
+theme-color: assets/css/help.css :: color: #2980b9
+theme-color: assets/css/help.css :: color: #6c757d
+theme-color: assets/css/help.css :: color: #adb5bd
+theme-color: assets/css/help.css :: color: #fff
+theme-color: assets/css/ics-forms.css :: border: #000
+theme-color: assets/css/ics-forms.css :: color: #000
+theme-color: assets/css/incident-list.css :: border: #ccc
+theme-color: assets/css/messaging.css :: color: #fff
+theme-color: assets/css/mobile-unit.css :: background: #d49000
+theme-color: assets/css/mobile-unit.css :: background: #f0a500
+theme-color: assets/css/mobile-unit.css :: background: #fff3cd
+theme-color: assets/css/mobile-unit.css :: border-bottom: #f0a500
+theme-color: assets/css/mobile-unit.css :: color: #000
+theme-color: assets/css/mobile-unit.css :: color: #5c4300
+theme-color: assets/css/mobile-unit.css :: color: #8a6800
+theme-color: assets/css/mobile-unit.css :: color: #b58400
+theme-color: assets/css/mobile-unit.css :: color: #d4b266
+theme-color: assets/css/mobile-unit.css :: color: #ffc107
+theme-color: assets/css/mobile-unit.css :: color: #ffe69c
+theme-color: assets/css/mobile-unit.css :: color: #fff
+theme-color: assets/css/mobile.css :: background: #d49000
+theme-color: assets/css/mobile.css :: background: #f0a500
+theme-color: assets/css/mobile.css :: background: #fff3cd
+theme-color: assets/css/mobile.css :: border-bottom: #f0a500
+theme-color: assets/css/mobile.css :: color: #5c4300
+theme-color: assets/css/mobile.css :: color: #8a6800
+theme-color: assets/css/mobile.css :: color: #b58400
+theme-color: assets/css/mobile.css :: color: #d4b266
+theme-color: assets/css/mobile.css :: color: #ffc107
+theme-color: assets/css/mobile.css :: color: #ffe69c
+theme-color: assets/css/new-incident.css :: color: #28a745
+theme-color: assets/css/new-incident.css :: color: #dc3545
+theme-color: assets/css/new-incident.css :: color: #ffc107
+theme-color: assets/css/profile.css :: background: #fff
+theme-color: assets/css/profile.css :: color: #fff
+theme-color: assets/css/radio-widget.css :: background: #198754
+theme-color: assets/css/radio-widget.css :: background: #6c757d
+theme-color: assets/css/radio-widget.css :: background: #cff4fc
+theme-color: assets/css/radio-widget.css :: background: #dc3545
+theme-color: assets/css/radio-widget.css :: background: #f1f3f5
+theme-color: assets/css/radio-widget.css :: background: #f8d7da
+theme-color: assets/css/radio-widget.css :: background: #f8f9fa
+theme-color: assets/css/radio-widget.css :: background: #ffc107
+theme-color: assets/css/radio-widget.css :: background: #fff
+theme-color: assets/css/radio-widget.css :: background: #fff3cd
+theme-color: assets/css/radio-widget.css :: border-bottom: #dee2e6
+theme-color: assets/css/radio-widget.css :: border-color: #dc3545
+theme-color: assets/css/radio-widget.css :: border-color: #ffc107
+theme-color: assets/css/radio-widget.css :: border-top: #dee2e6
+theme-color: assets/css/radio-widget.css :: border: #dc3545
+theme-color: assets/css/radio-widget.css :: border: #dee2e6
+theme-color: assets/css/radio-widget.css :: color: #000
+theme-color: assets/css/radio-widget.css :: color: #055160
+theme-color: assets/css/radio-widget.css :: color: #0d6efd
+theme-color: assets/css/radio-widget.css :: color: #58151c
+theme-color: assets/css/radio-widget.css :: color: #664d03
+theme-color: assets/css/radio-widget.css :: color: #6c757d
+theme-color: assets/css/radio-widget.css :: color: #dc3545
+theme-color: assets/css/radio-widget.css :: color: #fff
+theme-color: assets/css/radio-widget.css :: outline: #0d6efd
+theme-color: assets/css/reports.css :: border: #dee2e6
+theme-color: assets/css/roster.css :: background-color: #eee
+theme-color: assets/css/roster.css :: border: #999
+theme-color: assets/css/roster.css :: color: #333
+theme-color: assets/css/roster.css :: color: #fff
+theme-color: assets/css/scheduling.css :: color: #6f42c1
+theme-color: assets/css/search.css :: border: #ccc
+theme-color: assets/css/type-markers.css :: background: #fff
+theme-color: assets/css/type-markers.css :: color: #111
+theme-color: assets/css/type-markers.css :: color: #222
+theme-color: assets/css/type-markers.css :: color: #f1f5f9
+theme-color: assets/css/unit-tracking.css :: background: #fff
+theme-color: assets/css/unit-tracking.css :: border: #dee2e6
+theme-color: assets/css/unit-tracking.css :: color: #000
+theme-color: assets/css/widgets.css :: background: #e9ecef
+theme-color: assets/css/widgets.css :: background: #fff
+theme-color: assets/css/widgets.css :: background: #fff3cd
+theme-color: assets/css/widgets.css :: color: #333
+theme-color: assets/css/widgets.css :: color: #6c757d
+theme-color: assets/css/widgets.css :: color: #fff
+theme-color: assets/css/zello-widget.css :: background: #dc3545
+theme-color: assets/css/zello-widget.css :: border-color: #dc3545
+theme-color: assets/css/zello-widget.css :: border-color: #ffc107
+theme-color: assets/css/zello-widget.css :: border: #dc3545
+theme-color: assets/css/zello-widget.css :: color: #000
+theme-color: assets/css/zello-widget.css :: color: #fff
+theme-color: assets/js/app.js :: style="color:#0d6efd"
+theme-color: assets/js/app.js :: style="color:#198754"
+theme-color: assets/js/app.js :: style="color:#9b59b6"
+theme-color: assets/js/app.js :: style="color:#dc3545"
+theme-color: assets/js/app.js :: style="color:#fd7e14"
+theme-color: assets/js/app.js :: style="color:#ff6600"
+theme-color: assets/js/config.js :: style="width:12px;height:12px;border-radius:50%;background:#0d6efd;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,...
+theme-color: assets/js/config.js :: style="width:8px;height:8px;border-radius:50%;background:#6c757d;border:1px solid #fff;opacity:0.6;cursor:grab"
+theme-color: assets/js/owntracks-provision.js :: style="background:#e7f3ff;border:1px solid #5aa9e6;border-radius:6px;padding:10px 12px;margin-top:14px"
+theme-color: assets/js/owntracks-provision.js :: style="background:#fff0f0;border:1px solid #d35a5a;border-radius:6px;padding:10px 12px;margin-top:10px"
+theme-color: assets/js/owntracks-provision.js :: style="background:#fff8e1;border:1px solid #f0c14b;border-radius:6px;padding:10px 12px;margin-top:16px"
+theme-color: assets/js/owntracks-provision.js :: style="color:#666;font-size:.85em;word-break:break-all;margin-top:14px"
+theme-color: assets/js/roster.js :: style="background:#e7f3ff;border:1px solid #5aa9e6;border-radius:6px;padding:10px 12px;margin-top:14px"
+theme-color: assets/js/roster.js :: style="background:#fff0f0;border:1px solid #d35a5a;border-radius:6px;padding:10px 12px;margin-top:10px"
+theme-color: assets/js/roster.js :: style="background:#fff8e1;border:1px solid #f0c14b;border-radius:6px;padding:10px 12px;margin-top:16px"
+theme-color: assets/js/roster.js :: style="color:#666;font-size:.85em;word-break:break-all;margin-top:14px"
+theme-color: assets/js/unit-edit.js :: style="background:#e7f3ff;border:1px solid #5aa9e6;border-radius:6px;padding:10px 12px;margin-top:14px"
+theme-color: assets/js/unit-edit.js :: style="color:#666;font-size:.8em;word-break:break-all;margin-top:12px"
+theme-color: beta-tester.php :: style="background:#f6f6f6;font-weight:bold;padding-right:12px;border-bottom:1px solid #ddd;width:35%"
+theme-color: beta-tester.php :: style="font-family:sans-serif;color:#666;margin-top:0"
+theme-color: beta-tester.php :: style="font-family:sans-serif;font-size:13px;background:#fafafa;border-left:3px solid #6610f2;padding:1rem 1.25rem;li...
+theme-color: beta-tester.php :: style="font-family:sans-serif;white-space:pre-wrap;background:#fafafa;padding:.75rem;border-radius:4px"
+theme-color: ics-forms.php :: style="background-color:var(--bs-indigo);color:#fff"
+theme-color: ics-forms.php :: style="background-color:var(--bs-orange);color:#fff"
+theme-color: ics-forms.php :: style="background-color:var(--bs-teal);color:#fff"
+theme-color: settings.php :: style="background:#00ff00;color:#000;"
+theme-color: settings.php :: style="background:#198754;color:#fff;"
+theme-color: settings.php :: style="background:#ff0000;color:#fff;"
+theme-color: settings.php :: style="background:#ffff00;color:#000;"
+theme-color: situation.php :: style="color:#0d6efd"
+theme-color: situation.php :: style="color:#198754"
+theme-color: situation.php :: style="color:#6f42c1"
+theme-color: situation.php :: style="color:#dc3545"
+theme-color: situation.php :: style="display:none;background:var(--bs-success);color:#fff;"
+theme-color: situation.php :: style="width:30px;height:30px;line-height:30px;text-align:center;' + 'font-size:16px;color:#333;text-decoration:none;"
+theme-color: situation.php :: style="width:30px;height:30px;line-height:30px;text-align:center;font-size:16px;color:#333;text-decoration:none;"

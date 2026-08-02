@@ -123,7 +123,7 @@ hardening steps the Quick start above only sketches.
 | `proxy/` | Zello WebSocket proxy. Linux deploy notes in `proxy/INSTALL-LINUX.md` plus a hardened systemd unit example. |
 | `services/meshtastic/` | Python bridge for Meshtastic mesh-radio messaging. |
 | `tools/` | Operator scripts: `install_fresh.php`, `import-fcc.php` (ULS dump importer), `test_all.php` (test runner), `security_audit_inventory.php`, etc. |
-| `tests/` | 1023 self-tests across 41 files. Mix of unit + integration; runs in <60 s on a workstation. |
+| `tests/` | ~4,500 self-tests across ~200 files (`tests/` plus `tools/test_*.php`; `tools/test_all.php` runs both). Mix of unit + integration; a full run takes about five minutes on a workstation. Six files need a running web server — skip those with `NEWUI_TEST_NO_HTTP=1`. |
 | `sql/` | `base_schema.sql` (~110 tables, auto-imported by `tools/install_fresh.php`) plus per-feature migration scripts. |
 | `docs/` | Operator + admin guides. Start with [`INSTALLATION-CHECKLIST.md`](docs/INSTALLATION-CHECKLIST.md) for production installs; [`INSTALL.md`](docs/INSTALL.md) is a leaner walkthrough. |
 
@@ -167,6 +167,44 @@ php tests/test_pre_release_fixes.php
 ```
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
+## AI features, and what leaves your network
+
+Short version: **your dispatch data is not sent anywhere, there is no telemetry
+or update check of any kind, and the one feature that talks to a commercial AI
+API ships switched off.** The full accounting is in
+[SECURITY.md § What TicketsCAD sends outside your network](SECURITY.md#what-ticketscad-sends-outside-your-network);
+here is the summary, because nobody should discover this from the source code.
+
+**Radio AI** (`radio-ai.php`) lets amateur-radio operators ask a question over
+DMR and have an answer generated and read back over the air. It is the only
+feature that sends content to a hosted large language model —
+`https://api.anthropic.com/v1/messages`, model `claude-sonnet-4-6`.
+
+- **Off by default** (`radio_ai_enabled` = `0`), and four things must *all* be
+  true before anything leaves: the setting on, an Anthropic API key you create
+  by hand at `/etc/ticketscad/anthropic.env`, the listener daemon running, and a
+  DMR bridge with speech-to-text feeding it. Miss one and it does nothing.
+- **What is sent:** the transcript of the radio transmission that contained the
+  wake word, the caller's callsign and DMR ID, up to five prior exchanges within
+  30 minutes, and a fixed system prompt. The request also enables Anthropic's
+  server-side web search (max three per question).
+- **What is never sent:** anything from the CAD side — no incidents, roster,
+  patient, facility, location or account data. It reads radio transcripts only.
+- A licensed operator approves every generated reply before it is transmitted.
+
+**Speech-to-text runs locally** (Vosk, faster-whisper — in-process, no audio or
+transcript leaves the machine). **Text-to-speech is local by default** (Piper);
+optional Deepgram and OpenAI-compatible drivers exist but must be created by an
+administrator and are not seeded. **No AI model weights ship in this repository.**
+
+**Other outbound traffic.** Map tiles and address lookup
+(`nominatim.openstreetmap.org`) are requested by the dispatcher's browser and
+are **on by default** — they are the only two things an air-gapped install will
+notice failing. Weather alerts, SMS, Slack, webhooks, push, callsign/DMR
+lookups, APRS, DMR and Zello are all **unconfigured out of the box**. See
+SECURITY.md for the per-service table, the exact content each one sends, and
+guidance for fully offline installs.
 
 ## Documentation
 
@@ -213,6 +251,17 @@ Pull requests are welcome. Before opening a PR:
 4. If you touch an API endpoint, run the schema + API↔JS contract audits
    (`php tools/schema_audit.php`, `php tools/api_contract_audit.php`) and add tests.
 5. Follow [SECURITY.md](SECURITY.md) for any vulnerability fixes.
+
+## Credits
+
+TicketsCAD was designed by **[@ashore1008](https://github.com/ashore1008)**,
+now **Maintainer Emeritus**, who later transferred stewardship of the project to
+the current maintainer. The dispatch model this software is built on is his
+work, and v4 is a continuation of that design rather than a departure from it.
+
+Full credits — contributors, and the third-party software TicketsCAD is built
+on — are in [AUTHORS.md](AUTHORS.md). Project roles and how decisions get made
+are in [GOVERNANCE.md](GOVERNANCE.md).
 
 ## License
 

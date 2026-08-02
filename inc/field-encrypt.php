@@ -19,6 +19,8 @@
  * Key storage: ../keys/ (outside webroot)
  */
 
+require_once __DIR__ . '/https.php';   // is_https(), is_https_verified()
+
 // Directory for RSA keys — outside the webroot
 define('FE_KEYS_DIR', NEWUI_ROOT . '/../keys');
 define('FE_PRIVATE_KEY', FE_KEYS_DIR . '/private.pem');
@@ -205,23 +207,20 @@ function fe_key_status()
 /**
  * Detect if the current request is over HTTPS.
  *
+ * Thin alias kept for the many existing callers. The logic now lives in
+ * inc/https.php so every site in the tree agrees — see that file for why
+ * (Ron Jones / @rjonesbsink, 2026-08-02).
+ *
+ * This is the BEST-EFFORT variant: it believes X-Forwarded-Proto from
+ * any peer, which is right for its callers (deciding whether to bother
+ * with field encryption, building URLs) and wrong for an access gate.
+ * A gate wants is_https_verified().
+ *
  * @return bool
  */
 function fe_is_https()
 {
-    // Direct HTTPS
-    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
-        return true;
-    }
-    // Behind a reverse proxy
-    if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https') {
-        return true;
-    }
-    // Port-based detection
-    if (!empty($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443) {
-        return true;
-    }
-    return false;
+    return is_https();
 }
 
 /**

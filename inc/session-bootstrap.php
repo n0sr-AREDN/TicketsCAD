@@ -34,6 +34,8 @@
  * login POST lives in the mobile store from the start.
  */
 
+require_once __DIR__ . '/https.php';   // is_https(), is_https_verified()
+
 if (!defined('SESS_MOBILE_COOKIE_NAME'))    define('SESS_MOBILE_COOKIE_NAME',   'TCADMOBILE');
 if (!defined('SESS_MOBILE_LIFETIME_SECS'))  define('SESS_MOBILE_LIFETIME_SECS', 60 * 60 * 24 * 30);
 
@@ -69,8 +71,13 @@ function sess_bootstrap_mobile(): void {
     session_set_cookie_params([
         'lifetime' => SESS_MOBILE_LIFETIME_SECS,
         'path'     => '/',
-        'secure'   => !empty($_SERVER['HTTPS'])
-                      || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https'),
+        // Ron Jones (@rjonesbsink), 2026-08-02: this was
+        // !empty($_SERVER['HTTPS']), and IIS sets HTTPS to the string
+        // "off" on plain HTTP — so !empty("off") is TRUE and the mobile
+        // cookie was stamped Secure on a non-TLS connection. The browser
+        // then refuses to send it back, so PWA logins on IIS-over-HTTP
+        // could never hold a session. is_https() knows "off" is not TLS.
+        'secure'   => is_https(),
         'httponly' => true,
         'samesite' => 'Lax',
     ]);
@@ -104,8 +111,10 @@ function sess_touch_mobile_cookie(): void {
     setcookie(SESS_MOBILE_COOKIE_NAME, $currentSid, [
         'expires'  => time() + SESS_MOBILE_LIFETIME_SECS,
         'path'     => '/',
-        'secure'   => !empty($_SERVER['HTTPS'])
-                      || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https'),
+        // Same IIS "off" defect as sess_bootstrap_mobile() above — the
+        // re-stamp has to agree with the original or it invalidates the
+        // cookie it is trying to extend.
+        'secure'   => is_https(),
         'httponly' => true,
         'samesite' => 'Lax',
     ]);

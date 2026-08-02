@@ -19,6 +19,9 @@
  * is deliberately NO `zone_phase` (en-route/arrived) column — recording
  * where a unit is headed IS the operational fact.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 $prefix = $GLOBALS['db_prefix'] ?? '';

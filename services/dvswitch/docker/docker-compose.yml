@@ -38,6 +38,12 @@ services:
       DMR_BEARER_TOKEN: ${DMR_BEARER_TOKEN:?set DMR_BEARER_TOKEN in .env}
       DMR_HTTP_PORT: 18091
       DMR_LOG_LEVEL: ${DMR_LOG_LEVEL:-INFO}
+      # ── Text-to-speech (optional; empty = /tx/text answers 503) ──
+      # This image ships without Piper — see .env.example for why, and for
+      # how to mount one in. Everything else (receive, /tx/audio, /tx/stream,
+      # /health, /tx/test) works with these empty.
+      DMR_PIPER_BIN: ${DMR_PIPER_BIN:-}
+      DMR_PIPER_VOICE: ${DMR_PIPER_VOICE:-}
       # ── Optional station metadata (cosmetic; shown on dashboards) ──
       DMR_LOCATION: ${DMR_LOCATION:-TicketsCAD}
       DMR_DESCRIPTION: ${DMR_DESCRIPTION:-TicketsCAD DMR bridge}
@@ -45,6 +51,11 @@ services:
       DMR_LONGITUDE: ${DMR_LONGITUDE:-0.0}
     volumes:
       - bridge_cache:/var/cache/ticketscad-dvswitch
+      # ── Optional: enable /tx/text by mounting a speech engine ──
+      # Uncomment, point at a Piper binary and an .onnx voice on this host,
+      # then set DMR_PIPER_BIN=/opt/piper/piper and
+      # DMR_PIPER_VOICE=/opt/piper/voice.onnx in .env.
+      # - /opt/piper:/opt/piper:ro
     healthcheck:
       # /health is bearer-protected; a 200 means the bridge is up AND the token
       # you gave the CAD is the one the bridge expects.

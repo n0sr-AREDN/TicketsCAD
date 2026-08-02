@@ -123,6 +123,12 @@ INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VAL
     ('action.manage_sop',      'Manage SOPs',          'action', 'Create/edit standard operating procedures'),
     ('action.upload_files',    'Upload Files',          'action', 'Upload file attachments'),
     ('action.manage_map',      'Manage Map Markups',   'action', 'Create/edit/delete map markups and road conditions'),
+    -- Phase 131 — net-control check-ins (/net). OPERATIONAL, not administrative:
+    -- running a net is a dispatcher's job, so this is deliberately absent from the
+    -- Org Admin and Dispatcher `NOT IN (...)` exclusion lists below and is meant to
+    -- reach both through their broad grants. Operator/Read-Only do not get it (their
+    -- grants name action.* codes explicitly); grant it per-install via the Roles UI.
+    ('action.net_checkin',     'Use Net-Control Check-Ins', 'action', 'Capture and work a personal net-control check-in list via the /net command'),
     -- Data Visibility (field-level)
     ('field.view_patient',     'View Patient Info',    'field', 'See patient name, DOB, medical details'),
     ('field.view_contact',     'View Contact Info',    'field', 'See caller name and phone number'),

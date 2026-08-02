@@ -37,6 +37,8 @@
  *   php tools/api_contract_audit.php --all    # include baseline finds
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 chdir(__DIR__ . '/..');
 $showAll = in_array('--all', $argv ?? [], true);
 
@@ -180,7 +182,11 @@ $builtin = array_flip([
     'srcobject', 'audiocontext', 'destination', 'samplerate', 'fftsize',
     'frequencybindata',
     // promises / element methods that appear uncalled in stripped code
-    'catch', 'finally', 'closest', 'matches', 'focus', 'blur', 'click',
+    // `contains` is Node.prototype.contains — the DOM ancestor test, sibling of
+    // `closest` on the line below. It belongs here rather than in the finding
+    // baseline: baselining it would silence a genuinely missing `contains` key
+    // in some future endpoint's payload as well.
+    'catch', 'finally', 'closest', 'contains', 'matches', 'focus', 'blur', 'click',
     'submit', 'reset', 'select', 'scrollintoview', 'requestfullscreen',
     'collapse', 'confirm', 'alert', 'prompt', 'document', 'display',
     // geometry (getBoundingClientRect / geolocation / Leaflet latlngs)

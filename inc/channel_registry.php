@@ -19,6 +19,8 @@
  * moment a row appears; they contribute no rows until their phase lands.
  */
 
+require_once __DIR__ . '/dmr_token.php';
+
 if (!function_exists('channel_adapter_catalog')) {
 
 /**
@@ -393,10 +395,122 @@ function channel_state_set($channelId, array $fields) {
     }
 }
 
+// ── Where the cross-request bridge-health verdict lives ─────────────────
+//
+// Above the web root, beside the tile and geocode caches, for the same reason
+// they are: the documented install points the web root AT the application
+// root, and this file records the host:port of an agency's internal radio
+// bridges. That is not something to publish to anyone who guesses a URL.
+if (!defined('NEWUI_ROOT')) {
+    define('NEWUI_ROOT', dirname(__DIR__));
+}
+if (!defined('BRIDGE_HEALTH_STATE_FILE')) {
+    define('BRIDGE_HEALTH_STATE_FILE', dirname(NEWUI_ROOT) . '/runtime-state/bridge-health.json');
+}
+
+// define(), not const: this whole file is wrapped in
+// `if (!function_exists('channel_adapter_catalog')) { … }` (line 24), and PHP
+// does not permit `const` inside a conditional block.
+/** Default seconds a DOWN/degraded verdict is reused. Admin-overridable. */
+if (!defined('BRIDGE_HEALTH_DOWN_TTL')) { define('BRIDGE_HEALTH_DOWN_TTL', 30); }
+
+/** Default seconds a CONNECTED verdict is reused. Admin-overridable. */
+if (!defined('BRIDGE_HEALTH_UP_TTL')) { define('BRIDGE_HEALTH_UP_TTL', 5); }
+
+/**
+ * How long a bridge-health verdict may be reused, by verdict.
+ *
+ * The two are deliberately DIFFERENT, and the asymmetry is the whole point.
+ *
+ * A DOWN verdict is expensive to obtain — it costs the full 1.5s timeout,
+ * every time, and the Communications Console re-probes every configured bridge
+ * on every page load. With several off-site bridges during an outage that is
+ * several seconds added to opening the Console, repeatedly, for information
+ * that has not changed. Reusing it for 30s costs nothing real.
+ *
+ * A CONNECTED verdict is cheap to obtain — a live bridge answers in
+ * milliseconds — so there is little to save by caching it, and a great deal to
+ * lose: this is a radio console, and the interval between a bridge dying and
+ * the operator seeing it should be as short as we can make it. Five seconds is
+ * enough to collapse the burst of probes a single page load produces without
+ * meaningfully delaying bad news.
+ *
+ * Both are admin-overridable (`bridge_health_down_cache_sec`,
+ * `bridge_health_up_cache_sec`); 0 disables caching for that verdict.
+ *
+ * @return array{down:int,up:int}
+ */
+function chreg_health_cache_ttls(): array
+{
+    $get = function (string $k, int $default): int {
+        if (!function_exists('get_variable')) { return $default; }
+        $v = get_variable($k);
+        if ($v === false || $v === null || trim((string) $v) === '') { return $default; }
+        return max(0, (int) $v);
+    };
+    return [
+        'down' => $get('bridge_health_down_cache_sec', BRIDGE_HEALTH_DOWN_TTL),
+        'up'   => $get('bridge_health_up_cache_sec',   BRIDGE_HEALTH_UP_TTL),
+    ];
+}
+
+/**
+ * PURE decision: may this stored verdict still be used?
+ *
+ * Separated from the filesystem and the clock so the asymmetry above is
+ * testable without waiting 30 seconds or standing up a bridge.
+ */
+function chreg_health_cache_valid(?array $entry, int $now, array $ttls): bool
+{
+    if (!is_array($entry) || !isset($entry['state'], $entry['at'])) {
+        return false;
+    }
+    $age = $now - (int) $entry['at'];
+    if ($age < 0) {
+        return false;   // clock moved backwards — re-probe rather than trust it
+    }
+    $ttl = ($entry['state'] === 'connected') ? (int) $ttls['up'] : (int) $ttls['down'];
+    return $ttl > 0 && $age < $ttl;
+}
+
+/** Read the whole verdict map. Never throws; an unreadable cache is an empty one. */
+function chreg_health_cache_read(): array
+{
+    $p = BRIDGE_HEALTH_STATE_FILE;
+    if (!is_file($p)) { return []; }
+    $raw = @file_get_contents($p);
+    if ($raw === false || $raw === '') { return []; }
+    $j = json_decode($raw, true);
+    return is_array($j) ? $j : [];
+}
+
+/** Store one verdict. Best effort: an unwritable cache degrades to the old per-request behaviour. */
+function chreg_health_cache_write(string $key, string $state, ?int $now = null): void
+{
+    $now = $now ?? time();
+    $dir = dirname(BRIDGE_HEALTH_STATE_FILE);
+    if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) { return; }
+    $all = chreg_health_cache_read();
+    $all[$key] = ['state' => $state, 'at' => $now];
+    // Bound it: a map keyed by host:port cannot grow without an admin adding
+    // bridges, but a stale entry for a decommissioned one should not live for
+    // ever in a file nobody looks at.
+    if (count($all) > 200) {
+        uasort($all, function ($a, $b) { return ($b['at'] ?? 0) <=> ($a['at'] ?? 0); });
+        $all = array_slice($all, 0, 100, true);
+    }
+    @file_put_contents(BRIDGE_HEALTH_STATE_FILE, json_encode($all), LOCK_EX);
+}
+
 /**
  * Ask a DMR bridge's authenticated /health endpoint whether it is alive.
- * Returns 'connected' | 'degraded' | 'down'. Cached per host:port within
- * the request so N talkgroup rows on one bridge cost one HTTP call.
+ * Returns 'connected' | 'degraded' | 'down'.
+ *
+ * Cached per host:port BOTH within the request (so N talkgroup rows on one
+ * bridge cost one HTTP call) and ACROSS requests (so opening the
+ * Communications Console during an outage does not pay 1.5s per unreachable
+ * bridge, every time — docs/OFFLINE-OPERATION.md D5). See
+ * chreg_health_cache_ttls() for why the up and down lifetimes differ.
  *
  * IMPORTANT (quiet ≠ dead): dmr_channels.last_seen_at is stamped on RX
  * INGEST, not by a heartbeat — a quiet talkgroup goes stale within
@@ -406,6 +520,14 @@ function _chreg_dmr_bridge_state($host, $port, $token) {
     static $cache = [];
     $key = $host . ':' . $port;
     if (isset($cache[$key])) { return $cache[$key]; }
+
+    $ttls = chreg_health_cache_ttls();
+    $now  = time();
+    $stored = chreg_health_cache_read();
+    if (chreg_health_cache_valid($stored[$key] ?? null, $now, $ttls)) {
+        return $cache[$key] = (string) $stored[$key]['state'];
+    }
+
     $state = 'down';
     try {
         $ctx = stream_context_create([
@@ -427,6 +549,7 @@ function _chreg_dmr_bridge_state($host, $port, $token) {
     } catch (Exception $e) {
         // unreachable → down
     }
+    chreg_health_cache_write($key, $state, $now);
     return $cache[$key] = $state;
 }
 
@@ -452,8 +575,10 @@ function channel_registry_probe() {
                     [$ch['config']['dmr_channel_id']]
                 );
                 if ($src && $src['bridge_host']) {
+                    $src['id'] = (int) $ch['config']['dmr_channel_id'];
                     $f['state'] = _chreg_dmr_bridge_state(
-                        $src['bridge_host'], (int) $src['bridge_port'], $src['bridge_token']
+                        $src['bridge_host'], (int) $src['bridge_port'],
+                        dmr_bridge_token($src)
                     );
                     if ($src['last_error']) { $f['last_error'] = $src['last_error']; }
                 }

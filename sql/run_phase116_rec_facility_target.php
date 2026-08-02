@@ -16,6 +16,9 @@
  * from run_phase95_status_extra_data.php, which now includes 'assignment').
  * Exits non-zero ONLY on a real failure, so the migration runner halts correctly.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/db.php';
 

@@ -210,13 +210,53 @@ function tts_pcm_to_wav(string $pcm, int $rate): string
          . 'data' . pack('V', $dataLen) . $pcm;
 }
 
-/** Is a bare command name resolvable on PATH? (which/where) */
+/**
+ * Is a bare command name resolvable on PATH?
+ *
+ * Resolved in PHP rather than by asking a shell. Three reasons this is not a
+ * mechanical rewrite of the old `command -v` / `where` subprocess:
+ *
+ *  1. `command` is a POSIX shell BUILTIN — there is no /usr/bin/command on
+ *     Debian/Ubuntu/Alpine/macOS. So the old line only worked because a shell
+ *     parsed it, and an argv-array proc_open() of it would fail with ENOENT on
+ *     every POSIX host, silently reporting every on-PATH binary as missing.
+ *  2. The Windows branch selected `where` but still appended `2>/dev/null`,
+ *     which cmd.exe treats as a path — it failed before running, so this
+ *     function has always returned false on Windows.
+ *  3. shell_exec() is removed by disable_functions on hardened Windows/IIS
+ *     hosts, and @ does not suppress the resulting fatal.
+ *
+ * No subprocess also means $bin can no longer reach a command line at all,
+ * which is why the escapeshellarg() that used to guard it is gone rather than
+ * merely moved.
+ */
 function tts_bin_on_path(string $bin): bool
 {
     if ($bin === '' || strpbrk($bin, "/\\") !== false) return false;
-    $which = stripos(PHP_OS, 'WIN') === 0 ? 'where' : 'command -v';
-    $out = @shell_exec($which . ' ' . escapeshellarg($bin) . ' 2>/dev/null');
-    return is_string($out) && trim($out) !== '';
+    $path = (string) getenv('PATH');
+    if ($path === '') return false;
+
+    $isWin = stripos(PHP_OS, 'WIN') === 0;
+    // A bare name on Windows resolves against PATHEXT (.EXE, .BAT, …).
+    $exts = [''];
+    if ($isWin) {
+        $pathext = (string) getenv('PATHEXT');
+        if ($pathext === '') $pathext = '.COM;.EXE;.BAT;.CMD';
+        $exts = array_merge($exts, explode(';', $pathext));
+    }
+
+    foreach (explode(PATH_SEPARATOR, $path) as $dir) {
+        $dir = rtrim(trim($dir), "/\\");
+        if ($dir === '') continue;
+        foreach ($exts as $ext) {
+            $candidate = $dir . DIRECTORY_SEPARATOR . $bin . $ext;
+            // is_executable() is unreliable on Windows; PATHEXT is the test there.
+            if (@is_file($candidate) && ($isWin || @is_executable($candidate))) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 /**

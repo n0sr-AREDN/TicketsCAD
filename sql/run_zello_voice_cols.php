@@ -17,6 +17,9 @@
  * Safe to re-run. No data migration; both columns default NULL, which is what
  * a text/location row should read as anyway.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/db.php';
 

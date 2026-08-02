@@ -16,6 +16,9 @@
  *
  * Run from the install root (or anywhere — it chdir's to its parent's parent).
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 chdir(dirname(__DIR__));
 require_once 'config.php';
 require_once 'inc/bed_auto.php';

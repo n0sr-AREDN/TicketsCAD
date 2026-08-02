@@ -108,10 +108,29 @@ fi
 start_emu
 
 # ── 3. Hand off to the bridge ──────────────────────────────────────────────
+#
+# Say only what is true. This used to announce "HTTP control on 18091"
+# unconditionally, while the control surface was in fact gated on Piper being
+# configured — which nothing under docker/ ever set. So the log claimed a
+# listener that never bound, and the only visible symptom was the CAD failing
+# to connect (openises/tickets#10). The client now gates on the bearer token
+# alone and logs "HTTP control listening on :<port>" once it has actually
+# bound; that line, not this one, is the proof.
 if [ -z "${DMR_BEARER_TOKEN:-}" ]; then
-    log "WARNING: DMR_BEARER_TOKEN is empty — the CAD will not be able to authenticate to this bridge."
+    log "WARNING: DMR_BEARER_TOKEN is empty — the HTTP control surface will NOT start"
+    log "         and the CAD cannot reach this bridge. Set DMR_BEARER_TOKEN to the"
+    log "         token the CAD showed when the DMR channel was created."
+    log "starting hbp_client.py (DMR only; no HTTP control)"
+else
+    if [ -n "${DMR_PIPER_BIN:-}" ] && [ -n "${DMR_PIPER_VOICE:-}" ]; then
+        log "text-to-speech enabled (Piper: ${DMR_PIPER_BIN})"
+    else
+        log "text-to-speech NOT configured — /tx/text will answer 503. Receive,"
+        log "         /tx/audio and /tx/stream are unaffected. See docs/RADIO-DMR-DOCKER.md."
+    fi
+    log "starting hbp_client.py — HTTP control will bind :${DMR_HTTP_PORT:-18091}"
+    log "         (wait for 'HTTP control listening on :${DMR_HTTP_PORT:-18091}' below)"
 fi
-log "starting hbp_client.py (HTTP control on ${DMR_HTTP_PORT:-18091})"
 exec python3 /opt/ticketscad-dvswitch/services/dvswitch/hbp_client.py \
         --mmdvm-ini "$INI" \
         --log-level "${DMR_LOG_LEVEL:-INFO}" \

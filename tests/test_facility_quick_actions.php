@@ -123,9 +123,17 @@ t('index.php has the facility quick-action modal shell',
 // The compact-button CSS must name .facility-action-bar or the buttons
 // fall back to full Bootstrap .btn size (the exact bug the responders bar
 // hit first — Eric flagged it again for facilities 2026-07-06).
-$css = rd($base . '/assets/css/widgets.css');
-t('widgets.css sizes the facility action bar buttons compactly',
+//
+// 2026-08-01: these rules moved out of widgets.css into their own
+// assets/css/action-bar.css. The Phase 131 check-in panel carries the same bar
+// and renders on situation.php, which does not load widgets.css — so the
+// shared definition had to live somewhere both screens load. Same assertion,
+// correct file; and index.php must still be linking it.
+$css = rd($base . '/assets/css/action-bar.css');
+t('the shared action-bar stylesheet sizes the facility action bar buttons compactly',
     $css !== false && strpos($css, '.facility-action-bar .btn-xs') !== false);
+t('index.php loads the shared action-bar stylesheet',
+    ($idx = rd($base . '/index.php')) !== false && strpos($idx, 'action-bar.css') !== false);
 
 // ── Cleanup ──────────────────────────────────────────────────────────────────
 db_query("DELETE FROM `{$prefix}facility_notes` WHERE facility_id = ?", [$facId]);

@@ -18,6 +18,8 @@
  *   - A logged-in browser session is still accepted as a fallback (admin testing).
  */
 
+require_once __DIR__ . '/../inc/https.php';   // is_https(), is_https_verified()
+
 // Fatal-to-JSON guard — API-key endpoint, never requires api/auth.php.
 // Note: this endpoint can emit XML/Atom. The guard checks whether a body has
 // already started and stays silent if so, so a fatal mid-feed appends nothing.
@@ -168,7 +170,7 @@ try {
 
 $feedTitle = $orgName . ' — Active Incidents';
 $feedDescription = 'Open incident feed from ' . $orgName . ' dispatch system.';
-$baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http')
+$baseUrl = (is_https() ? 'https' : 'http')
     . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost')
     . dirname(dirname($_SERVER['SCRIPT_NAME'])) . '/';
 $feedUrl = $baseUrl . 'api/feed.php?format=' . $format;

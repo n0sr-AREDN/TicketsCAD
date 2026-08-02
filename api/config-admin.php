@@ -854,12 +854,35 @@ if ($section === 'settings') {
             json_error('No settings provided');
         }
 
+        // A stored credential must survive a save that simply didn't carry it.
+        // GET returns `<name>_set` instead of the value, so the browser never
+        // holds a secret and cannot echo one back — which means a blank or
+        // masked arrival here is ALWAYS "unchanged", never "clear".
+        //
+        // This backstop exists because the client-side guard is opt-in: it
+        // lives in collectSettingsFromForm(), and any save handler that
+        // hand-builds its payload bypasses it. Four panels did exactly that and
+        // silently wiped owntracks_secret / location_ingest_secret /
+        // aprs_fi_api_key / telegram_bot_token — location reporting then failed
+        // closed with nothing shown in the UI (openises/TicketsCAD#7).
+        // Enforcing it HERE makes the invariant hold for all ~40 handlers.
+        require_once __DIR__ . '/../inc/settings-secrets.php';
+
         $saved = 0;
+        $keptSecrets = [];
         foreach ($pairs as $key => $value) {
             // Allow dots in keys (e.g. rbac.require_separate_approver)
             // but still reject anything that could be SQL-funky.
             $key = preg_replace('/[^a-zA-Z0-9_.]/', '', $key);
             if ($key === '') continue;
+
+            // Note: keys ABSENT from $pairs are already left untouched — this
+            // loop only ever writes what it was handed. This guard covers the
+            // other half: a key that is PRESENT but empty/masked.
+            if (is_secret_setting_key($key) && ($value === '' || is_masked_secret_value($value))) {
+                $keptSecrets[] = $key;
+                continue;
+            }
 
             // 2026-06-11 — type-safe validation for known settings.
             // area_timezone must be a valid IANA zone; reject silently
@@ -892,12 +915,16 @@ if ($section === 'settings') {
                 // Skip individual failures
             }
         }
-        if ($saved > 0) {
+        if ($saved > 0 || $keptSecrets) {
             audit_log('config', 'update', 'settings', null, "Updated {$saved} system setting(s)", [
-                'keys' => array_keys($pairs)
+                'keys' => array_keys($pairs),
+                // Which stored credentials this save deliberately left alone.
+                // Recorded so "my token vanished" is answerable from the audit
+                // log instead of by guesswork.
+                'kept_secrets' => $keptSecrets,
             ]);
         }
-        json_response(['saved' => $saved]);
+        json_response(['saved' => $saved, 'kept_secrets' => $keptSecrets]);
     }
 }
 

@@ -7,6 +7,9 @@
  * Run on training-ticketscad:
  *   sudo php /tmp/smoke_85f4_decide.php
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require '/var/www/newui/config.php';
 
 $pdo = new PDO("mysql:host={$db_host};dbname={$db_name}", $db_user, $db_pass);

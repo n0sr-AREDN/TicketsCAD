@@ -90,6 +90,20 @@ jobs:
       - name: Clock-consistency audit (local-time columns vs UTC comparisons)
         run: php tests/test_timezone_audit.php
 
+      # Fifth gate in the family, and the only one about what the product LOOKS
+      # like. A widget shipped with its hotkeys as a run of text along the
+      # bottom, a dismiss control with no way to reopen, and per-user state in a
+      # newly invented store — while every other widget puts keycap buttons in
+      # the header, uses the shared refresh control, and persists through
+      # dashboard_layouts / user_screen_prefs. Eric: "I do not want the software
+      # to appear as if we have multiple developers who have never seen this
+      # software before or ever talked to each other."
+      #
+      # Static, so it needs no database and no browser. Fails only on findings
+      # absent from tools/ui_consistency_baseline.txt.
+      - name: UI-consistency audit (interface conventions)
+        run: php tests/test_ui_consistency_audit.php
+
       # Anti-rot gate for the published SBOM. An SBOM that is accurate once and
       # stale afterwards is worse than none, because it asserts a currency it
       # does not have. If a dependency, a vendored library version, or the
@@ -114,6 +128,25 @@ jobs:
       # what a recipient receives. CI never signs — it only checks.
       - name: SBOM signature verifies
         run: php tools/generate-sbom.php --verify
+
+      # Known-vulnerable dependency gate. CISA's producer guidance asks for an
+      # automated dependency scan in CI, and SECURITY.md already commits to the
+      # harder half of it: "shipping a known-vulnerable version is our problem
+      # to fix, even when the defect is upstream."
+      #
+      # Nothing enforced that. On 2026-07-30 `composer audit` reported four
+      # advisories against the pinned guzzlehttp/guzzle 7.12.3 — a dependency
+      # this project had been shipping, unnoticed, while publishing a bill of
+      # materials that named the vulnerable version accurately. Dependabot
+      # alerts cover the forge; this covers the build, and fails it.
+      #
+      # --locked audits composer.lock, which is what the SBOM describes and what
+      # a deploy installs, rather than whatever happens to be in vendor/ — and
+      # this job never runs `composer install`, so vendor/ does not exist here.
+      # `composer` comes from setup-php above; composer.phar is gitignored and is
+      # deliberately not relied on.
+      - name: Dependency vulnerability audit (composer.lock)
+        run: composer audit --locked --no-interaction
 
       - name: Full test suite (HTTP-integration tests skipped)
         env:

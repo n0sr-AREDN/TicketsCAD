@@ -337,7 +337,6 @@ across all child incidents.
 | ICS-214 exporter | `api/ics214-par-export.php` |
 | Settings panel | `settings.php#par-checks` |
 | Schema migrations | `sql/run_phase16*_par_*.php` |
-| Original design spec | `specs/phase-16-par-checks-2026-06/spec.md` |
 
 ## Change log
 

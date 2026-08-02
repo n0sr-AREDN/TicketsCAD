@@ -2,10 +2,10 @@
     "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
     "bomFormat": "CycloneDX",
     "specVersion": "1.6",
-    "serialNumber": "urn:uuid:e9de9896-7e72-5203-9984-6e50ccb3613f",
-    "version": 13,
+    "serialNumber": "urn:uuid:8b5296fc-3dd3-53b1-a479-8bdf32c24559",
+    "version": 18,
     "metadata": {
-        "timestamp": "2026-07-30T19:33:39Z",
+        "timestamp": "2026-08-02T09:23:37Z",
         "lifecycles": [
             {
                 "phase": "pre-build"
@@ -29,9 +29,9 @@
         ],
         "component": {
             "type": "application",
-            "bom-ref": "pkg:generic/ticketscad-newui@4.2.2",
+            "bom-ref": "pkg:generic/ticketscad-newui@4.2.3",
             "name": "TicketsCAD NewUI",
-            "version": "4.2.2",
+            "version": "4.2.3",
             "publisher": "OpenISES TicketsCAD Project",
             "description": "Computer-aided dispatch for volunteer emergency services, amateur-radio emergency communications groups, CERT teams and small public-safety agencies.",
             "licenses": [
@@ -41,7 +41,7 @@
                     }
                 }
             ],
-            "purl": "pkg:generic/ticketscad-newui@4.2.2",
+            "purl": "pkg:generic/ticketscad-newui@4.2.3",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -52,7 +52,7 @@
         "properties": [
             {
                 "name": "ticketscad:content-digest",
-                "value": "6bbd99540d4298aba3e5b8bd1abc2aed87fc65136dbbe6ec0d1bcc73453a1d37"
+                "value": "b2f821ae6ed10e65d7e520a237eb1701f3de4f29986556a1970e0da1590ccf25"
             },
             {
                 "name": "ticketscad:standard",
@@ -72,7 +72,7 @@
             },
             {
                 "name": "ticketscad:coverage",
-                "value": "Covers PHP Composer dependencies (with transitive relationships), vendored browser libraries, browser libraries loaded from a CDN at runtime, optional Python service dependencies, derived GPL source, and optional container base images. Excludes non-code assets and the operator-supplied platform (PHP runtime, web server, database)."
+                "value": "Covers PHP Composer dependencies (with transitive relationships), vendored browser libraries, browser libraries loaded from a CDN at runtime, optional Python service dependencies (including those installed only by this project's own install scripts), derived GPL source, operating-system packages installed by our Dockerfiles and installers, artifacts downloaded at install time or first use (vocoder binary, speech and voice models, reference datasets), build- and verification-time tooling fetched from a registry, and optional container base images. EXCLUDED, deliberately and not silently: (1) the operator-supplied platform — PHP runtime, web server, database — and packages that only a document instructs the operator to install, because those are the operator's environment rather than something this repository installs; (2) non-code assets; (3) third-party hosted SERVICES the software can be configured to call, which are not components and are enumerated instead in SECURITY.md under \"What TicketsCAD sends outside your network\", including the optional AI features and every one of them off by default."
             },
             {
                 "name": "ticketscad:regenerate",
@@ -101,6 +101,162 @@
         ]
     },
     "components": [
+        {
+            "type": "application",
+            "bom-ref": "pkg:github/actions/checkout@v7#build-tooling",
+            "name": "actions/checkout",
+            "description": "Fetched from a third-party registry at build or verification time by .github/workflows/qa.yml. Not shipped with this software and not loaded by the application at runtime.",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:github/actions/checkout@v7",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/actions/checkout"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:github/actions/checkout@v7"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Declared constraint: v7"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Referenced by the major-version constraint \"v7\", which bounds but does not determine what is fetched: the registry resolves it to whatever the newest matching release is at the moment the job runs. The SBOM author therefore cannot state the resolved version, its publisher at that moment, or a hash of the fetched bytes. This is a real supply-chain exposure in the build path and is recorded here rather than left out because it is only build tooling. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "application",
+            "bom-ref": "pkg:npm/ajv-cli@5#build-tooling",
+            "name": "ajv-cli",
+            "description": "Fetched from a third-party registry at build or verification time by tools/generate-sbom.php (npx --yes -p ajv-cli@5, --validate path). Not shipped with this software and not loaded by the application at runtime.",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:npm/ajv-cli@5",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://www.npmjs.com/package/ajv-cli"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:npm/ajv-cli@5"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Declared constraint: 5"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Referenced by the major-version constraint \"5\", which bounds but does not determine what is fetched: the registry resolves it to whatever the newest matching release is at the moment the job runs. The SBOM author therefore cannot state the resolved version, its publisher at that moment, or a hash of the fetched bytes. This is a real supply-chain exposure in the build path and is recorded here rather than left out because it is only build tooling. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "application",
+            "bom-ref": "pkg:npm/ajv-formats@3#build-tooling",
+            "name": "ajv-formats",
+            "description": "Fetched from a third-party registry at build or verification time by tools/generate-sbom.php (npx --yes -p ajv-formats@3, --validate path). Not shipped with this software and not loaded by the application at runtime.",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:npm/ajv-formats@3",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://www.npmjs.com/package/ajv-formats"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:npm/ajv-formats@3"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Declared constraint: 3"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Referenced by the major-version constraint \"3\", which bounds but does not determine what is fetched: the registry resolves it to whatever the newest matching release is at the moment the job runs. The SBOM author therefore cannot state the resolved version, its publisher at that moment, or a hash of the fetched bytes. This is a real supply-chain exposure in the build path and is recorded here rather than left out because it is only build tooling. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "application",
+            "bom-ref": "pkg:github/shivammathur/setup-php@v2#build-tooling",
+            "name": "shivammathur/setup-php",
+            "description": "Fetched from a third-party registry at build or verification time by .github/workflows/qa.yml. Not shipped with this software and not loaded by the application at runtime.",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:github/shivammathur/setup-php@v2",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/shivammathur/setup-php"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:github/shivammathur/setup-php@v2"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Declared constraint: v2"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Referenced by the major-version constraint \"v2\", which bounds but does not determine what is fetched: the registry resolves it to whatever the newest matching release is at the moment the job runs. The SBOM author therefore cannot state the resolved version, its publisher at that moment, or a hash of the fetched bytes. This is a real supply-chain exposure in the build path and is recorded here rather than left out because it is only build tooling. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
         {
             "type": "container",
             "bom-ref": "pkg:docker/composer@2#container-base",
@@ -269,7 +425,7 @@
                 },
                 {
                     "name": "ticketscad:file",
-                    "value": "services/dvswitch/hbp_client.py sha256:7e5179f549ac259ee9a3f38eaa1a9c1d8d79a43ff98becfff49ecf8b277aa3b0"
+                    "value": "services/dvswitch/hbp_client.py sha256:a931487c5cb290310f003a6b576ebd8d620d77757f619b3d5e4082ef20faf264"
                 },
                 {
                     "name": "ticketscad:file",
@@ -298,6 +454,685 @@
                 {
                     "name": "ticketscad:unknown-reason",
                     "value": "The ported files cite MMDVMHost source filenames but no upstream release tag or commit, so the SBOM author cannot state which MMDVMHost revision the port was taken from. There is also no single artifact to hash: this component is source ported into several files rather than a distributed package. A SHA-256 for each individual ported file is given in the \"ticketscad:file\" properties on this component, which is the integrity evidence a recipient can actually check against this tree. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "machine-learning-model",
+            "bom-ref": "pkg:huggingface/Systran/faster-whisper-base#downloaded-artifacts",
+            "name": "faster-whisper model weights",
+            "description": "Downloaded at install time or first use, not distributed with this software. Evidence: services/dvswitch/bridge.py and services/dvswitch/echo_bot.py — the library downloads the weights on first inference.",
+            "scope": "required",
+            "purl": "pkg:huggingface/Systran/faster-whisper-base",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://huggingface.co/Systran"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:huggingface/Systran/faster-whisper-base"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm, Component Producer, Component License, Component Version, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Not fetched by this project at all: the faster-whisper library downloads the weights into the operator's Hugging Face cache the first time transcription runs. Which repository and revision that resolves to is decided by the library at runtime, so no version, producer, licence or hash can be stated from this tree. The model size is configurable, so the identifier above records the default the code requests, not a guarantee of what an operator has. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "data",
+            "bom-ref": "pkg:generic/fcc-uls#downloaded-artifacts",
+            "name": "FCC ULS licence database (amateur and GMRS)",
+            "publisher": "United States Federal Communications Commission",
+            "description": "Downloaded at install time or first use, not distributed with this software. Evidence: tools/update-lookup-data.php and tools/refresh-lookups.php (l_amat.zip, l_gmrs.zip).",
+            "scope": "required",
+            "purl": "pkg:generic/fcc-uls",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://data.fcc.gov/download/pub/uls/complete/"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:generic/fcc-uls"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm, Component License, Component Version, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional reference data for callsign lookups, downloaded by an operator-run tool. The FCC publishes it as a rolling dump at a fixed URL with no version identifier and no published checksum, so the only thing that distinguishes one copy from another is when it was fetched. It is US Government work and not subject to copyright, which is not the same as carrying an SPDX licence identifier, so none is asserted. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "data",
+            "bom-ref": "pkg:generic/geonames-postal-us#downloaded-artifacts",
+            "name": "GeoNames postal-code dataset (US)",
+            "publisher": "GeoNames",
+            "description": "Downloaded at install time or first use, not distributed with this software. Evidence: tools/update-lookup-data.php and tools/refresh-lookups.php (US.zip).",
+            "scope": "required",
+            "purl": "pkg:generic/geonames-postal-us",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://download.geonames.org/export/zip/"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:generic/geonames-postal-us"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm, Component License, Component Version, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional reference data, downloaded by an operator-run tool from a fixed URL that always serves the current export. No version identifier and no published checksum accompany it. GeoNames publishes under a Creative Commons licence, but the exact version of that licence is not recorded in this tree and is not asserted from memory. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "application",
+            "bom-ref": "pkg:generic/md380-emu#downloaded-artifacts",
+            "name": "md380-emu (AMBE vocoder emulator)",
+            "description": "Downloaded at install time or first use, not distributed with this software. Evidence: services/dvswitch/install-bridge.sh lines 161-199 (three alternative acquisition paths) and services/dvswitch/docker/Dockerfile lines 36-53 (.deb from the DVSwitch apt repository, unpacked with dpkg-deb -x).",
+            "scope": "required",
+            "purl": "pkg:generic/md380-emu",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/travisgoodspeed/md380tools"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:generic/md380-emu"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm, Component Producer, Component License, Component Version, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Obtained by one of four routes depending on how the operator installs — copied from a peer host, built from a \"--depth 1\" clone of the md380tools default branch, downloaded from an operator-supplied MD380_URL, or extracted from a .deb matched by a glob in the DVSwitch repository. None of the four pins a version, so no version, hash or producer can be stated here; the licence of the resulting binary depends on which route was taken. This is the least reproducible component in the system and is recorded as such rather than omitted. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "machine-learning-model",
+            "bom-ref": "pkg:huggingface/rhasspy/piper-voices#downloaded-artifacts",
+            "name": "Piper voice model (en_US-lessac-medium)",
+            "publisher": "Rhasspy",
+            "description": "Downloaded at install time or first use, not distributed with this software. Evidence: services/dvswitch/install-bridge.sh (voice id at line 107, fetched from huggingface.co/rhasspy/piper-voices at lines 325-329).",
+            "scope": "required",
+            "purl": "pkg:huggingface/rhasspy/piper-voices",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://huggingface.co/rhasspy/piper-voices"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:huggingface/rhasspy/piper-voices"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm, Component License, Component Version, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Fetched from the \"main\" branch of a Hugging Face repository, which is a moving reference rather than a release: the bytes served under that path can change without any identifier in this tree changing. There is no version to state and no published hash to record. The voice is selectable with PIPER_VOICE, so an operator may hold a different model entirely. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "machine-learning-model",
+            "bom-ref": "pkg:generic/vosk-model-small-en-us@0.15#downloaded-artifacts",
+            "name": "Vosk speech-recognition model (vosk-model-small-en-us-0.15)",
+            "publisher": "Alpha Cephei",
+            "version": "0.15",
+            "description": "Downloaded at install time or first use, not distributed with this software. Evidence: services/dvswitch/example.env (DMR_VOSK_MODEL), consumed by services/dvswitch/bridge.py; download documented in docs/DVSWITCH-ADMIN-GUIDE.md.",
+            "scope": "required",
+            "purl": "pkg:generic/vosk-model-small-en-us@0.15",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://alphacephei.com/vosk/models"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:generic/vosk-model-small-en-us@0.15"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Hash Value, Component Hash Algorithm, Component License, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional: speech-to-text is off unless the operator sets DMR_VOSK_MODEL. The model version 0.15 appears in the archive filename and is recorded above on that evidence, but the archive carries no published checksum for the SBOM author to record, and the operator chooses which model to install. The licence of the model weights is not stated in this tree and is not asserted here. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/ca-certificates#os-packages",
+            "name": "ca-certificates",
+            "description": "Operating-system package installed by services/dvswitch/docker/Dockerfile, services/dvswitch/install-bridge.sh.",
+            "scope": "required",
+            "purl": "pkg:deb/ca-certificates",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/ca-certificates"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/curl#os-packages",
+            "name": "curl",
+            "description": "Operating-system package installed by services/dvswitch/docker/Dockerfile, services/dvswitch/install-bridge.sh.",
+            "scope": "required",
+            "purl": "pkg:deb/curl",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/curl"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/default-mysql-client#os-packages",
+            "name": "default-mysql-client",
+            "description": "Operating-system package installed by Dockerfile.",
+            "scope": "required",
+            "purl": "pkg:deb/default-mysql-client",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/default-mysql-client"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/ffmpeg#os-packages",
+            "name": "ffmpeg",
+            "description": "Operating-system package installed by services/dvswitch/docker/Dockerfile, services/dvswitch/install-bridge.sh.",
+            "scope": "required",
+            "purl": "pkg:deb/ffmpeg",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/ffmpeg"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/gcc-arm-linux-gnueabi#os-packages",
+            "name": "gcc-arm-linux-gnueabi",
+            "description": "Operating-system package installed by services/dvswitch/install-bridge.sh.",
+            "scope": "required",
+            "purl": "pkg:deb/gcc-arm-linux-gnueabi",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/gcc-arm-linux-gnueabi"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/git#os-packages",
+            "name": "git",
+            "description": "Operating-system package installed by Dockerfile, assets/js/mesh-console.js, services/dvswitch/install-bridge.sh.",
+            "scope": "required",
+            "purl": "pkg:deb/git",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/git"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/gnupg#os-packages",
+            "name": "gnupg",
+            "description": "Operating-system package installed by services/dvswitch/docker/Dockerfile.",
+            "scope": "required",
+            "purl": "pkg:deb/gnupg",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/gnupg"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/libcurl4-openssl-dev#os-packages",
+            "name": "libcurl4-openssl-dev",
+            "description": "Operating-system package installed by Dockerfile.",
+            "scope": "required",
+            "purl": "pkg:deb/libcurl4-openssl-dev",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/libcurl4-openssl-dev"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/libfreetype6-dev#os-packages",
+            "name": "libfreetype6-dev",
+            "description": "Operating-system package installed by Dockerfile.",
+            "scope": "required",
+            "purl": "pkg:deb/libfreetype6-dev",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/libfreetype6-dev"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/libjpeg62-turbo-dev#os-packages",
+            "name": "libjpeg62-turbo-dev",
+            "description": "Operating-system package installed by Dockerfile.",
+            "scope": "required",
+            "purl": "pkg:deb/libjpeg62-turbo-dev",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/libjpeg62-turbo-dev"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/libonig-dev#os-packages",
+            "name": "libonig-dev",
+            "description": "Operating-system package installed by Dockerfile.",
+            "scope": "required",
+            "purl": "pkg:deb/libonig-dev",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/libonig-dev"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/libpng-dev#os-packages",
+            "name": "libpng-dev",
+            "description": "Operating-system package installed by Dockerfile.",
+            "scope": "required",
+            "purl": "pkg:deb/libpng-dev",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/libpng-dev"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/libssl-dev#os-packages",
+            "name": "libssl-dev",
+            "description": "Operating-system package installed by Dockerfile.",
+            "scope": "required",
+            "purl": "pkg:deb/libssl-dev",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/libssl-dev"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/libxml2-dev#os-packages",
+            "name": "libxml2-dev",
+            "description": "Operating-system package installed by Dockerfile.",
+            "scope": "required",
+            "purl": "pkg:deb/libxml2-dev",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/libxml2-dev"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/libzip-dev#os-packages",
+            "name": "libzip-dev",
+            "description": "Operating-system package installed by Dockerfile.",
+            "scope": "required",
+            "purl": "pkg:deb/libzip-dev",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/libzip-dev"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/make#os-packages",
+            "name": "make",
+            "description": "Operating-system package installed by services/dvswitch/install-bridge.sh.",
+            "scope": "required",
+            "purl": "pkg:deb/make",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/make"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/python3#os-packages",
+            "name": "python3",
+            "description": "Operating-system package installed by services/dvswitch/docker/Dockerfile, services/dvswitch/install-bridge.sh.",
+            "scope": "required",
+            "purl": "pkg:deb/python3",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/python3"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/python3-numpy#os-packages",
+            "name": "python3-numpy",
+            "description": "Operating-system package installed by services/dvswitch/docker/Dockerfile.",
+            "scope": "required",
+            "purl": "pkg:deb/python3-numpy",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/python3-numpy"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/python3-pip#os-packages",
+            "name": "python3-pip",
+            "description": "Operating-system package installed by assets/js/mesh-console.js, services/aprs/install.sh, services/dvswitch/install-bridge.sh.",
+            "scope": "required",
+            "purl": "pkg:deb/python3-pip",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/python3-pip"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/python3-venv#os-packages",
+            "name": "python3-venv",
+            "description": "Operating-system package installed by assets/js/mesh-console.js, services/dvswitch/install-bridge.sh.",
+            "scope": "required",
+            "purl": "pkg:deb/python3-venv",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/python3-venv"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/qemu-user-static#os-packages",
+            "name": "qemu-user-static",
+            "description": "Operating-system package installed by services/dvswitch/docker/Dockerfile, services/dvswitch/install-bridge.sh.",
+            "scope": "required",
+            "purl": "pkg:deb/qemu-user-static",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/qemu-user-static"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/unzip#os-packages",
+            "name": "unzip",
+            "description": "Operating-system package installed by Dockerfile.",
+            "scope": "required",
+            "purl": "pkg:deb/unzip",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/unzip"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/zlib1g-dev#os-packages",
+            "name": "zlib1g-dev",
+            "description": "Operating-system package installed by Dockerfile.",
+            "scope": "required",
+            "purl": "pkg:deb/zlib1g-dev",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/zlib1g-dev"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
                 }
             ]
         },
@@ -483,10 +1318,10 @@
         },
         {
             "type": "library",
-            "bom-ref": "pkg:composer/guzzlehttp/guzzle@7.12.3#php-composer",
+            "bom-ref": "pkg:composer/guzzlehttp/guzzle@7.15.2#php-composer",
             "name": "guzzlehttp/guzzle",
             "publisher": "guzzlehttp",
-            "version": "7.12.3",
+            "version": "7.15.2",
             "description": "Guzzle is a PHP HTTP client library",
             "scope": "required",
             "licenses": [
@@ -496,7 +1331,7 @@
                     }
                 }
             ],
-            "purl": "pkg:composer/guzzlehttp/guzzle@7.12.3",
+            "purl": "pkg:composer/guzzlehttp/guzzle@7.15.2",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -506,15 +1341,15 @@
             "properties": [
                 {
                     "name": "ticketscad:identifier",
-                    "value": "pkg:composer/guzzlehttp/guzzle@7.12.3"
+                    "value": "pkg:composer/guzzlehttp/guzzle@7.15.2"
                 },
                 {
                     "name": "ticketscad:identifier",
-                    "value": "git-commit:9aa17bcdd777ee31df9fc83c337ca4ca2340def3"
+                    "value": "git-commit:744101956d78b7c1384d0cbf379db13e859167bf"
                 },
                 {
                     "name": "ticketscad:note",
-                    "value": "Pinned commit: 9aa17bcdd777ee31df9fc83c337ca4ca2340def3"
+                    "value": "Pinned commit: 744101956d78b7c1384d0cbf379db13e859167bf"
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -528,10 +1363,10 @@
         },
         {
             "type": "library",
-            "bom-ref": "pkg:composer/guzzlehttp/promises@2.5.0#php-composer",
+            "bom-ref": "pkg:composer/guzzlehttp/promises@2.5.1#php-composer",
             "name": "guzzlehttp/promises",
             "publisher": "guzzlehttp",
-            "version": "2.5.0",
+            "version": "2.5.1",
             "description": "Guzzle promises library",
             "scope": "required",
             "licenses": [
@@ -541,7 +1376,7 @@
                     }
                 }
             ],
-            "purl": "pkg:composer/guzzlehttp/promises@2.5.0",
+            "purl": "pkg:composer/guzzlehttp/promises@2.5.1",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -551,15 +1386,15 @@
             "properties": [
                 {
                     "name": "ticketscad:identifier",
-                    "value": "pkg:composer/guzzlehttp/promises@2.5.0"
+                    "value": "pkg:composer/guzzlehttp/promises@2.5.1"
                 },
                 {
                     "name": "ticketscad:identifier",
-                    "value": "git-commit:4360e982f87f5f258bf872d094647791db2f4c8e"
+                    "value": "git-commit:9ad1e4fc607446a055b95870c7f668e93b5cff29"
                 },
                 {
                     "name": "ticketscad:note",
-                    "value": "Pinned commit: 4360e982f87f5f258bf872d094647791db2f4c8e"
+                    "value": "Pinned commit: 9ad1e4fc607446a055b95870c7f668e93b5cff29"
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -573,10 +1408,10 @@
         },
         {
             "type": "library",
-            "bom-ref": "pkg:composer/guzzlehttp/psr7@2.12.3#php-composer",
+            "bom-ref": "pkg:composer/guzzlehttp/psr7@2.13.0#php-composer",
             "name": "guzzlehttp/psr7",
             "publisher": "guzzlehttp",
-            "version": "2.12.3",
+            "version": "2.13.0",
             "description": "PSR-7 message implementation that also provides common utility methods",
             "scope": "required",
             "licenses": [
@@ -586,7 +1421,7 @@
                     }
                 }
             ],
-            "purl": "pkg:composer/guzzlehttp/psr7@2.12.3",
+            "purl": "pkg:composer/guzzlehttp/psr7@2.13.0",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -596,15 +1431,15 @@
             "properties": [
                 {
                     "name": "ticketscad:identifier",
-                    "value": "pkg:composer/guzzlehttp/psr7@2.12.3"
+                    "value": "pkg:composer/guzzlehttp/psr7@2.13.0"
                 },
                 {
                     "name": "ticketscad:identifier",
-                    "value": "git-commit:7ec62dc3f44aa218487dbed81a9bf9bc647be55d"
+                    "value": "git-commit:dad89620b7a6edb60c15858442eb2e408b45d8f4"
                 },
                 {
                     "name": "ticketscad:note",
-                    "value": "Pinned commit: 7ec62dc3f44aa218487dbed81a9bf9bc647be55d"
+                    "value": "Pinned commit: dad89620b7a6edb60c15858442eb2e408b45d8f4"
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -1700,7 +2535,7 @@
             "type": "library",
             "bom-ref": "pkg:pypi/aprslib#python-services",
             "name": "aprslib",
-            "description": "Used by: services/aprs-is/listener.py, services/aprs/aprs_listener.py",
+            "description": "Used by: services/aprs-is/listener.py, services/aprs/aprs_listener.py, services/aprs/install.sh",
             "scope": "required",
             "licenses": [
                 {
@@ -1727,7 +2562,35 @@
                 },
                 {
                     "name": "ticketscad:unknown-reason",
-                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package; it is installed by services/aprs/install.sh with no version constraint written, so pip resolves whatever is current on PyPI at the moment the operator runs the installer. Stating a version here would be a guess, and a guessed version is a false attestation. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:pypi/esptool#python-services",
+            "name": "esptool",
+            "description": "Used by: services/meshcore/configure_node.py",
+            "scope": "required",
+            "purl": "pkg:pypi/esptool",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/esptool/"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:pypi/esptool"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component License, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package and no installer in this repository names a version for it. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
                 }
             ]
         },
@@ -1735,7 +2598,7 @@
             "type": "library",
             "bom-ref": "pkg:pypi/faster-whisper#python-services",
             "name": "faster-whisper",
-            "description": "Used by: services/dvswitch/bridge.py, services/dvswitch/echo_bot.py",
+            "description": "Used by: services/dvswitch/bridge.py, services/dvswitch/echo_bot.py, services/dvswitch/install-bridge.sh",
             "scope": "required",
             "licenses": [
                 {
@@ -1762,7 +2625,7 @@
                 },
                 {
                     "name": "ticketscad:unknown-reason",
-                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package; it is installed by services/dvswitch/install-bridge.sh with no version constraint written, so pip resolves whatever is current on PyPI at the moment the operator runs the installer. Stating a version here would be a guess, and a guessed version is a false attestation. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
                 }
             ]
         },
@@ -1790,7 +2653,35 @@
                 },
                 {
                     "name": "ticketscad:unknown-reason",
-                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package and no installer in this repository names a version for it. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:pypi/meshcore-cli#python-services",
+            "name": "meshcore-cli",
+            "description": "Used by: assets/js/mesh-console.js",
+            "scope": "required",
+            "purl": "pkg:pypi/meshcore-cli",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/meshcore-cli/"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:pypi/meshcore-cli"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component License, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package and no installer in this repository names a version for it. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
                 }
             ]
         },
@@ -1798,7 +2689,7 @@
             "type": "library",
             "bom-ref": "pkg:pypi/meshtastic#python-services",
             "name": "meshtastic",
-            "description": "Used by: services/meshtastic/bridge.py, services/meshtastic/bridge_v2.py, services/meshtastic/requirements.txt",
+            "description": "Used by: assets/js/mesh-console.js, services/meshtastic/bridge.py, services/meshtastic/bridge_v2.py, services/meshtastic/requirements.txt",
             "scope": "required",
             "licenses": [
                 {
@@ -1837,7 +2728,7 @@
             "type": "library",
             "bom-ref": "pkg:pypi/mysql-connector-python#python-services",
             "name": "mysql-connector-python",
-            "description": "Used by: services/aprs/aprs_listener.py, services/audio-matrix/service.py",
+            "description": "Used by: services/aprs/aprs_listener.py, services/aprs/install.sh, services/audio-matrix/service.py",
             "scope": "required",
             "licenses": [
                 {
@@ -1862,7 +2753,7 @@
                 },
                 {
                     "name": "ticketscad:unknown-reason",
-                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package; it is installed by services/aprs/install.sh with no version constraint written, so pip resolves whatever is current on PyPI at the moment the operator runs the installer. Stating a version here would be a guess, and a guessed version is a false attestation. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
                 }
             ]
         },
@@ -1870,7 +2761,7 @@
             "type": "library",
             "bom-ref": "pkg:pypi/numpy#python-services",
             "name": "numpy",
-            "description": "Used by: services/dvswitch/bridge.py",
+            "description": "Used by: services/dvswitch/bridge.py, services/dvswitch/install-bridge.sh",
             "scope": "required",
             "licenses": [
                 {
@@ -1897,7 +2788,42 @@
                 },
                 {
                     "name": "ticketscad:unknown-reason",
-                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package; it is installed by services/dvswitch/install-bridge.sh with no version constraint written, so pip resolves whatever is current on PyPI at the moment the operator runs the installer. Stating a version here would be a guess, and a guessed version is a false attestation. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:pypi/onnxruntime#python-services",
+            "name": "onnxruntime",
+            "description": "Used by: services/dvswitch/install-bridge.sh",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:pypi/onnxruntime",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/onnxruntime/"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:pypi/onnxruntime"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package; it is installed by services/dvswitch/install-bridge.sh with no version constraint written, so pip resolves whatever is current on PyPI at the moment the operator runs the installer. Stating a version here would be a guess, and a guessed version is a false attestation. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
                 }
             ]
         },
@@ -1942,9 +2868,79 @@
         },
         {
             "type": "library",
+            "bom-ref": "pkg:pypi/pip#python-services",
+            "name": "pip",
+            "description": "Used by: services/dvswitch/install-bridge.sh",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:pypi/pip",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/pip/"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:pypi/pip"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package; it is installed by services/dvswitch/install-bridge.sh with no version constraint written, so pip resolves whatever is current on PyPI at the moment the operator runs the installer. Stating a version here would be a guess, and a guessed version is a false attestation. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:pypi/piper-tts#python-services",
+            "name": "piper-tts",
+            "description": "Used by: services/dvswitch/install-bridge.sh",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "purl": "pkg:pypi/piper-tts",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/piper-tts/"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:pypi/piper-tts"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package; it is installed by services/dvswitch/install-bridge.sh with no version constraint written, so pip resolves whatever is current on PyPI at the moment the operator runs the installer. Stating a version here would be a guess, and a guessed version is a false attestation. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
             "bom-ref": "pkg:pypi/pypubsub#python-services",
             "name": "pypubsub",
-            "description": "Used by: services/meshtastic/bridge.py, services/meshtastic/bridge_v2.py",
+            "description": "Used by: assets/js/mesh-console.js, services/meshtastic/bridge.py, services/meshtastic/bridge_v2.py",
             "scope": "required",
             "licenses": [
                 {
@@ -1971,7 +2967,42 @@
                 },
                 {
                     "name": "ticketscad:unknown-reason",
-                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package; it is installed by assets/js/mesh-console.js with no version constraint written, so pip resolves whatever is current on PyPI at the moment the operator runs the installer. Stating a version here would be a guess, and a guessed version is a false attestation. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:pypi/pyserial#python-services",
+            "name": "pyserial",
+            "description": "Used by: assets/js/mesh-console.js",
+            "scope": "required",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "BSD-3-Clause"
+                    }
+                }
+            ],
+            "purl": "pkg:pypi/pyserial",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/pyserial/"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:pypi/pyserial"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package; it is installed by assets/js/mesh-console.js with no version constraint written, so pip resolves whatever is current on PyPI at the moment the operator runs the installer. Stating a version here would be a guess, and a guessed version is a false attestation. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
                 }
             ]
         },
@@ -1979,7 +3010,7 @@
             "type": "library",
             "bom-ref": "pkg:pypi/requests#python-services",
             "name": "requests",
-            "description": "Used by: services/aprs-is/listener.py, services/meshtastic/bridge.py, services/meshtastic/bridge_v2.py, services/meshtastic/requirements.txt",
+            "description": "Used by: assets/js/mesh-console.js, services/aprs-is/listener.py, services/meshtastic/bridge.py, services/meshtastic/bridge_v2.py, services/meshtastic/requirements.txt",
             "scope": "required",
             "licenses": [
                 {
@@ -2045,7 +3076,7 @@
                 },
                 {
                     "name": "ticketscad:unknown-reason",
-                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package and no installer in this repository names a version for it. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
                 }
             ]
         },
@@ -2700,20 +3731,53 @@
     ],
     "dependencies": [
         {
-            "ref": "pkg:generic/ticketscad-newui@4.2.2",
+            "ref": "pkg:generic/ticketscad-newui@4.2.3",
             "dependsOn": [
+                "pkg:github/actions/checkout@v7#build-tooling",
+                "pkg:npm/ajv-cli@5#build-tooling",
+                "pkg:npm/ajv-formats@3#build-tooling",
+                "pkg:github/shivammathur/setup-php@v2#build-tooling",
                 "pkg:docker/composer@2#container-base",
                 "pkg:docker/debian@bookworm-slim#container-base",
                 "pkg:docker/mariadb@11#container-base",
                 "pkg:docker/php@8.2-apache-bookworm#container-base",
                 "pkg:github/g4klx/MMDVMHost#derived-source",
+                "pkg:huggingface/Systran/faster-whisper-base#downloaded-artifacts",
+                "pkg:generic/fcc-uls#downloaded-artifacts",
+                "pkg:generic/geonames-postal-us#downloaded-artifacts",
+                "pkg:generic/md380-emu#downloaded-artifacts",
+                "pkg:huggingface/rhasspy/piper-voices#downloaded-artifacts",
+                "pkg:generic/vosk-model-small-en-us@0.15#downloaded-artifacts",
+                "pkg:deb/ca-certificates#os-packages",
+                "pkg:deb/curl#os-packages",
+                "pkg:deb/default-mysql-client#os-packages",
+                "pkg:deb/ffmpeg#os-packages",
+                "pkg:deb/gcc-arm-linux-gnueabi#os-packages",
+                "pkg:deb/git#os-packages",
+                "pkg:deb/gnupg#os-packages",
+                "pkg:deb/libcurl4-openssl-dev#os-packages",
+                "pkg:deb/libfreetype6-dev#os-packages",
+                "pkg:deb/libjpeg62-turbo-dev#os-packages",
+                "pkg:deb/libonig-dev#os-packages",
+                "pkg:deb/libpng-dev#os-packages",
+                "pkg:deb/libssl-dev#os-packages",
+                "pkg:deb/libxml2-dev#os-packages",
+                "pkg:deb/libzip-dev#os-packages",
+                "pkg:deb/make#os-packages",
+                "pkg:deb/python3#os-packages",
+                "pkg:deb/python3-numpy#os-packages",
+                "pkg:deb/python3-pip#os-packages",
+                "pkg:deb/python3-venv#os-packages",
+                "pkg:deb/qemu-user-static#os-packages",
+                "pkg:deb/unzip#os-packages",
+                "pkg:deb/zlib1g-dev#os-packages",
                 "pkg:composer/brick/math@0.17.2#php-composer",
                 "pkg:composer/cboden/ratchet@0.4.4#php-composer",
                 "pkg:composer/evenement/evenement@3.0.2#php-composer",
                 "pkg:composer/firebase/php-jwt@7.0.3#php-composer",
-                "pkg:composer/guzzlehttp/guzzle@7.12.3#php-composer",
-                "pkg:composer/guzzlehttp/promises@2.5.0#php-composer",
-                "pkg:composer/guzzlehttp/psr7@2.12.3#php-composer",
+                "pkg:composer/guzzlehttp/guzzle@7.15.2#php-composer",
+                "pkg:composer/guzzlehttp/promises@2.5.1#php-composer",
+                "pkg:composer/guzzlehttp/psr7@2.13.0#php-composer",
                 "pkg:composer/minishlink/web-push@9.0.4#php-composer",
                 "pkg:composer/psr/clock@1.0.0#php-composer",
                 "pkg:composer/psr/http-client@1.0.3#php-composer",
@@ -2739,13 +3803,19 @@
                 "pkg:composer/symfony/routing@6.4.41#php-composer",
                 "pkg:composer/web-token/jwt-library@4.1.7#php-composer",
                 "pkg:pypi/aprslib#python-services",
+                "pkg:pypi/esptool#python-services",
                 "pkg:pypi/faster-whisper#python-services",
                 "pkg:pypi/meshcore#python-services",
+                "pkg:pypi/meshcore-cli#python-services",
                 "pkg:pypi/meshtastic#python-services",
                 "pkg:pypi/mysql-connector-python#python-services",
                 "pkg:pypi/numpy#python-services",
+                "pkg:pypi/onnxruntime#python-services",
                 "pkg:pypi/paho-mqtt#python-services",
+                "pkg:pypi/pip#python-services",
+                "pkg:pypi/piper-tts#python-services",
                 "pkg:pypi/pypubsub#python-services",
+                "pkg:pypi/pyserial#python-services",
                 "pkg:pypi/requests#python-services",
                 "pkg:pypi/vosk#python-services",
                 "pkg:npm/bootstrap@5.3.3#vendored-frontend",
@@ -2767,7 +3837,7 @@
         {
             "ref": "pkg:composer/cboden/ratchet@0.4.4#php-composer",
             "dependsOn": [
-                "pkg:composer/guzzlehttp/psr7@2.12.3#php-composer",
+                "pkg:composer/guzzlehttp/psr7@2.13.0#php-composer",
                 "pkg:composer/ratchet/rfc6455@0.3.1#php-composer",
                 "pkg:composer/react/event-loop@1.6.0#php-composer",
                 "pkg:composer/react/socket@1.17.0#php-composer",
@@ -2784,23 +3854,23 @@
             "dependsOn": []
         },
         {
-            "ref": "pkg:composer/guzzlehttp/guzzle@7.12.3#php-composer",
+            "ref": "pkg:composer/guzzlehttp/guzzle@7.15.2#php-composer",
             "dependsOn": [
-                "pkg:composer/guzzlehttp/promises@2.5.0#php-composer",
-                "pkg:composer/guzzlehttp/psr7@2.12.3#php-composer",
+                "pkg:composer/guzzlehttp/promises@2.5.1#php-composer",
+                "pkg:composer/guzzlehttp/psr7@2.13.0#php-composer",
                 "pkg:composer/psr/http-client@1.0.3#php-composer",
                 "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer",
                 "pkg:composer/symfony/polyfill-php80@1.37.0#php-composer"
             ]
         },
         {
-            "ref": "pkg:composer/guzzlehttp/promises@2.5.0#php-composer",
+            "ref": "pkg:composer/guzzlehttp/promises@2.5.1#php-composer",
             "dependsOn": [
                 "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer"
             ]
         },
         {
-            "ref": "pkg:composer/guzzlehttp/psr7@2.12.3#php-composer",
+            "ref": "pkg:composer/guzzlehttp/psr7@2.13.0#php-composer",
             "dependsOn": [
                 "pkg:composer/psr/http-factory@1.1.0#php-composer",
                 "pkg:composer/psr/http-message@2.0#php-composer",
@@ -2812,7 +3882,7 @@
         {
             "ref": "pkg:composer/minishlink/web-push@9.0.4#php-composer",
             "dependsOn": [
-                "pkg:composer/guzzlehttp/guzzle@7.12.3#php-composer",
+                "pkg:composer/guzzlehttp/guzzle@7.15.2#php-composer",
                 "pkg:composer/spomky-labs/base64url@2.0.4#php-composer",
                 "pkg:composer/symfony/polyfill-php82@1.38.1#php-composer",
                 "pkg:composer/web-token/jwt-library@4.1.7#php-composer"
@@ -2853,7 +3923,7 @@
         {
             "ref": "pkg:composer/ratchet/rfc6455@0.3.1#php-composer",
             "dependsOn": [
-                "pkg:composer/guzzlehttp/psr7@2.12.3#php-composer"
+                "pkg:composer/guzzlehttp/psr7@2.13.0#php-composer"
             ]
         },
         {

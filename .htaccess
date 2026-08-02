@@ -23,6 +23,82 @@
     RewriteRule (^|/)\.git(/|$) - [F,L]
 </IfModule>
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Block web access to the directories that are NOT part of the web interface.
+#
+# WHY THIS EXISTS. The documented install puts the web root AT the application
+# root, so by default every directory in this tree is served. On 2026-07-30 that
+# was confirmed from the public internet against a live install:
+#
+#   GET /backups/<archive>.zip  -> HTTP 200, 110 MB, a full database dump,
+#                                  with no authentication at all
+#   GET /backups/               -> directory listing of every archive
+#   GET /sql/  and  GET /tools/ -> directory listings of 181 and 109 PHP scripts,
+#                                  among them sql/run_migrations.php, which
+#                                  applies database migrations with no auth
+#   GET /inc/db.php             -> served
+#
+# None of these directories is fetched by the browser. api/, assets/, proxy/,
+# sw/, uploads/, cache/ and documentation/ ARE, and must stay reachable —
+# proxy/dmr-proxy.php in particular is loaded over HTTP by the radio widget.
+#
+# THIS FILE IS ONLY HALF THE FIX, and on nginx it is none of it:
+#   * nginx NEVER reads .htaccess. An nginx install gets no protection from
+#     anything below — it needs the location blocks in docs/nginx/ticketscad-
+#     hardening.conf. IIS ignores .htaccess too; sql/web.config + tools/web.config
+#     cover the two worst directories there.
+#   * Apache reads this file only when the vhost sets AllowOverride FileInfo (or
+#     All). On AllowOverride None it is ignored silently.
+# So every script under sql/ and tools/ ALSO refuses to run under a web SAPI,
+# which is the one defence that works on any server with any configuration, and
+# the backup directory has moved above the web root. See docs/WEB-SERVER-
+# HARDENING.md.
+#
+# NOTE for anyone editing this: see the <Directory> warning above — and do NOT
+# add `Options -Indexes` here either. `Options` requires AllowOverride Options;
+# on a host that grants only FileInfo it makes Apache answer 500 for the WHOLE
+# site. Turn indexes off in the vhost instead (the hardening doc shows how); the
+# rules below already make the listings for these directories unreachable.
+#
+# services/ is denied with one deliberate hole: the Mesh Console (Settings →
+# Mesh) hands the operator a `curl <this-server>/services/meshtastic/bridge_v2.py`
+# command to install the Meshtastic bridge on their radio host, so the bridge
+# scripts stay downloadable. Everything else under services/ — listener.ini with
+# an APRS-IS passcode, .env files, services/*/logs/ — does not.
+#
+# THE NAMES BELOW ARE TOP-LEVEL DIRECTORIES, and the patterns must say so.
+# The first version of these rules matched `(^|/)…(/|$)`, i.e. the name ANYWHERE
+# in the path — so `assets/vendor/` matched the `vendor` entry and every Apache
+# install that grants AllowOverride answered 403 for Bootstrap, Leaflet and
+# GridStack. The page then rendered unstyled with no map and no widget grid.
+# It went unnoticed because the reference deployments run AllowOverride None,
+# where this whole file is ignored; XAMPP and most shared hosting do NOT.
+# docs/nginx/ticketscad-hardening.conf had it right all along (`location ^~
+# /vendor/` is root-anchored), so the two servers had disagreed since 4.2.2.
+# `assets/` is fetched by the browser in full and nothing inside it is ever
+# denied — hence the allow-list line and the lookbehind.
+<IfModule mod_alias.c>
+    # RedirectMatch sees the full URL-path (`/newui/assets/vendor/…` on a
+    # subdirectory install), so it cannot be anchored with `^`. Excluding the
+    # one front-end directory that nests these names is what keeps it honest.
+    RedirectMatch 404 (^|/)(?<!assets/)(apache|backups|coordination|drafts|inc|keys|specs|sql|tests|tools|vendor)(/|$)
+    RedirectMatch 404 (^|/)services/(?!(meshtastic|meshcore)/[A-Za-z0-9_.-]+\.py$)
+    RedirectMatch 404 (^|/)\.(env|htpasswd)(/|$)
+    RedirectMatch 404 \.(sql|log|bak|old|orig|rej|swp|pem|p8)$
+</IfModule>
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # Allow-list first: everything the browser legitimately fetches. In a
+    # per-directory context mod_rewrite has already stripped the install's own
+    # prefix, so `^assets/` is exactly "the assets directory of this install".
+    RewriteRule ^assets/ - [L]
+    # The bridge scripts the Mesh Console tells operators to fetch.
+    RewriteRule (^|/)services/(meshtastic|meshcore)/[A-Za-z0-9_.-]+\.py$ - [L]
+    RewriteRule (^|/)(apache|backups|coordination|drafts|inc|keys|services|specs|sql|tests|tools|vendor)(/|$) - [F,L]
+    RewriteRule (^|/)\.(env|htpasswd)(/|$) - [F,L]
+    RewriteRule \.(sql|log|bak|old|orig|rej|swp|pem|p8)$ - [F,L]
+</IfModule>
+
 # Phase 90 — pretty URL for the beta-tester registration page.
 # /beta-tester  ->  /beta-tester.php
 # Keep the rule narrow: don't blanket-rewrite the whole site.

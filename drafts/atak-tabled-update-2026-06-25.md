@@ -16,7 +16,7 @@ The longer version below if you want the technical detail. Otherwise: identity a
 
 WHAT WE BUILT
 
-TicketsCAD's mesh bridge now captures ATAK traffic from any node on a connected Meshtastic LongFast channel. The packets land in our mesh_packet_log with correct UTC timestamps, attributed to the source radio. Phase 91 in the project repo, commits 1c9c590 through 0056ac4, with a full setup-log at specs/phase-91-atak-interop/setup-log.md if you want the deep dive.
+TicketsCAD's mesh bridge now captures ATAK traffic from any node on a connected Meshtastic LongFast channel. The packets land in our mesh_packet_log with correct UTC timestamps, attributed to the source radio. Phase 91 in the project repo, commits 1c9c590 through 0056ac4.
 
 The server side is genuinely done. Anything the radio side delivers, TicketsCAD captures.
 
@@ -67,6 +67,6 @@ Eric
 ## Internal notes (not part of the email)
 
 - This goes to beta-testers who explicitly expressed interest in ATAK. Not the full TicketsCAD beta-tester list.
-- If anyone replies asking for the downgrade procedure, point them at `specs/phase-91-atak-interop/setup-log.md` Path 2 section, or just copy the relevant paragraph (download URL + steps).
+- If anyone replies asking for the downgrade procedure, copy them the relevant paragraph (download URL + steps).
 - If anyone asks "what about the custom-build path you mentioned" — the answer is the friction breakdown in this same session's chat: package collision, GPL compliance, trademark, and ~2 weeks of Google Play first-account onboarding for an unused developer account. Custom builds make sense if upstream goes silent for a few months; not before.
 - Subject line option B if "what works, what's blocked, where we go from here" feels too long: "ATAK over Meshtastic — tabled pending upstream fix"

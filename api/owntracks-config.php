@@ -32,6 +32,8 @@
  * up auth_token_id when accepting an OwnTracks basic-auth header. Tracked
  * separately as a follow-on.
  */
+
+require_once __DIR__ . '/../inc/https.php';   // is_https(), is_https_verified()
 ini_set('display_errors', '0');
 header('Content-Type: application/json');
 
@@ -91,7 +93,7 @@ function _mint_token(int $memberId, ?string $label, ?int $createdBy, int $dualWi
 function _config_payload_for_member(int $memberId, string $secret): array {
     global $prefix;
     $cad = (function () {
-        $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $proto = is_https() ? 'https' : 'http';
         return $proto . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
     })();
     // member's login lives on the user table. Two linkage patterns exist —
@@ -449,7 +451,7 @@ function _ot_recompute_for_responder(int $responderId, ?int $byUserId = null): i
     }
     $count = 0;
     $cad = (function () {
-        $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $proto = is_https() ? 'https' : 'http';
         return $proto . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
     })();
     foreach ($members as $m) {
@@ -504,7 +506,7 @@ function _ot_push_to_all_active(?int $byUserId = null): int {
         );
         $username = $m['username'] ?? ('member-' . $mid);
         $cad = (function () {
-            $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $proto = is_https() ? 'https' : 'http';
             return $proto . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
         })();
         // secret is unused by _ot_push_to_member (stripped before queue)
@@ -607,7 +609,7 @@ if ($action === 'get_member_overrides' && $method === 'GET') {
     );
     $username = $m['username'] ?? ('member-' . $mid);
     $cad = (function () {
-        $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $proto = is_https() ? 'https' : 'http';
         return $proto . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
     })();
     $effective = _ot_build_layered_config($mid, $username, '<not shown>', $cad);
@@ -664,7 +666,7 @@ if ($action === 'save_member_overrides' && $method === 'POST') {
     );
     $username = $m['username'] ?? ('member-' . $mid);
     $cad = (function () {
-        $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $proto = is_https() ? 'https' : 'http';
         return $proto . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
     })();
     $cfg = _ot_build_layered_config($mid, $username, '<unchanged>', $cad);
@@ -773,7 +775,7 @@ if ($action === 'get_member_diagnostics' && $method === 'GET') {
     if (!$m) json_error('Member not found', 404);
     $username = $m['username'] ?: ('member-' . $mid);
     $cad = (function () {
-        $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $proto = is_https() ? 'https' : 'http';
         return $proto . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
     })();
 

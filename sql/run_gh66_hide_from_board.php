@@ -14,6 +14,8 @@
  * Idempotent — guarded ALTER, no values seeded (operator opts statuses in).
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 chdir(__DIR__ . '/..');
 require_once 'config.php';
 $prefix = $GLOBALS['db_prefix'] ?? '';

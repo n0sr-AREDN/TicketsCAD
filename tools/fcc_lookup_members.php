@@ -15,6 +15,8 @@
  * just refresh the grant/expiry/operating-class fields on existing rows.
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 $prefix = $GLOBALS['db_prefix'] ?? '';

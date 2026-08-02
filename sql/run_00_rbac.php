@@ -12,6 +12,9 @@
  *           Safe to run repeatedly.
  * Output:   [OK]/[WARN] per table and seed operation.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase D: RBAC Schema Setup\n";
@@ -180,6 +183,16 @@ $perms = [
     // The CRUD surface auto-grants to action.create_incident too, so a
     // dispatcher with no ICS-specific role still works.
     ['action.manage_ics_forms','Manage ICS Forms',     'action'],
+    // Phase 131 — net-control check-ins (/net). OPERATIONAL, not administrative,
+    // so it is deliberately NOT added to the Org Admin `NOT IN (...)` exclusion
+    // list below: Super Admin (broad SELECT) and Org Admin (broad NOT IN) should
+    // both receive it. Dispatcher/Operator/Read-Only/Field Unit are allow-lists
+    // here, so Dispatcher is granted it explicitly a few lines down; Operator and
+    // Read-Only get it per-install via the Roles UI if an org wants them running nets.
+    // An `action.` code, not `screen.`, is load-bearing — the Dispatcher/Operator/
+    // Read-Only grants below sweep `category IN ('screen','widget')` wholesale, so a
+    // screen.* code would have been handed silently to Read-Only.
+    ['action.net_checkin',     'Use Net-Control Check-Ins', 'action'],
     // Data Visibility
     ['field.view_patient',     'View Patient Info',    'field'],
     ['field.view_contact',     'View Contact Info',    'field'],
@@ -232,7 +245,8 @@ try {
               SELECT 3, `id` FROM `{$prefix}permissions`
               WHERE `category` IN ('screen', 'widget')
                  OR `code` IN ('action.create_incident', 'action.edit_incident', 'action.close_incident',
-                               'action.assign_unit', 'action.add_note', 'action.set_own_zone')");
+                               'action.assign_unit', 'action.add_note', 'action.set_own_zone',
+                               'action.net_checkin')");
     echo "[OK] Dispatcher permissions mapped\n";
 } catch (Exception $e) {}
 

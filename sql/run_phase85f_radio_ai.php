@@ -23,6 +23,8 @@
  * Run:  php sql/run_phase85f_radio_ai.php
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 $_SERVER['DOCUMENT_ROOT'] = __DIR__ . '/..';
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/db.php';

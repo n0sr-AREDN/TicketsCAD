@@ -18,6 +18,8 @@
  * Memory usage stays under 32MB regardless of dataset size.
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 ini_set('memory_limit', '256M');  // modest limit — we stream, not buffer
 
 require_once __DIR__ . '/../config.php';

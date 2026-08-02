@@ -98,7 +98,19 @@
         // Requires an active event selected on the Net Control board
         // (persisted in localStorage as nc_selected_event). Prefix-
         // friendly like /s. See doZoneCommand.
-        { name: 'zone',        aliases: ['z'],                    description: 'Set a unit\'s event zone — /z &lt;team&gt; &lt;zone&gt;', handler: doZoneCommand, takesArgs: true }
+        { name: 'zone',        aliases: ['z'],                    description: 'Set a unit\'s event zone — /z &lt;team&gt; &lt;zone&gt;', handler: doZoneCommand, takesArgs: true },
+
+        // Phase 131 — Net-control check-ins. Syntax:
+        //   /net 1234 tornado / 3344 hail / 6543 hail / 3243 wind damage
+        // Entries separated by '/'; within an entry the FIRST token is the
+        // identifier and the rest is the note. Captures the whole round in one
+        // keystroke while stations are still talking, then loads the
+        // situational screen with the floating check-in widget up.
+        //
+        // The raw string goes to the server verbatim — inc/net-checkins.php
+        // owns the parse. A second parser here would be two definitions of one
+        // rule, and they would drift.
+        { name: 'net',         aliases: [],                       description: 'Capture net check-ins — /net &lt;id&gt; &lt;note&gt; / &lt;id&gt; &lt;note&gt;', handler: doNetCommand, takesArgs: true }
     ];
 
     // Status alias map: short codes + spelled-out variants → canonical
@@ -773,6 +785,54 @@
                 .catch(function (err) { statusError('Zone update failed: ' + (err.message || String(err))); });
             })
             .catch(function (err) { statusError('Could not load the event board: ' + (err.message || String(err))); });
+    }
+
+    // ── /net <id> <note> / <id> <note> — net-control check-ins (Phase 131) ──
+
+    /**
+     * Store a round of check-ins, then open the situational screen so the
+     * floating widget comes up with the list ready to work.
+     *
+     * argString is passed to the server untouched. The parse (separator,
+     * first-token-is-identifier, the digit guard that keeps a hail report of
+     * 3/4" in one piece) lives in inc/net-checkins.php — one definition.
+     *
+     * "The situational screen" is index.php, per the note on the 'dashboard'
+     * command above: Eric's primary situational-awareness screen is the
+     * dashboard, and situation.php is the once-a-night big-monitor view. The
+     * widget is included on both, so either is fine to land on.
+     */
+    function doNetCommand(argString) {
+        var raw = String(argString || '').trim();
+        if (!raw) {
+            return statusError('Usage: /net 1234 tornado / 3344 hail / 6543 wind damage');
+        }
+
+        fetch('api/net-checkins.php', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'add', raw: raw, csrf_token: _cmdCsrf() })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+            if (res.error) { return statusError(res.error); }
+
+            // Already on a page carrying the widget — refresh in place rather
+            // than reloading and losing the operator's scroll position.
+            if (window.NetCheckins && typeof window.NetCheckins.reload === 'function') {
+                window.NetCheckins.reload();
+                window.NetCheckins.show(true);
+                if (typeof window.showBriefToast === 'function') {
+                    window.showBriefToast(res.added + ' check-in' + (res.added === 1 ? '' : 's') + ' captured');
+                }
+                return;
+            }
+            go('index.php');
+        })
+        .catch(function (err) {
+            statusError('Could not store the check-ins: ' + (err.message || String(err)));
+        });
     }
 
     // ── Utilities ──

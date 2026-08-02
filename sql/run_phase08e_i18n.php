@@ -21,6 +21,9 @@
  * Prereqs:  run_phase08_i18n.php and run_phase08b_i18n.php already ran.
  * Safety:   Idempotent. INSERT IGNORE on (caption_key, lang).
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Phase 8e i18n — Add Dutch / French / Spanish\n";

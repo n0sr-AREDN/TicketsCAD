@@ -1,0 +1,62 @@
+name: Question or help with a deployment
+description: Ask about installing, upgrading, configuring, or running TicketsCAD
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Questions are welcome — there is no separate forum or chat channel, so
+        this is the right place.
+
+
+        **Please don't include real names, addresses, phone numbers, patient
+        information, or third parties' amateur-radio callsigns.** Issues are
+        public. The same goes for anything from your config: **never paste a
+        password, an API key, or a database credential** into an issue. Replace
+        them with `REDACTED` before you post.
+
+
+        Worth a quick look first: [docs/INDEX.md](https://github.com/openises/TicketsCAD/blob/main/docs/INDEX.md)
+        (install, upgrade, Docker, backup, administration) and
+        [SECURITY.md](https://github.com/openises/TicketsCAD/blob/main/SECURITY.md)
+        (supported versions, what leaves your network).
+
+
+        If your question is *"is this a vulnerability?"* — treat it as one and
+        use the private channel in SECURITY.md rather than asking here.
+  - type: textarea
+    id: question
+    attributes:
+      label: What would you like to know?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Which version are you running?
+      description: >-
+        Help → About shows it. Say "not installed yet" if you are still
+        evaluating.
+      placeholder: e.g. 4.2.2
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: How is it installed?
+      options:
+        - Docker (docker compose)
+        - Git clone on a Linux server
+        - Git clone on Windows (XAMPP or similar)
+        - Uploaded a ZIP to shared hosting
+        - Not installed yet
+        - Other / not sure
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried so far?
+      description: >-
+        Including any error message — with credentials and personal data removed.

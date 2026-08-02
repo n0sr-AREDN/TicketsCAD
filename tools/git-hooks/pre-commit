@@ -8,6 +8,7 @@
 #   3. tools/api_contract_audit.php              (JS reads ↔ API emitted keys)
 #   3b. tools/legacy_level_audit.php             (API gate ↔ the page's RBAC gate)
 #   3c. tools/timezone_audit.php                 (stored clock ↔ the clock queried)
+#   3d. tools/ui_consistency_audit.php           (new UI ↔ the product's conventions)
 #   4. tools/gen_schema_manifest.php --check     (manifest ↔ what the code writes)
 #   5. tools/generate-sbom.php --check/--verify  (SBOM ↔ dependencies + signature)
 #
@@ -97,6 +98,21 @@ if [ -f tools/timezone_audit.php ]; then
     if [ $? -ne 0 ]; then
         echo "✗ clock audit found a timestamp compared against the wrong clock:"
         echo "$OUT" | tail -20
+        FAILED=1
+    fi
+fi
+
+# ── 3d. UI-consistency audit (static, always runs) ─────────────────
+# New interface work drifting from the conventions the rest of the
+# product follows: hotkeys as loose text instead of keycap buttons in
+# the header, a dismiss control with no re-open path, hardcoded colours
+# that ignore the dark theme, per-user state in a newly invented store.
+if [ -f tools/ui_consistency_audit.php ]; then
+    OUT="$("$PHP" tools/ui_consistency_audit.php 2>&1)"
+    if [ $? -ne 0 ]; then
+        echo "✗ UI-consistency audit found NEW interface drift:"
+        echo "$OUT" | tail -20
+        echo "  Conventions: php tools/ui_consistency_audit.php --rules"
         FAILED=1
     fi
 fi

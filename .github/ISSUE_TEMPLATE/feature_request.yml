@@ -1,0 +1,85 @@
+name: Feature request
+description: Suggest something TicketsCAD should be able to do
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thanks for thinking about where TicketsCAD should go.
+
+
+        Two things worth knowing before you write. First, **please don't include
+        real names, addresses, phone numbers, patient information, or third
+        parties' amateur-radio callsigns** — issues are public. Describe the
+        situation, not the incident.
+
+
+        Second, TicketsCAD is used by groups whose procedures differ from each
+        other, so the question a maintainer will ask is not "is this useful?"
+        but "does this work for installations that aren't yours?" The fields
+        below are aimed at that. A feature that can be turned off, or configured
+        away, has a much better chance than one that changes how everybody
+        works.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: >-
+        Describe the situation, not the solution. What happens today, and why is
+        it a problem during an actual callout or shift?
+      placeholder: >-
+        e.g. When a unit goes out of service mid-incident we have no way to note
+        why, so the after-action report can't reconstruct it.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like it to do?
+      description: Your idea for how it should work. Rough is fine.
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: How do you handle it now?
+      description: >-
+        A workaround, a paper form, a second system, or "we just don't". This is
+        genuinely useful — it shows how much the gap costs.
+  - type: dropdown
+    id: org-type
+    attributes:
+      label: What kind of group are you in?
+      description: >-
+        Helps judge whether a change fits one type of agency or many. Skip it if
+        you would rather not say.
+      options:
+        - Amateur radio emergency communications (ARES/RACES/AUXCOMM)
+        - Volunteer fire department
+        - EMS / medical response
+        - CERT / community emergency response
+        - Search and rescue
+        - Campus or event security
+        - Other
+        - Prefer not to say
+    validations:
+      required: false
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Who do you think needs this?
+      options:
+        - Probably just my group — happy for it to be optional or configurable
+        - Likely useful to most groups running TicketsCAD
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: help
+    attributes:
+      label: Could you help build or test it? (optional)
+      description: >-
+        No obligation whatsoever — reporting is already a contribution. But
+        "I can test this on a real deployment" moves an idea along faster than
+        almost anything else.

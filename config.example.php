@@ -38,6 +38,17 @@ require_once __DIR__ . '/inc/version.php';
 define('NEWUI_ROOT',    __DIR__);
 define('NEWUI_DEBUG',   false);   // true = dev-only verbose errors
 
+// ── Web server account (optional) ───────────────────────────────
+// `php tools/check-health.php` reports whether the WEB SERVER can write
+// uploads/ and cache/ — not whether the account you ran it as can. It works
+// that account out on its own (a running apache2/nginx/php-fpm worker, the
+// ownership of this install's runtime directories, or the server's config),
+// and reports UNKNOWN rather than guessing when it cannot.
+//
+// Set this to skip the inference and be certain. Substitute your own account:
+// Debian/Ubuntu www-data · RHEL apache · Arch http · shared hosting your login.
+// define('NEWUI_WEB_USER', 'www-data');
+
 // Phase 43e: set HTTP security headers (CSP, X-Frame-Options, HSTS on HTTPS,
 // hardened session cookie) on every request. Done here in config.php — which
 // every entry point requires at the very top — so the headers land BEFORE any
@@ -76,11 +87,15 @@ ini_set('log_errors', '1');
 // indicator's reconnect loop when config was required AFTER
 // session_start in api/stream.php). Only apply when no session is
 // active yet.
+// is_https() lives in inc/https.php, which is deliberately
+// dependency-free so it can be required here — ahead of the DB layer.
+require_once NEWUI_ROOT . '/inc/https.php';
+
 if (session_status() !== PHP_SESSION_ACTIVE) {
     ini_set('session.cookie_httponly', '1');
     ini_set('session.use_strict_mode', '1');
     ini_set('session.cookie_samesite', 'Lax');
-    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+    if (is_https()) {
         ini_set('session.cookie_secure', '1');
     }
 }

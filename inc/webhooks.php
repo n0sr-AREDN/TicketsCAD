@@ -63,9 +63,15 @@ function webhook_fire($eventType, array $payload = []) {
         return 0;
     }
 
-    if (empty($subs)) return 0;
+    if (empty($subs)) {
+        $GLOBALS['_webhook_last_result'] = ['attempted' => 0, 'delivered' => 0, 'failed' => 0];
+        return 0;
+    }
 
     $fired = 0;
+    $delivered = 0;
+    $failedCount = 0;
+    $GLOBALS['_webhook_last_result'] = ['attempted' => 0, 'delivered' => 0, 'failed' => 0];
     foreach ($subs as $sub) {
         // Check if this subscription subscribes to the event type
         $filters = @json_decode($sub['event_filters_json'], true);
@@ -104,13 +110,31 @@ function webhook_fire($eventType, array $payload = []) {
             $sub['id'], $eventType, $body, 1, 'pending'
         );
 
-        // Fire HTTP POST (non-blocking, 5s timeout)
-        _webhook_send(
+        // Out of budget. Leave the remaining subscriptions as 'pending'
+        // deliveries — tools/webhook_retry_tick.php is what picks those up,
+        // and it always was. Better a retried webhook than a held dispatcher.
+        if (function_exists('notify_deadline_expired') && notify_deadline_expired()) {
+            error_log('[webhook_fire] out of budget after ' . $fired
+                      . ' subscriber(s) — remaining deliveries left pending for the retry tick');
+            break;
+        }
+
+        // Fire HTTP POST (bounded; see _webhook_send for the budget clamp)
+        $sent = _webhook_send(
             ['id' => $sub['id'], 'target_url' => $sub['target_url'], 'hmac_secret' => $sub['hmac_secret']],
             $body, $signature, $deliveryId, 1
         );
         $fired++;
+        if ($sent) $delivered++; else $failedCount++;
     }
+
+    // What actually happened, for callers that must decide something on it
+    // (inc/notify-fanout.php uses this to keep a queued row for retry and to
+    // open the outbound breaker). The return value stays "how many were
+    // attempted" so no existing caller changes meaning.
+    $GLOBALS['_webhook_last_result'] = [
+        'attempted' => $fired, 'delivered' => $delivered, 'failed' => $failedCount,
+    ];
 
     return $fired;
 }
@@ -378,13 +402,22 @@ function _webhook_send($sub, $body, $signature, $deliveryId, $attempt) {
 
     $start = microtime(true);
 
+    // 2026-07-31 — honour a caller-imposed wall-clock budget. The fan-out is
+    // normally delivered by the scheduled sweep, where no deadline is set and
+    // these defaults apply; when it is being attempted from a request path
+    // (an install with no scheduler), the budget clamps them so five
+    // subscribers cannot become 25 seconds of a dispatcher's time.
+    $_whRemaining = function_exists('notify_deadline_remaining') ? notify_deadline_remaining() : null;
+    $_whTimeout   = function_exists('notify_clamp_timeout') ? notify_clamp_timeout(5, $_whRemaining) : 5;
+    $_whConnect   = function_exists('notify_clamp_timeout') ? notify_clamp_timeout(3, $_whRemaining) : 3;
+
     $ch = curl_init($sub['target_url']);
     curl_setopt_array($ch, [
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => $body,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 5,
-        CURLOPT_CONNECTTIMEOUT => 3,
+        CURLOPT_TIMEOUT        => $_whTimeout,
+        CURLOPT_CONNECTTIMEOUT => $_whConnect,
         CURLOPT_HTTPHEADER     => [
             'Content-Type: application/json',
             'X-Webhook-Signature: sha256=' . $signature,
@@ -443,6 +476,13 @@ function _webhook_send($sub, $body, $signature, $deliveryId, $attempt) {
     } catch (Exception $e) {
         // Stamp failure non-fatal
     }
+
+    // 2026-07-31 — this used to fall off the end returning null, so every
+    // caller was blind to whether anything was actually delivered. The
+    // notification fan-out needs to know: "attempted 1, delivered 0" is what
+    // an outage looks like, and it has to open the circuit breaker rather
+    // than be inferred from how long the call took.
+    return $success;
 }
 
 /**

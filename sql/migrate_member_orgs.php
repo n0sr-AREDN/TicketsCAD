@@ -10,6 +10,9 @@
  * Safety:   Idempotent. INSERT IGNORE skips existing rows. Safe to re-run.
  * Output:   Total count of member-organization links after migration.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/db.php';
 db()->exec("INSERT IGNORE INTO member_organizations (member_id, org_id, status, created_at)

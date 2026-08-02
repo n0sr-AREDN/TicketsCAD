@@ -27,6 +27,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/audit.php';
+require_once __DIR__ . '/../inc/dmr_token.php';
 ini_set('display_errors', '0');
 
 // Phase 82b — DVR playback is "receive" capability. Backwards compat:
@@ -104,12 +105,13 @@ $bridgeUrl = sprintf(
 );
 
 // Prefer server-stored bridge token; fall back to the (now-legacy)
-// client-supplied one only if the channel has none.
-$effectiveToken = !empty($row['bridge_token']) ? $row['bridge_token'] : $clientToken;
+// client-supplied one only if the channel has none the CAD can present.
+$effectiveToken = dmr_bridge_token($row);
+if ($effectiveToken === '') $effectiveToken = $clientToken;
 if ($effectiveToken === '') {
     http_response_code(500);
     header('Content-Type: application/json');
-    echo json_encode(['error' => 'channel has no bridge token configured']);
+    echo json_encode(['error' => dmr_token_missing_reason($row)]);
     exit;
 }
 

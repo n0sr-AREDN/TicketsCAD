@@ -1,6 +1,7 @@
 {
     "name": "ticketscad/newui",
     "description": "NewUI v4.0 - Zello proxy and server-side dependencies",
+    "license": "GPL-2.0-only",
     "require": {
         "php": ">=8.0",
         "cboden/ratchet": "^0.4",

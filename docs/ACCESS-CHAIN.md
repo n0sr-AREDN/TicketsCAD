@@ -64,7 +64,7 @@ Neither outcome is wrong — they suit different account types. The warning bann
 
 **Fix:** Usually not needed. If you see this happening, confirm the user's RBAC role includes the screen/view/widget permission for the resource. If it does and you still see empty data, the `allocates` table may have an old explicit-deny rule for this user — clear it via direct SQL or contact support.
 
-**Future:** Phase 7d (in `specs/future-phases.md`) fully retires the `allocates` table by folding its group concept into RBAC as a new `scope_kind='group'`. After that ships, this misconfiguration mode disappears entirely.
+**Future:** A queued phase fully retires the `allocates` table by folding its group concept into RBAC as a new `scope_kind='group'`. After that ships, this misconfiguration mode disappears entirely.
 
 ## How RBAC roles map to legacy levels
 

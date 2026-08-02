@@ -2,7 +2,7 @@
 
 NewUI v4 ships an internationalization (i18n) engine that lets administrators translate every UI label into any language without touching code. This guide covers both the **administrator** workflow (using the Translations panel) and the **developer** workflow (retrofitting a page template to support translation).
 
-Phase shipped: `phase-08-i18n-2026-06`. See `specs/phase-08-i18n-2026-06/` for the design history.
+Phase shipped: `phase-08-i18n-2026-06`.
 
 ---
 

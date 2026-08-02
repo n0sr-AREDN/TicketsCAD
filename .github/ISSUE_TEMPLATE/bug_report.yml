@@ -5,7 +5,30 @@ labels: ["bug"]
 body:
   - type: markdown
     attributes:
-      value: "Thanks for helping test TicketsCAD! Please DON'T include real names, addresses, phone numbers, patient info, or amateur-radio callsigns in your report — these reports are visible to the whole test team."
+      value: "Thanks for helping test TicketsCAD! Please DON'T include real names, addresses, phone numbers, patient info, or amateur-radio callsigns in your report — these reports are visible to the whole test team. Never paste a password, API key, or database credential — replace it with REDACTED."
+  - type: markdown
+    attributes:
+      value: "**Think it might be a security vulnerability? Don't file it here.** Use the private channel in [SECURITY.md](https://github.com/openises/TicketsCAD/blob/main/SECURITY.md) so a fix exists before the problem is public."
+  - type: input
+    id: version
+    attributes:
+      label: Which version are you running?
+      description: "Help → About shows it. Fixes land on the newest release line only, so this decides how the report is triaged — see SECURITY.md."
+      placeholder: e.g. 4.2.2
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: How is it installed?
+      options:
+        - Docker (docker compose)
+        - Git clone on a Linux server
+        - Git clone on Windows (XAMPP or similar)
+        - Uploaded a ZIP to shared hosting
+        - Other / not sure
+    validations:
+      required: true
   - type: input
     id: what-page
     attributes:

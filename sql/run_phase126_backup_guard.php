@@ -29,6 +29,8 @@
  * Idempotent: safe to re-run, and it will not move a clock that is already set.
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 chdir(__DIR__ . '/..');
 require_once 'config.php';
 require_once 'inc/backup_schedule.php';

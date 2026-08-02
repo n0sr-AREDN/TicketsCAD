@@ -11,6 +11,9 @@
  *           Safe to run repeatedly.
  * Output:   [OK]/[WARN] per table and setting created.
  */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 require_once __DIR__ . '/../config.php';
 
 echo "Login Security Schema Setup\n";

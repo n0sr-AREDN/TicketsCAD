@@ -124,8 +124,23 @@ gone. If TicketsCAD still shows the reminder while your browser is clearly on
 HTTPS, your reverse proxy isn't forwarding `X-Forwarded-Proto: https` — add that
 header in the proxy config.
 
+## Encryption is not the same as access control
+
+HTTPS stops other people on the network path from reading the traffic. It does
+nothing about *what your web server is willing to hand out to anyone who asks*.
+Those are separate jobs, and the second one has to be configured too: on a
+default install the web server publishes every directory in the tree, including
+`backups/` — where TicketsCAD keeps complete copies of your database.
+
+**If you followed section 1, 3 or 4 above you are running Caddy or nginx, and
+neither reads `.htaccess`** — so the deny rules TicketsCAD ships do nothing for
+you until you add the equivalent. Take two minutes over
+**[WEB-SERVER-HARDENING.md](WEB-SERVER-HARDENING.md)** now that TLS is working;
+it has a copy-paste snippet for each server and a three-command test.
+
 ## Related docs
 
+- [WEB-SERVER-HARDENING.md](WEB-SERVER-HARDENING.md) — stopping the server publishing directories it should not
 - [DOCKER.md](DOCKER.md) — the Docker deployment (the `:8081` port referenced above)
 - [INSTALL.md](INSTALL.md) — base install
 - [TRACCAR-SETUP.md](TRACCAR-SETUP.md) — device tracking (also wants HTTPS on the internet)

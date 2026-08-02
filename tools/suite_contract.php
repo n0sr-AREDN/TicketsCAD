@@ -29,6 +29,9 @@
  */
 
 /** Lines of child output echoed for a file that failed or errored. */
+
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
+
 if (!defined('TEST_ALL_TAIL_LINES')) {
     define('TEST_ALL_TAIL_LINES', 25);
 }
