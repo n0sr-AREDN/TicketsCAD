@@ -7,7 +7,7 @@
  * base64url-encoded uncompressed point (65 bytes); private key is
  * base64url-encoded raw scalar (32 bytes).
  *
- * Output is paste-ready for Settings → Push Notifications →
+ * Output is paste-ready for Settings → Web Push Notifications →
  * VAPID Public Key / VAPID Private Key fields.
  *
  * Usage:  php tools/generate_vapid_keys.php
@@ -42,7 +42,7 @@ if (($keys['via'] ?? '') === 'openssl-direct') {
     echo "other OpenSSL-dependent features may hit the same thing — see\n";
     echo "docs/INSTALL-WINDOWS-IIS.md.\n\n";
 }
-echo "Paste both values into Settings → Push Notifications, then\n";
+echo "Paste both values into Settings → Web Push Notifications, then\n";
 echo "set push_vapid_subject to a 'mailto:' contact (required by RFC 8292)\n";
 echo "and flip push_enabled to 1.\n\n";
 

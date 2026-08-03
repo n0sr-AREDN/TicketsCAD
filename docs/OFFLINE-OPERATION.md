@@ -343,7 +343,7 @@ That gives you a genuinely useful, zero-software offline measure:
 > background when the connection dies.
 
 Raise the limits first, or the cache will evict your work
-(**Settings → Maps & Places → Map Settings**):
+(**Settings → Map Settings**):
 
 | Setting | Default | Suggested for offline resilience |
 |---|---|---|
@@ -433,7 +433,7 @@ This matters, and it is easy to get wrong.
    ```
    mbtileserver --dir /var/lib/tiles --port 8000
    ```
-6. In TicketsCAD: **Settings → Maps & Places → Map Settings**
+6. In TicketsCAD: **Settings → Map Settings**
    - Tile provider: **Custom**
    - Tile server URL:
      `http://YOUR-SERVER:8000/services/yourarea/tiles/{z}/{x}/{y}.png`
@@ -619,7 +619,7 @@ fault.
   Section 7 has the procedure.
 - Leave **Keep results for (hours)** alone. Your own server needs no rate limit,
   but the cache still makes repeat lookups instant.
-- Your geocoder is now a thing that can break. It appears on Settings → Status
+- Your geocoder is now a thing that can break. It appears on Settings → System Health
   as *Address lookup*, and if it stops answering, TicketsCAD says so rather than
   making dispatchers wait.
 
@@ -670,7 +670,7 @@ you should confirm that job exists.
 
 | Check | How | Pass |
 |---|---|---|
-| Something drains the queue | Settings → Status → Scheduled jobs | "Notification + pending message sweep" shows a recent successful run — **not** "Has never run" |
+| Something drains the queue | Settings → System Health → Scheduled jobs | "Notification + pending message sweep" shows a recent successful run — **not** "Has never run" |
 | Nothing is silently piling up | Same page | No "N notification(s) queued and undelivered" |
 | A callout really arrives | With the internet **connected**, create a drill incident and watch the phone | It arrives within one sweep interval |
 
@@ -682,7 +682,7 @@ you should confirm that job exists.
 | Local tiles work | §5 step 7 | Basemap draws with internet disconnected |
 | Lookup data is loaded | In your database: `SELECT COUNT(*) FROM fcc_amateur; SELECT COUNT(*) FROM zipcodes;` | Non-zero row counts. If they are empty, run `php tools/update-lookup-data.php` while you still have connectivity |
 | Backups run without internet | `php tools/backup_run.php` | Archive written |
-| Scheduled jobs are actually running | Settings → Status → scheduled jobs | No job shows "never run". **A log file still at zero bytes means it never ran** — see the note on missing cron daemons in `CLAUDE.md` |
+| Scheduled jobs are actually running | Settings → System Health → scheduled jobs | No job shows "never run". **A log file still at zero bytes means it never ran** — see the note on missing cron daemons in `CLAUDE.md` |
 | The install is healthy | `php tools/check-health.php` | No critical findings |
 
 ### Re-check after every upgrade
@@ -899,7 +899,7 @@ the next sweep). Work older than `sched_stale_cutoff_min` (default 60 minutes)
 is recorded **expired** rather than delivered — a callout that arrives an hour
 late is worse than none, and the row says why.
 
-**A backlog is visible.** Settings → Status → Scheduled jobs turns critical and
+**A backlog is visible.** Settings → System Health → Scheduled jobs turns critical and
 says so in words: *"10 notification(s) queued and undelivered. Outbound
 delivery is paused for 57s after 2 consecutive failures."* The tick also prints
 `notify_pending=N oldest=Ns` into the journal. Gate:

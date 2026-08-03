@@ -48,7 +48,7 @@
 // C:\inetpub\wwwroot\web.config exist today?) would silently relocate an
 // install's archives when something unrelated changed. One rule per platform,
 // and an operator who wants a different directory sets `backup_dir` in
-// Settings → Backup, which overrides all of this.
+// Settings → Backup / Maintenance, which overrides all of this.
 //
 //   POSIX    dirname(NEWUI_ROOT)/backups        (unchanged — correct there)
 //   Windows  %ProgramData%\TicketsCAD\backups   (never a site root on any
@@ -61,7 +61,7 @@
 // only because it is meaningless on a machine that has no IIS.
 //
 // TWO historical locations are kept so nothing an install already wrote is
-// orphaned. Both stay listed and downloadable in Settings → Backup, and pruning
+// orphaned. Both stay listed and downloadable in Settings → Backup / Maintenance, and pruning
 // never touches either. Nothing is moved automatically — that is the operator's
 // decision, and the Status page tells them it needs making:
 //
@@ -474,7 +474,7 @@ function backup_get_history(string $dir): array
     // Match BOTH naming schemes. Manual backups (api/backup.php) are written as
     // 'ticketscad-backup-<date>'; the scheduler (backup_run_now) writes
     // 'ticketscad-<stamp>'. Globbing only the former meant every automatic
-    // backup was invisible in Settings → Backup History — the operator could
+    // backup was invisible in Settings → Backup / Maintenance → Backup History — the operator could
     // not see the copies the product was making on their behalf, which is half
     // of "do I actually have a backup?".
     $files = glob(rtrim($dir, '/\\') . '/ticketscad-*.{zip,gz}', GLOB_BRACE) ?: [];

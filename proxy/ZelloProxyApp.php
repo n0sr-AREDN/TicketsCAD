@@ -13,6 +13,12 @@ use Ratchet\MessageComponentInterface;
 use Ratchet\ConnectionInterface;
 use React\EventLoop\LoopInterface;
 
+// openises/TicketsCAD#28 — wall-clock TTS frame pacing. Kept in a plain,
+// dependency-free file so the arithmetic the proxy actually runs can be
+// exercised by the test suite, which cannot load this class (Ratchet is a
+// composer dependency and CI does not install vendor/).
+require_once __DIR__ . '/tts_pacer.php';
+
 class ZelloProxyApp implements MessageComponentInterface
 {
     /** @var \SplObjectStorage Browser client connections */
@@ -2247,10 +2253,16 @@ class ZelloProxyApp implements MessageComponentInterface
             'text'      => $text,
             'total'     => $total,
             'frame_ms'  => $frameMs,
+            // openises/TicketsCAD#28 — pacing is derived from this wall-clock
+            // origin, never from a count of timer ticks. See pumpTtsFrame().
+            't0'        => microtime(true),
         ];
 
         $self  = $this;
-        $intervalS = max(0.005, $frameMs / 1000.0);
+        // Tick at HALF the frame interval so there is always a tick available
+        // to carry a backlog; how many frames actually go out is decided by the
+        // clock in pumpTtsFrame(), so a faster tick cannot send audio faster.
+        $intervalS = max(0.005, $frameMs / 2000.0);
         $timer = $this->loop->addPeriodicTimer($intervalS, function () use (&$state, $self) {
             $self->pumpTtsFrame($state);
         });
@@ -2261,9 +2273,36 @@ class ZelloProxyApp implements MessageComponentInterface
     }
 
     /**
-     * Gap 1 — emit ONE TTS frame per timer tick onto an open Zello stream;
-     * stop the stream + finalise the outbox row after the last frame.
-     * Public only so the periodic-timer closure can reach it; not a command.
+     * Gap 1 — emit the TTS frames that are DUE by the wall clock onto an open
+     * Zello stream; stop the stream + finalise the outbox row after the last
+     * frame. Public only so the periodic-timer closure can reach it; not a
+     * command.
+     *
+     * openises/TicketsCAD#28 (@rjonesbsink) — this used to send exactly one
+     * frame per timer tick, which is only correct if ticks land on schedule. A
+     * periodic timer is a floor, not a promise. Windows' default timer quantum
+     * is ~15.6 ms, so a 20 ms request rounds up to two quanta. Measured here
+     * against the real React\EventLoop\StreamSelectLoop:
+     *
+     *     nominal 20ms -> mean 31.15ms  median 30.67ms  (1.56x)
+     *     nominal 10ms -> mean 15.32ms  median 15.04ms  (1.53x)
+     *
+     * At one-frame-per-tick that stretches a 608-frame clip (12,160 ms of
+     * audio) to ~19 s of wall time. The receiver is starved between every
+     * frame: modelling buffer occupancy against the measured tick gives 585
+     * underruns across 586 frames — badly choppy, as heard on a live channel.
+     *
+     * Fix: derive how many frames are DUE from the wall clock. Self-correcting
+     * — a late tick emits the backlog and the average rate stays real-time —
+     * and it cannot run fast, because $due comes from the clock, not from us.
+     *
+     * $lead is not optional. Fixing the rate alone measures a clean 1.00x and
+     * still sounds rough, because the receiver starts playing on frame 0 with
+     * nothing buffered and every timer wobble is then an audible gap. Leading
+     * by 100 ms banks a jitter buffer. Larger leads finish progressively early
+     * (0.96x at 500 ms), so stop_stream fires while the receiver still holds
+     * audio and the tail risks clipping; 100 ms is margin without that. The
+     * reporter confirmed the 100 ms value by ear on a real transmission.
      */
     public function pumpTtsFrame(array &$state): void
     {
@@ -2277,14 +2316,28 @@ class ZelloProxyApp implements MessageComponentInterface
             }
 
             if ($state['idx'] < $state['total']) {
-                $frame  = $state['frames'][$state['idx']];
-                $packet = chr(0x01)
-                    . pack('N', $state['stream_id'])
-                    . pack('N', $state['packet_id'])
-                    . $frame;
-                $this->upstream->sendBinary($packet);
-                $state['idx']++;
-                $state['packet_id']++;
+                $frameMs = (int) $state['frame_ms'] ?: 20;
+                // beginTtsStream() is the only thing that builds this state and
+                // it always sets t0. Defaulting anyway because the failure mode
+                // if it ever went missing is silent and bad: (float) null is 0,
+                // which reads as "the stream opened in 1970" and makes every
+                // frame due at once.
+                $t0  = isset($state['t0']) ? (float) $state['t0'] : microtime(true);
+                $due = \zello_tts_frames_due($t0, microtime(true), $frameMs, (int) $state['total']);
+
+                $maxBurst = ZELLO_TTS_MAX_BURST;
+                $sent = 0;
+                while ($state['idx'] < $due && $sent < $maxBurst) {
+                    $frame  = $state['frames'][$state['idx']];
+                    $packet = chr(0x01)
+                        . pack('N', $state['stream_id'])
+                        . pack('N', $state['packet_id'])
+                        . $frame;
+                    $this->upstream->sendBinary($packet);
+                    $state['idx']++;
+                    $state['packet_id']++;
+                    $sent++;
+                }
                 return;
             }
 
@@ -2320,7 +2373,14 @@ class ZelloProxyApp implements MessageComponentInterface
                 'text'            => '🔊 ' . $state['text'],
                 'timestamp'       => date('Y-m-d H:i:s'),
             ]);
-            \plog("[Proxy] TTS outbox #{$state['oid']} streamed {$state['total']} frames (~{$durationMs}ms), stream stopped");
+            // openises/TicketsCAD#28 — the wall-vs-audio ratio is what made the
+            // pacing bug measurable in the field. It should sit at ~1.00x; a
+            // number materially above that means frames are going out slower
+            // than real time and the receiver is underrunning between them.
+            $wallMs = (int) round((microtime(true) - (float) $state['t0']) * 1000.0);
+            $ratio  = $durationMs > 0 ? sprintf('%.2fx', $wallMs / $durationMs) : 'n/a';
+            \plog("[Proxy] TTS outbox #{$state['oid']} streamed {$state['total']} frames "
+                . "(~{$durationMs}ms audio in {$wallMs}ms wall, {$ratio}), stream stopped");
         } catch (\Throwable $e) {
             // Never let a timer tick crash the proxy.
             if (isset($state['timer'])) {
@@ -2502,59 +2562,89 @@ class ZelloProxyApp implements MessageComponentInterface
 
     /**
      * Gap 1 — run a shell command, write $input to stdin, return stdout (binary
-     * safe). Returns null on spawn failure or non-zero exit. Bounded by $timeoutS
-     * so a wedged synth can't block the event loop forever.
+     * safe). Returns null on spawn failure, timeout, or non-zero exit. Bounded
+     * by $timeoutS so a wedged synth can't block the event loop forever.
+     *
+     * openises/TicketsCAD#28 (@rjonesbsink) — this used pipes for all three
+     * descriptors, and **stream_set_blocking() cannot put a proc_open pipe into
+     * non-blocking mode on Windows**: it returns false and the stream stays
+     * blocking (verified on PHP 8.2.4/Windows; reporter saw it on 8.4.22).
+     *
+     * The old loop therefore blocked in fread($pipes[2], 8192) waiting for
+     * stderr bytes that never arrive — Piper writes a few hundred bytes of
+     * startup logging and then nothing until exit — while the child filled the
+     * stdout pipe buffer and blocked writing. Neither side moved. Because the
+     * deadline check sat AFTER those blocking reads it was unreachable and
+     * never fired. Instrumented pre-fix run against a child writing 1 byte of
+     * stderr and 200,000 bytes of stdout, with a 5s guard:
+     *
+     *     after stdout fread:  8192 bytes (0.09s)
+     *     after stderr fread:     1 byte  (0.09s)
+     *     after stdout fread: 16384 bytes (0.11s)
+     *     <wedged — deadline never printed, killed externally at 25s>
+     *
+     * Exactly one pipe buffer captured, the rest lost. And because this runs
+     * inside a ReactPHP loop it froze the WHOLE proxy: no upstream traffic, no
+     * browser clients served, recovery by killing piper.exe by hand.
+     *
+     * The stdin side had the same defect independently — fwrite() of ~527 KB of
+     * raw PCM onto a blocking pipe for the ffmpeg stage.
+     *
+     * Fix: temp files for all three descriptors. Nothing can block on a full
+     * pipe in either direction, so the deadline is reachable and a wedged child
+     * is actually killed. Identical behaviour on POSIX.
      */
     private function runPipe(string $cmd, string $input, int $timeoutS): ?string
     {
+        $tag  = 'zpipe_' . getmypid() . '_' . bin2hex(random_bytes(6));
+        $dir  = rtrim(sys_get_temp_dir(), "/\\") . DIRECTORY_SEPARATOR;
+        $fIn  = $dir . $tag . '.in';
+        $fOut = $dir . $tag . '.out';
+        $fErr = $dir . $tag . '.err';
+
+        $cleanup = static function () use ($fIn, $fOut, $fErr) {
+            foreach ([$fIn, $fOut, $fErr] as $f) { if (@is_file($f)) @unlink($f); }
+        };
+
+        // Stage stdin as a file: the child reads it at its own pace and sees
+        // EOF at the end, with no 527 KB blocking fwrite() on our side.
+        if (@file_put_contents($fIn, $input) === false) {
+            \plog("[Proxy] runPipe: cannot stage stdin at {$fIn}");
+            $cleanup();
+            return null;
+        }
+
         $descriptors = [
-            0 => ['pipe', 'r'],   // stdin
-            1 => ['pipe', 'w'],   // stdout
-            2 => ['pipe', 'w'],   // stderr
+            0 => ['file', $fIn,  'r'],   // stdin
+            1 => ['file', $fOut, 'w'],   // stdout
+            2 => ['file', $fErr, 'w'],   // stderr
         ];
         $proc = @proc_open($cmd, $descriptors, $pipes);
         if (!is_resource($proc)) {
             \plog("[Proxy] runPipe: failed to spawn: {$cmd}");
+            $cleanup();
             return null;
         }
 
-        // Write all input, then close stdin so the child sees EOF.
-        if ($input !== '') {
-            fwrite($pipes[0], $input);
-        }
-        fclose($pipes[0]);
-
-        stream_set_blocking($pipes[1], false);
-        stream_set_blocking($pipes[2], false);
-
-        $stdout = '';
-        $stderr = '';
         $deadline = microtime(true) + $timeoutS;
-        do {
-            $chunk = fread($pipes[1], 65536);
-            if ($chunk !== false && $chunk !== '') $stdout .= $chunk;
-            $errc = fread($pipes[2], 8192);
-            if ($errc !== false && $errc !== '') $stderr .= $errc;
-
+        while (true) {
             $status = proc_get_status($proc);
-            if (!$status['running']) {
-                // Drain any remaining buffered output.
-                while (($chunk = fread($pipes[1], 65536)) !== false && $chunk !== '') $stdout .= $chunk;
-                break;
-            }
+            if (!$status['running']) break;
             if (microtime(true) > $deadline) {
-                \plog("[Proxy] runPipe: timeout, killing: {$cmd}");
+                \plog("[Proxy] runPipe: timeout after {$timeoutS}s, killing: {$cmd}");
                 proc_terminate($proc, 9);
-                fclose($pipes[1]); fclose($pipes[2]);
                 proc_close($proc);
+                $cleanup();
                 return null;
             }
             usleep(5000);
-        } while (true);
-
-        fclose($pipes[1]);
-        fclose($pipes[2]);
+        }
         $exit = proc_close($proc);
+
+        $stdout = (string) @file_get_contents($fOut);
+        $stderr = (string) @file_get_contents($fErr);
+        $cleanup();
+
         if ($exit !== 0) {
             \plog("[Proxy] runPipe: exit {$exit}: " . trim(substr($stderr, 0, 300)));
             return null;

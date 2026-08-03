@@ -53,7 +53,7 @@ These run on cron or systemd timers. Set up in [INSTALLATION-CHECKLIST.md § Sec
 > bug — a dead scheduler that looked configured becomes a live one that looks
 > dead — and sends you fixing something that works.
 >
-> **Settings → Status → File & Code Health → Scheduled background jobs** now
+> **Settings → System Health → File & Code Health → Scheduled background jobs** now
 > shows the last successful run of each job and turns red when one stops or
 > has never started. It reads the `scheduled_job_runs` heartbeat, which the tick
 > writes itself, so it cannot report a run that did not happen. Check there
@@ -143,7 +143,7 @@ If **no** scheduler is installed, the software does not silently stop notifying
 anybody: the request still queues the notification and then makes one
 best-effort attempt, bounded by a 3-second budget and paused for 60 seconds
 after two consecutive failures. But that is a fallback, not the design.
-Settings → Status → Scheduled jobs will say so, in red.
+Settings → System Health → Scheduled jobs will say so, in red.
 
 Install and prove them:
 
@@ -283,7 +283,7 @@ The counts should match what's in production (allow for what changed between bac
 
 ### 3. Audit log review for anomalies
 
-Settings → Audit & Compliance → Audit Log. Filter by:
+Settings → Audit Log. Filter by:
 
 - Category = `security`, status = `failure` → failed logins, bad CSRF tokens, lockouts
 - Category = `admin` → role/grant changes (any new super-admin grants since last week?)

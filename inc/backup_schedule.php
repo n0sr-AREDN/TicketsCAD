@@ -143,7 +143,7 @@ function backup_retention_count(): int {
  *   4. A historical location that already exists, when step 3 is impossible —
  *      some shared hosting gives the account no writable directory outside the
  *      web root at all. Backing up to a served directory is bad; NOT backing up
- *      is worse, and this path is reported as a failure on Settings → Status
+ *      is worse, and this path is reported as a failure on Settings → System Health
  *      with the fix, plus backup_harden_dir() drops deny rules beside the
  *      archives.
  *   5. BACKUP_DIR, so the failure message names the directory we actually want.
@@ -185,9 +185,10 @@ function backup_dir_creatable(string $dir): bool {
  * than a single constant. v4.2.3's `dirname(NEWUI_ROOT)/backups` is correct on
  * POSIX and lands inside C:\inetpub\wwwroot on a stock Windows/IIS install, so
  * a Windows install that ran 4.2.3 has archives in a directory this version no
- * longer writes to. Forgetting it would orphan them: absent from Settings →
- * Backup, absent from the Status page, and still downloadable by anyone on port
- * 80. They must stay visible precisely BECAUSE that location is wrong.
+ * longer writes to. Forgetting it would orphan them: absent from the
+ * Settings → Backup / Maintenance list, absent from the System Health page, and
+ * still downloadable by anyone on port 80. They must stay visible precisely
+ * BECAUSE that location is wrong.
  */
 function backup_legacy_dirs(): array {
     $cur  = rtrim(str_replace('\\', '/', BACKUP_DIR), '/');
@@ -678,7 +679,7 @@ function backup_run_now(?string $dir = null, bool $skipGuard = false): array {
     $dir = $dir ?: backup_dir();
     if (!is_dir($dir) && !@mkdir($dir, 0750, true) && !is_dir($dir)) {
         $msg = 'cannot create backup directory: ' . $dir
-             . ' (create it yourself, or set a different one in Settings → Backup)';
+             . ' (create it yourself, or set a different one in Settings → Backup / Maintenance)';
         backup_setting_set('backup_last_status', 'failed: ' . $msg);
         return ['ok' => false, 'path' => null, 'detail' => $msg];
     }

@@ -2037,7 +2037,7 @@
         if (!el || typeof L === 'undefined') return;
 
         // Pull default center from saved settings. The Map Settings panel
-        // (Settings → Maps & Places → Map Defaults) writes default_lat,
+        // (Settings → Map Settings) writes default_lat,
         // default_lng, and default_zoom — same keys read by the Map
         // Settings preview at initMapDefaultsPreview() and by the rest
         // of config.js's map initializers. The earlier version of this

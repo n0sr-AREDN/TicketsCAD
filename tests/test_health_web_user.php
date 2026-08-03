@@ -224,8 +224,12 @@ test('an undetermined account is reported as such, with no name invented',
 // question becomes answerable); on a system with no POSIX account model it
 // cannot, whatever name is supplied, so it must not be offered there.
 $remedy = _health_undetermined_remedy();
+// It must name the menu item as the reader will see it. This asserted
+// 'Status' until 2026-08-03, which passed for as long as the remedy sent
+// people to a menu item that does not exist; the label is System Health.
+// tests/test_doc_navigation_labels.php is what keeps that honest now.
 test('the remedy always points at the browser, which needs to work nothing out',
-    stripos($remedy, 'Status') !== false);
+    stripos($remedy, 'System Health') !== false, substr($remedy, 0, 80));
 if (function_exists('posix_getpwnam')) {
     test('on a POSIX host the remedy offers NEWUI_WEB_USER, which does resolve there',
         strpos($remedy, 'NEWUI_WEB_USER') !== false);

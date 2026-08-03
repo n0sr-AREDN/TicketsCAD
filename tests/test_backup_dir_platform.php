@@ -172,8 +172,8 @@ test('Windows remediation warns off C:\\inetpub\\wwwroot by name',
 // needs no shell, and it is the only line that is right on every server.
 foreach (['windows' => $winText, 'posix' => $nixText] as $k => $txt) {
     test("[$k] remediation leads with the backup_dir setting, not a shell command",
-        strpos($txt, 'Settings → Backup') !== false
-        && strpos($txt, 'Settings → Backup') < 120,
+        strpos($txt, 'Settings → Backup / Maintenance') !== false
+        && strpos($txt, 'Settings → Backup / Maintenance') < 120,
         substr($txt, 0, 80));
     test("[$k] remediation points at the advisory",
         strpos($txt, 'advisory-2026-07-30-exposed-directories.md') !== false);
@@ -426,7 +426,7 @@ if (DIRECTORY_SEPARATOR === '\\') {
     test('on Windows the v4.2.3 sibling is treated as a THIRD legacy location',
         in_array($n(BACKUP_DIR_LEGACY_SIBLING), $legacy, true),
         'an install that ran 4.2.3 has archives there; dropping it hides them '
-        . 'from Settings → Backup while leaving them downloadable on port 80');
+        . 'from Settings → Backup / Maintenance while leaving them downloadable on port 80');
 } else {
     test('on POSIX the sibling IS the current default, so it is not listed twice',
         !in_array($n(BACKUP_DIR), $legacy, true));

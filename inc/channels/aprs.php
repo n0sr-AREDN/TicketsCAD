@@ -51,7 +51,7 @@ function _aprs_send(array $message): array {
     if ($from === '' || $passcode <= 0) {
         return [
             'success' => false,
-            'error'   => 'APRS-IS send is not configured. Set aprs_send_callsign + aprs_send_passcode in Settings → Communications → APRS.',
+            'error'   => 'APRS-IS send is not configured. Set aprs_send_callsign + aprs_send_passcode in Settings → Communications & Integrations → APRS.',
         ];
     }
 

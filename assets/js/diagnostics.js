@@ -95,8 +95,31 @@
         setTimeout(function () {
             if (done) return;
             var st = es ? es.readyState : -1;
+            // openises/TicketsCAD#29 (@rjonesbsink) — this used to blame a proxy
+            // or firewall for every timeout. readyState 0 is CONNECTING: the
+            // request was accepted and NO headers ever arrived, so there is no
+            // HTTP status code at all. That is a different condition from a 502,
+            // and the proxy/firewall story has no evidence behind it. The
+            // reporter worked through proxy and firewall theories first because
+            // that is what this text told him to check; the actual cause was the
+            // server having no free worker to answer with.
+            if (st === 0) {
+                finish('warn', 'The live-update stream was accepted but never answered.',
+                    'EventSource.readyState=0 (CONNECTING) after 9s — no headers arrived, so there is no HTTP status code to read. '
+                    + 'That points at the server having no free slot to answer, rather than at a proxy or firewall (either of those would normally give you a status code or close the connection). '
+                    + 'Check concurrent connection limits first: this page holds its own stream open on top of the one the navbar already runs, so a single tab needs two long-lived slots plus one for every ordinary request. '
+                    + 'IIS on a Windows CLIENT edition is capped low regardless of configuration — 3 concurrent requests on Windows 11 Home — which two streams exhaust on their own; see docs/INSTALL-WINDOWS-IIS.md. '
+                    + 'Also check PHP-FPM pm.max_children / IIS maxInstances. If the server has capacity to spare, then look at a proxy or firewall holding the long-lived connection.');
+                return;
+            }
+            if (st === 1) {
+                finish('warn', 'The live-update stream is open but has sent nothing yet.',
+                    'EventSource.readyState=1 (OPEN) after 9s — headers arrived, so the server answered, but no event has come through. '
+                    + 'Something between here and PHP is buffering the response: check output buffering / gzip on the stream, or a proxy that is not passing chunked output straight through.');
+                return;
+            }
             finish('warn', 'No response yet from the live-update stream.',
-                'EventSource.readyState=' + st + ' after 9s. If it stays like this, a proxy or firewall is likely blocking the long-lived connection.');
+                'EventSource.readyState=' + st + ' after 9s. If it stays like this, a proxy or firewall may be blocking the long-lived connection.');
         }, 9000);
     }
 
@@ -110,10 +133,10 @@
 
         put('diagPush', f.enabled ? 'ok' : 'bad',
             f.enabled ? 'Push is enabled on the server.' : 'Push is turned OFF on the server.',
-            f.enabled ? '' : 'An admin enables it under Settings → Notifications.');
+            f.enabled ? '' : 'An admin enables it under Settings → Web Push Notifications.');
         put('diagPush', f.vapid_configured ? 'ok' : 'bad',
             f.vapid_configured ? 'Server push keys (VAPID) are configured.' : 'Server push keys (VAPID) are missing.',
-            f.vapid_configured ? '' : 'An admin generates them under Settings → Notifications.');
+            f.vapid_configured ? '' : 'An admin generates them under Settings → Web Push Notifications.');
         if (f.routes && f.routes.length) {
             var routeTxt = f.routes.map(function (r) { return (r.enabled ? '✓ ' : '✗ ') + r.name; }).join('   ');
             put('diagPush', f.any_enabled_route ? 'ok' : 'warn',
@@ -244,10 +267,10 @@
                 : 'Start the Zello proxy (systemd service newui-zello-proxy, or proxy/start-proxy.sh). Until it runs, the widget can never stay connected.');
         put('diagZello', f.creds_present ? 'ok' : 'warn',
             f.creds_present ? 'Zello credentials are configured.'
-                : 'Zello username + password/token not fully set (Settings → Communications → Zello).', '');
+                : 'Zello username + password/token not fully set (Settings → Communications & Integrations → Zello).', '');
         put('diagZello', f.channel_present ? 'ok' : 'warn',
             f.channel_present ? 'A Zello channel / network is configured.'
-                : 'No Zello channel/network set (Settings → Communications → Zello).', '');
+                : 'No Zello channel/network set (Settings → Communications & Integrations → Zello).', '');
 
         // Leg 2 — can this browser reach the proxy through the web server? THE flap culprit.
         var isHttps = window.location.protocol === 'https:';
@@ -276,8 +299,13 @@
         };
         setTimeout(function () {
             if (done) { return; }
+            // openises/TicketsCAD#29 — same correction as the SSE check above:
+            // readyState 0 means nothing came back at all, which a saturated
+            // web server produces just as readily as a proxy does.
             finish('warn', 'No response yet from the radio connection.',
-                'readyState=' + (sock ? sock.readyState : -1) + ' after 8s — a proxy/firewall is likely blocking the WebSocket upgrade to ' + url + '.');
+                'readyState=' + (sock ? sock.readyState : -1) + ' after 8s with no reply from ' + url + '. '
+                + 'Either a proxy/firewall is blocking the WebSocket upgrade, or the web server has no free slot to handle it — '
+                + 'if the live-update check above also timed out at readyState=0, suspect concurrency before the network.');
         }, 8000);
     }
 

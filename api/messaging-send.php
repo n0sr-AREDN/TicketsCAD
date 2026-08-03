@@ -112,7 +112,7 @@ global $_broker_channels;
 if (!isset($_broker_channels[$channel])) {
     http_response_code(400);
     echo json_encode([
-        'error' => "Channel '{$channel}' is not configured. Check Settings → Communications.",
+        'error' => "Channel '{$channel}' is not configured. Check Settings → Communications & Integrations.",
     ]);
     exit;
 }

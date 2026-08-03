@@ -2,7 +2,7 @@
 
 **Audience:** admins configuring message routing rules, developers extending the engine.
 **Implementation:** [`inc/router.php`](../inc/router.php).
-**UI:** Settings → Communications → Message Routing.
+**UI:** Settings → Communications & Integrations → Message Routing.
 
 The routing engine forwards messages between [channels](GLOSSARY.md#channel) using user-configured rules. Voice transcripts from DMR, mesh chat, SMS, Slack, internal chat, and HTTP webhooks all flow through the same [broker](GLOSSARY.md#broker), so a single routing rule can bridge any combination.
 
@@ -305,7 +305,7 @@ Routes to a stub channel will log `failed` in the routing log with reason `not_i
 Before enabling a rule, test it against synthesised inputs:
 
 ```php
-// Settings → Communications → Message Routing → row → Test
+// Settings → Communications & Integrations → Message Routing → row → Test
 // Or via API:
 POST /api/routing.php
 {
@@ -355,7 +355,7 @@ Every evaluation writes a row to `routing_log`:
 | `error` | Free-text reason on failure |
 | `summary` | Short human-readable description |
 
-View it in **Settings → Communications → Message Routing → Activity Log**.
+View it in **Settings → Communications & Integrations → Message Routing → Activity Log**.
 
 Useful queries:
 
@@ -483,7 +483,7 @@ treat inbound routing as unavailable rather than as configuration you got wrong.
 | Broker | [`inc/broker.php`](../inc/broker.php) |
 | Channel adapters | [`inc/channels/*.php`](../inc/channels/) |
 | Admin API | [`api/routing.php`](../api/routing.php) |
-| Admin UI | Settings → Communications → Message Routing in [`settings.php`](../settings.php) |
+| Admin UI | Settings → Communications & Integrations → Message Routing in [`settings.php`](../settings.php) |
 | Schema migration | [`sql/run_routing.php`](../sql/run_routing.php) |
 | Tests | [`tests/test_routing.php`](../tests/test_routing.php) (41 tests) |
 

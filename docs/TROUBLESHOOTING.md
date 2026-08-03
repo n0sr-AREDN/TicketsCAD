@@ -351,7 +351,7 @@ Start MySQL again. If it then names a *different* system table (`tables_priv`, `
 
 **If none of that works, you still don't lose your data.** Your incident data is in `C:\xampp\mysql\data`, and (per the log above) InnoDB reads it fine, so it can be recovered onto a fresh install. Moving InnoDB data files across installs correctly is fiddly and easy to get wrong, so **make a copy of the whole `C:\xampp\mysql\data` folder first**, then reach out — that copy guarantees the data is safe, and the exact restore steps depend on your setup.
 
-**Prevent it:** always click **Stop** on MySQL (and Apache) in the XAMPP Control Panel **before** shutting the computer down — a hard power-off with MySQL running is the usual trigger. And turn on TicketsCAD's backups (Settings → Backup) so a bad day is a quick restore instead of a rescue.
+**Prevent it:** always click **Stop** on MySQL (and Apache) in the XAMPP Control Panel **before** shutting the computer down — a hard power-off with MySQL running is the usual trigger. And turn on TicketsCAD's backups (Settings → Backup / Maintenance) so a bad day is a quick restore instead of a rescue.
 
 **On Linux**, the equivalents are `sudo systemctl status mariadb` and `journalctl -u mariadb -n 50` for the real error, `sudo ss -ltnp | grep 3306` for the port, and `/var/log/mysql/error.log` for the startup log.
 
@@ -521,7 +521,7 @@ ini_set('session.cookie_secure', '1');   // required when SameSite=None
    - Start MySQL, then **immediately export** the `newui` database — phpMyAdmin → Export, or `mysqldump newui > newui-rescue.sql`. This is the rescue of your data.
    - Remove the `innodb_force_recovery` line, restart MySQL, drop and recreate a clean `newui` database, and import `newui-rescue.sql`.
 
-**Prevent it:** always **Stop** MySQL (and Apache) in the XAMPP Control Panel before shutting the machine down. A hard power-off with MySQL running is the usual cause. Regular backups (Settings → Backup, or `mysqldump`) turn even a total loss into a quick restore — see [BACKUP-RECOVERY-RUNBOOK.md](BACKUP-RECOVERY-RUNBOOK.md).
+**Prevent it:** always **Stop** MySQL (and Apache) in the XAMPP Control Panel before shutting the machine down. A hard power-off with MySQL running is the usual cause. Regular backups (Settings → Backup / Maintenance, or `mysqldump`) turn even a total loss into a quick restore — see [BACKUP-RECOVERY-RUNBOOK.md](BACKUP-RECOVERY-RUNBOOK.md).
 
 **If MySQL won't even start or stay running** (the XAMPP panel says "MySQL shutdown unexpectedly"), that's a separate problem — see [MySQL / MariaDB won't start or won't stay running](#mysql-wont-start).
 
@@ -590,7 +590,7 @@ Note that both can be true at once: Street and Terrain proxy, while Dark, Light
 and Satellite always go direct because CARTO's and Esri's terms do not permit
 proxying. See [SECURITY.md § Map tiles: proxy vs direct](../SECURITY.md#map-tiles-proxy-vs-direct).
 
-**Fix A:** Settings → Maps & Tracking → Tile Providers. Use a different provider
+**Fix A:** Settings → Tile Providers. Use a different provider
 or supply the key.
 
 **Fix B (provider rejecting you):** set a contactable **Proxy User-Agent** in
@@ -625,6 +625,52 @@ it is a trade, not a free fix.
 **Diagnostic:** browser devtools → Console. Look for `EventSource failed`. Reload the page.
 
 **Fix:** the indicator goes green within 5 s of page load if SSE is healthy. If not, look at the response code on the `/api/stream.php` request — 401 means auth issue, 500 means server error, 502/504 means a proxy upstream killed the connection (raise the proxy's read timeout to 360 s).
+
+**If there is no response code at all, none of that applies** — see Cause C. Every
+branch of the decision tree above assumes the server answered.
+
+**Cause C:** the web server has no free worker to answer with. The request was
+accepted and never served.
+
+**Diagnostic:** in devtools → Network the `/api/stream.php` request sits pending
+with no status, and `EventSource.readyState` stays at `0` (CONNECTING) rather
+than going to `2` (CLOSED). The Diagnostics page — navbar user menu →
+Diagnostics — reports *"The live-update stream was accepted but never
+answered."* Alongside it the rest of the UI is
+intermittently slow in a way that correlates with nothing — on the reported
+install the same `api/par.php` measured **63 ms** idle and **23,194 ms** a minute
+later. A 502 and "no reply at all" are genuinely different conditions; only this
+one has no status code.
+
+**Why a single tab needs two slots:** `inc/navbar.php` loads
+`assets/js/event-bus.js` on every page, which opens one `EventSource` to
+`api/stream.php`, and `assets/js/diagnostics.js` opens a second one to the same
+endpoint. Each is held server-side for `$maxRuntime` and reconnected
+immediately, so on the diagnostics page one connection is the navbar's, one is
+the check's, and everything else the page does has to fit in what is left — the
+check competes with the thing it is checking. (HTTP/1.1 also allows only six
+connections per origin, so two streams spend a third of the browser's budget for
+that origin before any ordinary request goes out. Worth knowing before adding a
+feature that opens its own stream.)
+
+**Fix:** raise the server's concurrent-request capacity, or hold fewer
+connections open.
+
+- **IIS on a Windows *client* edition is capped by the OS, not by your
+  configuration.** Windows 11 Home allows **3** concurrent requests — which two
+  SSE streams exhaust on their own, leaving one slot for the whole application.
+  `maxInstances`, `maxConnections`, CPU count and the number of `php-cgi.exe`
+  processes make no difference to it. See
+  [INSTALL-WINDOWS-IIS.md § 6](INSTALL-WINDOWS-IIS.md#6-windows-client-editions-cap-concurrent-requests).
+- **PHP-FPM:** raise `pm.max_children`. A long-lived stream occupies one child
+  for its entire lifetime.
+- **Apache prefork:** raise `MaxRequestWorkers`, same reasoning.
+
+**Measure the ceiling rather than assuming it.** Fire N requests that each sleep
+6 s and time the batch: N=8 finishing in ~6 s means the ceiling is at least 8,
+~12 s means 4, ~18 s means 3, ~24 s means 2.
+
+Reported by @rjonesbsink ([#29](https://github.com/openises/TicketsCAD/issues/29)).
 
 ---
 
@@ -736,7 +782,7 @@ FROM ticket WHERE status = 2 ORDER BY id DESC;
 
 ### smtp-send-fails-empty-error
 
-**Symptom:** Settings → Email → Test Email returns `"Email failed: Send failed: — check your SMTP settings."` with NOTHING between `Send failed:` and the em-dash. SMTP host + port + encryption + From-address all populated correctly. Auth-less Gmail Workspace SMTP relay (no `smtp_user` + `smtp_pass`).
+**Symptom:** Settings → Email Configuration → Test Email returns `"Email failed: Send failed: — check your SMTP settings."` with NOTHING between `Send failed:` and the em-dash. SMTP host + port + encryption + From-address all populated correctly. Auth-less Gmail Workspace SMTP relay (no `smtp_user` + `smtp_pass`).
 
 **Cause:** Gmail Workspace's SMTP relay service accepted the connection, accepted EHLO, accepted STARTTLS, accepted MAIL FROM + RCPT TO + DATA + the body — then silently closed the connection after the body without returning a 250 response. The `inc/channels/smtp.php` handler reads the post-body response as the empty string and renders `"Send failed: "`. Almost always means Gmail's relay rejected the sender for policy reasons. Most common policy mismatch: **your server has dual-stack networking (IPv4 + IPv6) and the IPv6 outbound address isn't on the relay's allowed-IPs list**, even though IPv4 is. Gmail's relay rejects silently rather than returning a reason. Reported by beta tester a beta tester 2026-06-26.
 
@@ -748,7 +794,7 @@ curl -s -4 https://ifconfig.me   # your IPv4
 curl -s -6 https://ifconfig.me   # your IPv6 (if any)
 ```
 
-Then in admin.google.com → Apps → Google Workspace → Gmail → Routing → SMTP relay service → your relay entry → Allowed senders / Only accept mail from the specified IP addresses, add BOTH the IPv4 and IPv6 outputs from above. After saving in the Google admin console, retry Settings → Email → Test Email — should now succeed.
+Then in admin.google.com → Apps → Google Workspace → Gmail → Routing → SMTP relay service → your relay entry → Allowed senders / Only accept mail from the specified IP addresses, add BOTH the IPv4 and IPv6 outputs from above. After saving in the Google admin console, retry Settings → Email Configuration → Test Email — should now succeed.
 
 **Other policy-mismatch causes worth checking** if both IPs are whitelisted and you still get the empty error: the relay's sender-restriction radio is set to "Only addresses I've explicitly listed" but your From address (`email_from` setting) isn't on that list, OR your relay entry has TLS-required selected but your server's outbound TLS cert isn't trusted by Google. Both fix in the same admin panel.
 
@@ -779,7 +825,7 @@ This DROPs the legacy `chat_messages` and `messages` tables (which were empty an
 
 **Fix:** mint a per-member token (Settings → User Accounts → row → OwnTracks → Mint Token) and configure it in the OwnTracks phone app under Settings → Connection → Auth (username = member username, password = token).
 
-**Cause B:** the shared secret is misconfigured. Settings → Maps & Tracking → OwnTracks → confirm `owntracks_secret` matches what the device is sending.
+**Cause B:** the shared secret is misconfigured. Settings → OwnTracks Defaults → confirm `owntracks_secret` matches what the device is sending.
 
 **Cause C (rate limit):** Phase 73x rate-limits ingest at 600 posts/min/IP. If a NAT gateway is multiplexing many devices, you may hit the cap. Raise the cap or proxy from per-device IPs.
 
@@ -932,12 +978,17 @@ FLUSH PRIVILEGES;
 
 **Cause:** `audit_log` and `location_reports` grow rapidly. Both are configured to retain a year by default.
 
-**Fix:** trim retention in Settings → Audit & Compliance:
+**Fix:** only one of the two is configurable.
 
-- audit_log retention → reduce from 365 days to e.g. 180 days (CJIS minimum is 365 days, so verify your compliance requirements first)
-- location_reports → reduce from 90 days to e.g. 30 days
+- `location_reports` — **Settings → Location History Retention** → reduce from
+  90 days to e.g. 30 days.
+- `audit_log` — **there is no retention setting**, and no trim job. Corrected
+  2026-08-03: this entry used to send you to an "Audit & Compliance" settings
+  panel to shorten it. No such panel, and no such control, has ever existed.
+  The table simply grows.
 
-Then trim the existing rows once (no dedicated trim script exists yet — run as SQL):
+Trim the existing rows by hand (CJIS deployments must keep at least 365 days of
+audit log — verify your compliance requirements before shortening it):
 
 ```bash
 sudo mariadb newui -e "DELETE FROM audit_log WHERE created_at < NOW() - INTERVAL 180 DAY;"

@@ -459,8 +459,8 @@
     }
 
     // Phase 8b: the in-panel "Add Language" prompt-dialog was retired in
-    // favour of the dedicated Languages admin (Settings → App Preferences
-    // → Languages), which exposes display name, native name, sort order,
+    // favour of the dedicated Languages admin (Settings → Languages),
+    // which exposes display name, native name, sort order,
     // enable/default flags, and completeness % — none of which fit in a
     // prompt() chain. The Translations panel now treats the language list
     // as read-only; columns appear/disappear based on what the registry

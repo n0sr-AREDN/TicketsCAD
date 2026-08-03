@@ -169,8 +169,8 @@ sudo find . -path ./.git -prune -o -type f -exec chmod 0644 {} \;
 sudo chown -R www-data:www-data uploads/ cache/
 
 # backups/ is gitignored and created on first use. It is written BOTH by
-# `php tools/backup_run.php` on the CLI (as you) and by Settings → Backup /
-# the cron entry (as www-data) — so share it rather than handing it over:
+# `php tools/backup_run.php` on the CLI (as you) and, as www-data, by the cron
+# entry and Settings → Backup / Maintenance — so share it, don't hand it over:
 mkdir -p backups
 sudo chown -R "$(id -un)":www-data backups/
 sudo chmod 2770 backups/
@@ -248,7 +248,7 @@ work on Apache**:
 
 Full instructions, and a three-command test to confirm it worked, are in
 [`docs/WEB-SERVER-HARDENING.md`](WEB-SERVER-HARDENING.md). TicketsCAD also runs
-that test against itself and reports it on Settings → Status.
+that test against itself and reports it on Settings → System Health.
 
 ---
 
@@ -342,11 +342,11 @@ You should be able to do all of these on a clean install:
 - [ ] The private directories are NOT served — each of these prints `403` or `404`, never `200`:
       `for p in sql/run_migrations.php tools/; do curl -s -o /dev/null -w "$p %{http_code}\n" https://your.host.name/$p; done`
 - [ ] Backup archives are NOT served. Ask for one **by name** (filenames are in
-      Settings → Backup); requesting `/backups/` does not answer this, because a
+      Settings → Backup / Maintenance); requesting `/backups/` does not answer this, because a
       `403` on the folder is what a server with directory listing off returns
       while it serves every file inside:
       `curl -s -o /dev/null -w "archive %{http_code}\n" https://your.host.name/backups/ticketscad-20260728-020000.zip`
-      (Settings → Status shows the same checks under "Web exposure".)
+      (Settings → System Health shows the same checks under "Web exposure".)
 - [ ] `journalctl -u apache2 --since "10 min ago" | grep -iE "error|warn"` is quiet
 
 ---
@@ -359,7 +359,7 @@ You should be able to do all of these on a clean install:
 | 500 on every page | PHP can't connect to DB, OR a required extension is missing | `sudo tail /var/log/apache2/newui-error.log`; check `php -m`; verify `config.php` |
 | Yellow banner: "Database migrations pending" | New code was deployed but `sql/run_migrations.php` wasn't run | Run the orchestrator; banner clears |
 | "No SMTP transport" when sending test email | SMTP settings empty OR `inc/channels/smtp.php` not loaded | Verify settings are in DB (`SELECT * FROM settings WHERE name LIKE 'smtp%'`); restart Apache |
-| **Notifications aren't delivered** — browsers subscribe, but no push ever arrives | The `minishlink/web-push` PHP library isn't installed. `vendor/` is gitignored, so a deploy that skipped (or failed) `composer install` has push enabled but nothing to send with. | Run `composer install --no-dev --optimize-autoloader` in the install dir, then reload Apache. Confirm on the **Diagnostics** page (Help → Diagnostics → *Web Push library: loaded*) or **Settings → Web Push** (the red banner clears). **Shared hosting without Composer/SSH:** run `composer install` on any machine that has PHP+Composer, then upload the resulting `vendor/` directory to the install dir. |
+| **Notifications aren't delivered** — browsers subscribe, but no push ever arrives | The `minishlink/web-push` PHP library isn't installed. `vendor/` is gitignored, so a deploy that skipped (or failed) `composer install` has push enabled but nothing to send with. | Run `composer install --no-dev --optimize-autoloader` in the install dir, then reload Apache. Confirm on the **Diagnostics** page (Help → Diagnostics → *Web Push library: loaded*) or **Settings → Web Push Notifications** (the red banner clears). **Shared hosting without Composer/SSH:** run `composer install` on any machine that has PHP+Composer, then upload the resulting `vendor/` directory to the install dir. |
 | Radio button missing from nav | `action.dmr_receive` permission missing from the user's role, OR DMR not enabled | RBAC → Roles → grant `action.dmr_receive`; see RADIO-DMR-INSTALL.md |
 | Map blank | Default tile provider unreachable, OR `def_lat/def_lng` unset | Config → Map → set a known tile provider |
 

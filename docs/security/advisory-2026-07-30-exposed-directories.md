@@ -104,7 +104,7 @@ curl -s -o /dev/null -w 'tools %{http_code}\n' https://your-site/tools/
 ```
 
 **2. Your backups — ask for an actual archive, by name.** Get a filename from
-**Settings → Backup**, which lists every archive this install has written (or
+**Settings → Backup / Maintenance**, which lists every archive this install has written (or
 look in the backup folder on the server). Then:
 
 ```bash
@@ -117,7 +117,7 @@ Substitute a real filename. **Do not shorten this to a request for
 you whether files are served.
 
 If you have never taken a backup, there is no file to ask for. Take one
-(Settings → Backup → "Back up now"), then run the check. Until you do, this
+(Settings → Backup / Maintenance → "Back up now"), then run the check. Until you do, this
 is untested, not safe — and from v4.2.4 the Status page says exactly that
 instead of showing a green tick.
 
@@ -135,7 +135,7 @@ instead of showing a green tick.
 If your site is `http://` rather than `https://`, use that instead.
 
 From **v4.2.3 onward TicketsCAD runs these checks against itself** and reports
-the answer on **Settings → Status**, in the "Web exposure" row. From **v4.2.4
+the answer on **Settings → System Health**, in the "Web exposure" row. From **v4.2.4
 the backups probe asks for a named archive** — or, when there is no archive
 yet, writes a small random self-test file into the folder and asks for that
 back. If it can do neither, the row reads grey **"Not determined"** rather than
@@ -216,7 +216,7 @@ One check before you run it: `..` must not itself be published. If your install
 is at `/var/www/html/ticketscad`, then `..` is `/var/www/html` — the stock
 Apache DocumentRoot — and you would be moving the archives from one served
 folder to another. Use a directory outside the site entirely, e.g.
-`/var/backups/ticketscad`, and set **Settings → Backup → Backup folder** to it.
+`/var/backups/ticketscad`, and set **Settings → Backup / Maintenance → Backup folder** to it.
 
 **Windows / IIS:** do **not** use the Linux commands above, and do not use `..`.
 On a stock IIS install the application is at `C:\inetpub\wwwroot\<YourSite>`, so
@@ -231,14 +231,14 @@ Move-Item -Path 'C:\inetpub\wwwroot\<YourSite>\backups\ticketscad-*' `
 icacls 'C:\ProgramData\TicketsCAD\backups' /grant 'IIS AppPool\<YourPool>:(OI)(CI)M'
 ```
 
-Then set **Settings → Backup → Backup folder** to
+Then set **Settings → Backup / Maintenance → Backup folder** to
 `C:\ProgramData\TicketsCAD\backups`. `C:\inetpub\backups` is equally safe if you
 would rather keep the archives on the same volume as the site — the point is
 only that it must not be inside any site's physical path.
 
 From v4.2.4 that is where TicketsCAD keeps them by default on each platform
 (`../backups` on Linux, `%ProgramData%\TicketsCAD\backups` on Windows), and the
-**Settings → Backup → Backup folder** setting overrides both.
+**Settings → Backup / Maintenance → Backup folder** setting overrides both.
 
 ---
 
@@ -250,7 +250,7 @@ Four independent layers, because no single one covers every install:
    sibling of the install folder, so no web server configuration can serve them.
    Archives already in the old location are left where they are (nothing is
    deleted or moved for you), they stay listed and downloadable in
-   Settings → Backup, and the Status page tells you to move them.
+   Settings → Backup / Maintenance, and the Status page tells you to move them.
 
    > **Windows and IIS operators: `../backups` was the wrong destination on your
    > platform, and v4.2.4 corrects it.** `..` is above the web root on a Linux
@@ -268,7 +268,7 @@ Four independent layers, because no single one covers every install:
    >
    > From v4.2.4 the default is `%ProgramData%\TicketsCAD\backups` on Windows
    > and unchanged on Linux; archives v4.2.3 left in `..\backups` stay listed in
-   > Settings → Backup and are reported as Critical with the reason, instead of
+   > Settings → Backup / Maintenance and are reported as Critical with the reason, instead of
    > being silently orphaned; and the Status page now verifies the **destination**
    > — including from the default ports, where another site answers — and states
    > in plain words what its probe cannot see.
@@ -292,7 +292,7 @@ Four independent layers, because no single one covers every install:
    them now answer `403 CLI only` and stop before touching the database. This is
    the layer that works on any web server in any configuration, including one
    where no deny rules were ever installed.
-4. **The install checks itself** — Settings → Status probes the three paths over
+4. **The install checks itself** — Settings → System Health probes the three paths over
    HTTP on every visit and shows a red banner if any of them answers.
 
 An nginx configuration snippet ships at `docs/nginx/ticketscad-hardening.conf`,
@@ -331,7 +331,7 @@ crawlers count — a crawler that fetched the file may have cached it.
    if `inc/db.php` was also reachable.
 4. **Rotate any integration credentials** stored in settings — SMTP, SMS/Twilio,
    Slack, Zello, APRS-IS passcodes, webhook secrets, API tokens.
-5. **Review the audit log** (Settings → Audit) for logins or changes you cannot
+5. **Review the audit log** (Settings → Audit Log) for logins or changes you cannot
    account for.
 6. **Consider your notification duties.** The archive may contain personal
    information about members and about the public — names, addresses, phone

@@ -31,7 +31,7 @@ no instruction had to be followed.
 
 ## Why nothing reported it
 
-The Settings → Status exposure check probes only the URL TicketsCAD itself is
+The Settings → System Health exposure check probes only the URL TicketsCAD itself is
 served on. An archive published by a *different* site on a *different* port is
 outside everything it looks at, so it reported the install healthy — for
 precisely the installs that were affected.
@@ -73,7 +73,7 @@ destination that is published on Windows.
 
 **Do not test this by requesting the folder.** A `403` there proves nothing.
 
-1. Get a real archive filename from **Settings → Backup**.
+1. Get a real archive filename from **Settings → Backup / Maintenance**.
 2. Request that file from every site and port your server publishes — not only
    the one TicketsCAD runs on. On IIS, `appcmd list site` (from
    `C:\Windows\System32\inetsrv`) lists them with their physical paths.
@@ -98,12 +98,12 @@ New-Item -ItemType Directory -Force C:\ProgramData\TicketsCAD\backups
 Move-Item .\backups\ticketscad-* C:\ProgramData\TicketsCAD\backups\
 ```
 
-Then set **Settings → Backup → Backup folder** to that path. Setting it there is
+Then set **Settings → Backup / Maintenance → Backup folder** to that path. Setting it there is
 what actually changes where future backups are written, and it needs no shell.
 
 Upgrading to **4.2.4** makes `%ProgramData%\TicketsCAD\backups` the default on
 Windows and leaves existing archives where they are — nothing is moved or
-deleted for you — while listing them in Settings → Backup and telling you on the
+deleted for you — while listing them in Settings → Backup / Maintenance and telling you on the
 Status page if they are in a published directory.
 
 ## If it was reachable

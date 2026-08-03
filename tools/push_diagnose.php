@@ -48,13 +48,13 @@ $pushEnabled = (string) db_fetch_value(
     "SELECT value FROM `{$prefix}settings` WHERE name = 'push_enabled' LIMIT 1");
 $pushEnabled === '1'
     ? ok("push_enabled = 1")
-    : bad("push_enabled != 1 (Settings → Notifications → enable push). Nothing will ever send.");
+    : bad("push_enabled != 1 (Settings → Web Push Notifications → enable push). Nothing will ever send.");
 
 $vapidPub  = (string) db_fetch_value("SELECT value FROM `{$prefix}settings` WHERE name = 'push_vapid_public_key' LIMIT 1");
 $vapidPriv = (string) db_fetch_value("SELECT value FROM `{$prefix}settings` WHERE name = 'push_vapid_private_key' LIMIT 1");
 ($vapidPub !== '' && $vapidPriv !== '')
     ? ok("VAPID keypair present")
-    : bad("VAPID keys not configured (Settings → Notifications → generate keys). No push can be signed.");
+    : bad("VAPID keys not configured (Settings → Web Push Notifications → generate keys). No push can be signed.");
 
 $hasLib = class_exists('Minishlink\\WebPush\\WebPush');
 $hasLib ? ok("minishlink/web-push library loaded")

@@ -149,7 +149,7 @@ try {
 // Welcome page even after he'd successfully tested the SMTP relay. Same
 // root cause as the 2FA hint had earlier today — get_setting() reads
 // from the `config` table (NewUI-modern), but the SMTP save path
-// (inc/channels/smtp.php:_smtp_get_config) and the Settings → Email
+// (inc/channels/smtp.php:_smtp_get_config) and the Settings → Email Configuration
 // Channel UI both write to the `settings` table (legacy, keyed by
 // `name`). Read from the canonical `settings` table directly so the
 // hint reflects reality.

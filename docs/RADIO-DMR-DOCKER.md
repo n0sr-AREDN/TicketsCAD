@@ -31,7 +31,7 @@ your master — wherever it is reachable.
 - Your **DMR ID** and **callsign** (radioid.net registration).
 - Your **master**: hostname/IP, port, and passphrase (HBLink3 commonly 54000;
   BrandMeister 62031).
-- A **DMR channel** created in TicketsCAD (Settings → Communications → DMR).
+- A **DMR channel** created in TicketsCAD (Settings → Communications & Integrations → DMR).
   Note the **bearer token** it generates — the bridge needs the same value.
 
 ## Install
@@ -89,7 +89,7 @@ Healthy startup looks like:
 the address/port, that your passphrase matches, and that your master allows this
 DMR ID. The bridge retries on its own.
 
-**3. The CAD can reach it:** in Settings → Communications → DMR the channel
+**3. The CAD can reach it:** in Settings → Communications & Integrations → DMR the channel
 should report connected. From the bridge host:
 
 ```bash
@@ -119,7 +119,7 @@ you still can: mount yours at `/etc/ticketscad/MMDVM_Bridge.ini` and it wins.
 default.** Everything else works: live receive, browser push-to-talk
 (`/tx/audio` and `/tx/stream`), `/health`, and the 1 kHz test tone
 (`/tx/test`). Only the paths that ask the bridge to *speak* text need one —
-the **TX Text** button in Settings → Communications → DMR, the weather-radio
+the **TX Text** button in Settings → Communications & Integrations → DMR, the weather-radio
 read-out, and the radio-AI responder. Those return HTTP 503 with
 `"error": "tts_not_configured"` and a message naming the two variables below.
 
@@ -162,7 +162,7 @@ bridge these same two variables live in
 | CAD shows the channel offline | Bridge host/port/token mismatch. The token must match `DMR_BEARER_TOKEN` exactly. Check the port is published where the CAD can reach it. |
 | Bridge fine, browser PTT silent | That's the WebSocket relay, not the bridge — start the CAD's `voice` profile. |
 | `curl: (56) Recv failure: Connection reset by peer` on 18091 | Nothing is listening. Either `DMR_BEARER_TOKEN` is empty (the log says so, and the control surface does not start without it) or you are on a build released before this fix, where the surface was wrongly gated on `DMR_PIPER_BIN`/`DMR_PIPER_VOICE` being set. Update; the log line to look for is `HTTP control listening on :18091`. |
-| Every CAD call 401s but the Test dialog works when you paste the token | A build released before this fix stored the token hashed and sent the hash. Update, then either paste your saved token into Settings → Communications → DMR → Test (a successful `/health` adopts it) or rotate the token and update `DMR_BEARER_TOKEN`. |
+| Every CAD call 401s but the Test dialog works when you paste the token | A build released before this fix stored the token hashed and sent the hash. Update, then either paste your saved token into Settings → Communications & Integrations → DMR → Test (a successful `/health` adopts it) or rotate the token and update `DMR_BEARER_TOKEN`. |
 | `"error": "tts_not_configured"` from **TX Text** | Expected on a default Docker bridge — see *Text-to-speech* above. |
 
 ## Security

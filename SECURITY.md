@@ -245,7 +245,7 @@ that runs continuously. Each tile request tells the provider which patch of
 ground is on screen; over a shift, that is a running account of where this
 agency's incidents are.
 
-**Settings → Maps → Tile Providers → Tile Mode** controls this, and as of
+**Settings → Tile Providers → Tile Mode** controls this, and as of
 v4.2.3 it does something. (It did not before: the setting was stored, defaulted
 to `proxy`, and read by nothing — every install fetched tiles directly from the
 browser regardless of what the setting said. If you set it to `proxy` on an
@@ -450,7 +450,7 @@ php tests/test_pre_release_fixes.php             # regression bundle
   ```bash
   curl -s -o /dev/null -w 'sql   %{http_code}\n' https://your-site/sql/run_migrations.php
   curl -s -o /dev/null -w 'tools %{http_code}\n' https://your-site/tools/
-  # Backups: ask for an ARCHIVE BY NAME. Filenames: Settings -> Backup.
+  # Backups: ask for an ARCHIVE BY NAME. Filenames: Settings -> Backup / Maintenance.
   curl -s -o /dev/null -w 'archive %{http_code}\n' \
        https://your-site/backups/ticketscad-20260728-020000.zip
   ```
@@ -463,7 +463,7 @@ php tests/test_pre_release_fixes.php             # regression bundle
   is checked.
 
   TicketsCAD runs the same probes against itself and reports them on
-  Settings → Status ("Web exposure"); with no archive to name it uses a random
+  Settings → System Health ("Web exposure"); with no archive to name it uses a random
   self-test file, and if it can do neither the row reads "Not determined"
   rather than green. **Which file protects you depends on your
   web server:** Apache reads the shipped `.htaccess` (only when `AllowOverride`

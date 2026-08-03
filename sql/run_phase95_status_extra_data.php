@@ -126,5 +126,5 @@ if (_phase95_column_exists($prefix, 'un_status', 'extra_data_target')) {
 
 echo "\nPhase 95 schema complete.\n";
 echo "All existing un_status rows default to extra_data_type='none' —\n";
-echo "no behavior change until admin opts a status in via Settings →\n";
-echo "App Preferences → Unit Statuses.\n";
+echo "no behavior change until an admin opts a status in, via\n";
+echo "Settings → Unit Statuses.\n";

@@ -13,7 +13,7 @@ Phase shipped: `phase-08-i18n-2026-06`.
 | Translation function `t('key', 'English default')` for PHP templates | ✅ |
 | `captions_i18n` database table with per-language values | ✅ |
 | REST API for read / write / import / export of captions | ✅ |
-| **Settings → App Preferences → Translations** admin panel | ✅ |
+| **Settings → Translations** admin panel | ✅ |
 | **Language switcher** in the navbar (visible when ≥2 languages are configured) | ✅ |
 | `inc/navbar.php` retrofitted — every nav label is translatable | ✅ |
 | `inc/config-sidebar.php` retrofitted — section headers + key tabs | ✅ |

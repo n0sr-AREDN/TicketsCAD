@@ -425,12 +425,12 @@ function _health_undetermined_remedy(): string
     if (function_exists('posix_getpwnam')) {
         return 'To get a real answer, add define(\'NEWUI_WEB_USER\', \'www-data\'); to config.php, '
              . 'substituting your own web server account (apache, nginx, http, or on shared hosting '
-             . 'your own login) — or open Settings → Status in a browser, where the check runs as the '
+             . 'your own login) — or open Settings → System Health in a browser, where the check runs as the '
              . 'web server itself.';
     }
     return 'This system has no POSIX account model, so one account\'s access to a path cannot be '
          . 'evaluated from another — setting NEWUI_WEB_USER would not change that. Open Settings → '
-         . 'Status in a browser instead: there the check runs as the web server, and reports its '
+         . 'System Health in a browser instead: there the check runs as the web server, and reports its '
          . 'own access directly.';
 }
 
@@ -1211,7 +1211,7 @@ function health_check_dependencies(): array
  * Why a self-probe rather than a line in a document: an admin who reads
  * docs/WEB-SERVER-HARDENING.md and follows it correctly still has no way to
  * know a later nginx upgrade, a vhost edit, or a move to a different host did
- * not quietly undo it. This runs on every visit to Settings → Status.
+ * not quietly undo it. This runs on every visit to Settings → System Health.
  *
  * Reporting rules, in order of importance:
  *   - A path that answers 200 is CRITICAL. It is reachable, full stop.
@@ -1273,7 +1273,7 @@ function health_check_web_exposure(bool $force = false): array
                 'severity' => 'ok',
                 'probes'   => [],
                 'error'    => 'Cannot work out this install\'s own URL from the '
-                            . 'command line. Open Settings → Status in a browser, '
+                            . 'command line. Open Settings → System Health in a browser, '
                             . 'or run the curl checks in docs/WEB-SERVER-HARDENING.md.',
             ];
         }
@@ -2049,7 +2049,7 @@ function health_backup_move_remedy(string $active, ?bool $windows = null): strin
     $target  = backup_default_dir_for(NEWUI_ROOT, $windows);
     $from    = $active;
 
-    $lead = "Set “Backup folder” in Settings → Backup to a directory outside every web "
+    $lead = "Set “Backup folder” in Settings → Backup / Maintenance to a directory outside every web "
           . "site root. That alone fixes it, on any server, with no shell.\n"
           . 'Suggested: ' . $target . "\n\n"
           . "Then move what is already there:\n";
@@ -2172,7 +2172,7 @@ function health_check_dir_probe(string $dir, string $slug, string $label, bool $
         $host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? '';
         if ($host === '') {
             return $miss('there is no web request to work out this server\'s address from '
-                       . '(run it from Settings → Status in a browser)');
+                       . '(run it from Settings → System Health in a browser)');
         }
         // Strip the port: the whole point is to try the DEFAULT ports, which is
         // where another site's document root answers.

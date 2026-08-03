@@ -122,12 +122,11 @@ Any one of these closes the exposure today. Pick whichever fits your setup:
    - Apache (`mod_proxy`): `RequestHeader set X-Forwarded-Proto "https"`
    - IIS ARR: set the server variable explicitly in the inbound rule.
 
-3. **If you are not using the external API, turn it off** — Settings → External
-   API. An interface nobody uses should not be listening.
+3. **If you are not using the external API, turn it off** — Settings → External API Tokens Tokens. An interface nobody uses should not be listening.
 
 4. **Rotate your external API tokens** if the API has been reachable over plain
    HTTP from an untrusted network. Assume anything sent in the clear was
-   observed. Settings → External API → revoke and reissue.
+   observed. Settings → External API Tokens → revoke and reissue.
 
 ### When you update
 

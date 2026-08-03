@@ -76,4 +76,4 @@ p130_seed($prefix, 'tile_cache_days', '30',
     'max cached-tile lifetime, days — clamps what upstream asks for');
 
 echo "\nDone. The tile proxy is active for providers whose terms permit it;\n";
-echo "see Settings -> Maps -> Tile Providers for the per-provider verdicts.\n";
+echo "see Settings -> Tile Providers for the per-provider verdicts.\n";

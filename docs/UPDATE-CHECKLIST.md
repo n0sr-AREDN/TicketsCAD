@@ -45,8 +45,8 @@ your actual install path.
 | the install directory itself | **the user who runs `git`** | whoever owns `.git` is who can `git pull`. Pick that user once and keep it. |
 | `uploads/` | web server user | attachments + map overlays (`api/upload.php`) |
 | `cache/` | web server user | weather tiles, Zello audio |
-| `../backups/` — e.g. `/var/www/backups` | **you**, group = web server user, mode `2770` | written by BOTH `php tools/backup_run.php` on the CLI (as you) and Settings → Backup / the cron entry (as the web user). Give it away entirely and the CLI backup fails with `could not write archive`. **One level ABOVE the install directory since v4.2.3**, like `../keys/`: inside the tree, `GET /backups/<archive>.zip` handed a complete database dump to anyone who asked. If you have archives in the old `backups/` folder, move them — see below. |
-| the keys directory — `/var/www/keys` on Linux, `C:\ProgramData\TicketsCAD\keys` on Windows | web server user, mode `700` | 2FA + RSA field-encryption keys. git never touches it, so it is not part of a post-pull fix-up — see INSTALLATION-CHECKLIST.md Section 6. **The exact path is platform-dependent — see the note below**, and Settings → Status prints the one this install is actually using. |
+| `../backups/` — e.g. `/var/www/backups` | **you**, group = web server user, mode `2770` | written by BOTH `php tools/backup_run.php` on the CLI (as you) and Settings → Backup / Maintenance and the cron entry (as the web user). Give it away entirely and the CLI backup fails with `could not write archive`. **One level ABOVE the install directory since v4.2.3**, like `../keys/`: inside the tree, `GET /backups/<archive>.zip` handed a complete database dump to anyone who asked. If you have archives in the old `backups/` folder, move them — see below. |
+| the keys directory — `/var/www/keys` on Linux, `C:\ProgramData\TicketsCAD\keys` on Windows | web server user, mode `700` | 2FA + RSA field-encryption keys. git never touches it, so it is not part of a post-pull fix-up — see INSTALLATION-CHECKLIST.md Section 6. **The exact path is platform-dependent — see the note below**, and Settings → System Health prints the one this install is actually using. |
 
 > **Why the keys directory is not simply "one level up" (v4.2.4, GHSA-3jmh-c6f6-64jc)**
 >
@@ -65,7 +65,7 @@ your actual install path.
 > and macOS (unchanged — correct there), `%ProgramData%\TicketsCAD\keys` on
 > Windows. **Keys you already have are not moved**: if the old location still
 > holds `private.pem`, `public.pem` or `tfa.key`, that is where this install
-> keeps reading them, and Settings → Status tells you if that directory is
+> keeps reading them, and Settings → System Health tells you if that directory is
 > published. Nothing is relocated for you — losing `tfa.key` un-enrols every
 > 2FA user at once, so that decision is yours, and the Status page prints the
 > exact commands.

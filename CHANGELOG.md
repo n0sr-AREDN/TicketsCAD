@@ -3,6 +3,38 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.6] - 2026-08-03
+
+### Fixed
+
+- **On Windows, sending a TTS message over Zello could freeze the entire proxy
+  for up to 30 seconds — not just that message, every dispatcher's connection.**
+  `stream_set_blocking()` does nothing to a `proc_open` pipe on Windows; the
+  stream stays blocking regardless. Two independently-written functions relied
+  on it working, and in both the timeout guard sat after a blocking read, so it
+  could never fire. One case measured stuck at exactly one pipe buffer —
+  16,384 of 200,000 bytes — until killed externally. Fixed by switching both to
+  temporary files instead of pipes, which removes the blocking read entirely: a
+  600 KB round trip that previously wedged now completes in about 0.1 seconds.
+  A third instance of the same pattern was found and fixed in a test harness,
+  where it would have hung CI rather than failed it. Reported by Ron Jones
+  (@rjonesbsink).
+- **Zello audio paced by counting timer ticks instead of the clock ran 50%
+  slow on Windows and dropped nearly every frame.** Windows' ~15.6ms timer
+  granularity means a nominal 20ms tick actually lands around 31ms. Pacing now
+  derives how many frames are due from the wall clock rather than counting
+  ticks, so a late tick catches up instead of compounding: a 12-second clip
+  that previously took 18+ seconds and underran on 608 of 608 frames now plays
+  in real time with 1 underrun. Reported by Ron Jones (@rjonesbsink).
+- **Documentation named a Settings menu item that does not exist.** "Settings →
+  Status" and "Settings → Backup" appeared across install guides, runbooks and
+  advisories; the real labels are System Health and Backup / Maintenance. A gate
+  now derives the actual navigation labels from the source that renders them and
+  fails on any documented path that doesn't exist — 159 stale paths corrected in
+  this pass, including two that described a compliance mechanism (an audit-log
+  retention setting) that had never been built. That gap is being closed
+  properly in a follow-up release rather than left as a documentation note.
+
 ## [4.2.5] - 2026-08-03
 
 A correctness release. The most important item closes a bug that could tell a

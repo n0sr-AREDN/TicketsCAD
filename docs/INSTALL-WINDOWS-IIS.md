@@ -2,19 +2,20 @@
 
 `docs/INSTALL.md` is written for Debian/Ubuntu and Apache. Everything in it
 applies here in principle — the same database, the same migrations, the same
-first-admin step — but five things behave differently enough on Windows/IIS to
+first-admin step — but six things behave differently enough on Windows/IIS to
 lose you a day each, and until now they were only recorded in issue comments.
 
-This page covers those five, then points back at the main guide for the rest.
+This page covers those six, then points back at the main guide for the rest.
 
 Every item below was found on a real Windows 11 / IIS / PHP 8.4.22 / MySQL 8.0
 install by **a beta tester (@rjonesbsink)**, who traced each one to its mechanism and
 verified the fixes through actual HTTP requests rather than only the command
-line. Reported as [openises/TicketsCAD#5][i5], [#8][i8] and [#18][i18].
+line. Reported as [openises/TicketsCAD#5][i5], [#8][i8], [#18][i18] and [#29][i29].
 
 [i5]: https://github.com/openises/TicketsCAD/issues/5
 [i8]: https://github.com/openises/TicketsCAD/issues/8
 [i18]: https://github.com/openises/TicketsCAD/issues/18
+[i29]: https://github.com/openises/TicketsCAD/issues/29
 
 ---
 
@@ -27,6 +28,7 @@ line. Reported as [openises/TicketsCAD#5][i5], [#8][i8] and [#18][i18].
 | MySQL 8.0 ≠ MariaDB | Both are listed as supported and they differ in ways that used to fail silently | See [3](#3-mysql-80-versus-mariadb) |
 | IIS ignores `.htaccess` | The shipped directory denies are Apache-only | Install the `web.config` files — see [4](#4-iis-ignores-htaccess) |
 | Nothing runs the background jobs | Windows has no systemd, so the two timers the Linux guide relies on simply do not exist. PAR checks never time out and notifications never leave the queue | Create one Task Scheduler entry — see [5](#5-the-background-jobs-need-task-scheduler) |
+| Client editions cap concurrency at 3 | Windows 11/10 Home and Pro limit how many requests IIS will handle at once, and two SSE streams use most of it. Looks like a network problem, is not | Use Server, or a different web server — see [6](#6-windows-client-editions-cap-concurrent-requests) |
 
 ---
 
@@ -34,7 +36,7 @@ line. Reported as [openises/TicketsCAD#5][i5], [#8][i8] and [#18][i18].
 
 ### What you would see
 
-Settings → Web Push → **Generate new key pair**:
+Settings → Web Push Notifications → **Generate new key pair**:
 
 ```
 Keypair generation failed: VAPID keypair generation failed: Unable to create the key
@@ -138,8 +140,8 @@ php -r "var_dump(openssl_pkey_new(['curve_name'=>'prime256v1','private_key_type'
 
 The second must print `bool(true)`.
 
-Then confirm the **web** side separately, by generating a key from Settings → Web
-Push rather than from the shell. The CLI and the FastCGI worker are different
+Then confirm the **web** side separately, by generating a key from Settings → Web Push Notifications
+rather than from the shell. The CLI and the FastCGI worker are different
 processes with different environment blocks, and — per the pooling note above —
 the worker can be running with a stale one. If the web side disagrees with the
 command line, kill `php-cgi.exe` before concluding anything.
@@ -294,7 +296,7 @@ a backup **archive by name**, not just for `/backups/`: a directory that answers
 `403` can still hand over every file inside it.
 
 TicketsCAD also probes its own public URLs and reports the result on
-**Settings → Status**, so a later `applicationHost.config` edit that re-opens one
+**Settings → System Health**, so a later `applicationHost.config` edit that re-opens one
 of these gets noticed.
 
 There is a second layer regardless of web server: every script under `sql\` and
@@ -327,7 +329,7 @@ C:\ProgramData\TicketsCAD\backups
 
 `C:\inetpub\backups` is equally safe if you would rather keep the archives on
 the same volume as the site — `C:\inetpub` is not the physical path of any site.
-Whatever you choose, set it in **Settings → Backup → Backup folder**; that
+Whatever you choose, set it in **Settings → Backup / Maintenance → Backup folder**; that
 overrides the default and is the fix that needs no shell.
 
 The application pool identity must be able to write there. From an **elevated**
@@ -352,7 +354,7 @@ downloadable — see
 [`security/advisory-2026-07-30-exposed-directories.md`](security/advisory-2026-07-30-exposed-directories.md).
 
 TicketsCAD checks the destination itself now, and will tell you on
-**Settings → Status** if the folder it is writing to turns out to be published —
+**Settings → System Health** if the folder it is writing to turns out to be published —
 including on port 80, which is the case that was missed. It also says, on the
 same row, what its probe cannot see: other hostnames, other ports, and anything
 behind a reverse proxy. Reported by @rjonesbsink.
@@ -389,11 +391,11 @@ icacls 'C:\ProgramData\TicketsCAD\keys' /grant 'IIS AppPool\<YourPool>:(OI)(CI)M
 **If you already have key files, they are not moved for you.** TicketsCAD keeps
 using the old directory for as long as it holds any of the three files, because
 half a key move is worse than the exposure: without `tfa.key` every 2FA user is
-locked out at once and there is no way back. Settings → Status names the
+locked out at once and there is no way back. Settings → System Health names the
 directory, says whether it is published, and prints the copy → verify → delete
 sequence. Do it when nobody is signing in.
 
-> If **Settings → Two-Factor Authentication → Migrate to Dedicated Key** told you
+> If **Settings → Two-Factor Auth → Migrate to Dedicated Key** told you
 > to "check directory permissions", read the path in that message before you act
 > on it. On the reported install the only thing keeping the 2FA key out of a
 > folder published on port 80 was that IIS could not write there. Granting write
@@ -455,7 +457,7 @@ These look identical in the Task Scheduler UI, and a registered task that never
 fires is the failure this whole section exists to prevent. Watch the run counter
 actually move:
 
-1. Settings → **Status** → **Scheduled background jobs**, note the **Runs** column
+1. Settings → **System Health** → **Scheduled background jobs**, note the **Runs** column
 2. Wait ~75 seconds
 3. Reload — the count must have gone up, and **Last success** must be recent
 
@@ -465,7 +467,7 @@ Or from the shell:
 schtasks /Query /TN "TicketsCAD Background Jobs" /V /FO LIST
 ```
 
-If the job has still never run, Settings → Status says so and tells you what to
+If the job has still never run, Settings → System Health says so and tells you what to
 check. Prior to v4.2.3 it told you to run `systemctl`, which does not exist here
 — if you see that, your install predates this page.
 
@@ -489,6 +491,91 @@ schtasks /Run /TN "TicketsCAD Zello Proxy"      # start it now, without rebootin
 
 `/SC ONSTART` is the part that matters: a proxy started by hand in a console
 window does not come back after a reboot.
+
+---
+
+## 6. Windows client editions cap concurrent requests
+
+This one is Microsoft's licensing, not a TicketsCAD setting and not something
+the project can work around. It is here because self-hosting an evaluation on
+Windows 11 Home is a reasonable thing to do, and the failure is baffling if you
+do not know the cap exists.
+
+**Windows client editions limit how many requests IIS will handle at once**,
+regardless of configuration. On Windows 11 **Home** the ceiling is **3** —
+measured, see below. Windows Server has no such limit. Windows Pro is reported
+to allow more than Home, but only the Home figure here was measured; if you are
+on Pro, measure it rather than assuming a number.
+
+### What you would see
+
+Not an error. The application is *intermittently* slow in a way that does not
+correlate with load, and the live-update stream never starts. On **v4.2.5 and
+earlier** the built-in check reported it like this, and sent you to the network:
+
+```
+No response yet from the live-update stream.
+EventSource.readyState=0 after 9s. If it stays like this, a proxy or firewall
+is likely blocking the long-lived connection.
+```
+
+That last sentence was wrong, and is corrected from v4.2.6 — see the end of this
+section. `readyState=0` is CONNECTING — no headers ever arrived. Not a 401, not a 500,
+not a dropped connection: the request was accepted and never served. On the
+reported install the same `api/par.php` measured **63 ms** idle and
+**23,194 ms** a minute later, on localhost, single tab, single user, no proxy.
+
+### Why two SSE streams is enough to do it
+
+`inc/navbar.php` opens one `EventSource` on `api/stream.php` for every page, and
+the diagnostics page opens a second. Both are long-lived — visible in the IIS
+log as concurrent 90-second requests from a single tab:
+
+```
+06:20:31  /api/stream.php  90314ms
+06:21:35  /api/stream.php  90273ms
+06:22:04  /api/stream.php  90317ms
+```
+
+With a ceiling of 3, that leaves **one** slot for everything else the
+application does. On a normally provisioned host the same two streams cost one
+spare connection and nobody notices.
+
+### Confirming it
+
+Measure the ceiling directly rather than trusting any setting. Fire 8 requests
+that each sleep 6 s and time the batch:
+
+```
+8 concurrent -> ~6s   ceiling >= 8
+             -> ~12s  ceiling 4
+             -> ~18s  ceiling 3      <- Windows 11 Home
+             -> ~24s  ceiling 2
+```
+
+None of the usual knobs move it. On the reported install `maxInstances=20`,
+`maxConnections` unlimited, 12 logical CPUs, and `php-cgi.exe` never exceeded 4
+processes under any load.
+
+### What to do
+
+- **Accept it for single-user evaluation.** Everything works; it is just slow in
+  bursts and the diagnostics stream check may not complete.
+- **Windows Server**, which has no client-SKU cap.
+- **Serve the app with something other than IIS** — Apache or nginx on the same
+  Windows box are not subject to it.
+
+Whichever you choose, note the corollary: **any performance or multi-user
+conclusion drawn on a Windows client edition is measuring the operating system,
+not TicketsCAD.**
+
+TicketsCAD's own diagnostics used to blame "a proxy or firewall" for this
+symptom, which sent the reporter through proxy and firewall theories first. From
+v4.2.6 a `readyState=0` timeout says the request was accepted but never answered
+and names concurrency limits as the thing to check, because a response that
+never arrives cannot have been a 502.
+
+Reported by @rjonesbsink ([#29][i29]).
 
 ---
 

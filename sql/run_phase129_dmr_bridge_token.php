@@ -102,7 +102,7 @@ try {
             echo "     never been able to transmit, stream live audio, or report health\n";
             echo "     without an operator pasting the token by hand.\n\n";
             echo "     Fix each one, either way round:\n";
-            echo "       a) Settings -> Communications -> DMR -> Test, paste the token you\n";
+            echo "       a) Settings -> Communications & Integrations -> DMR -> Test, paste the token you\n";
             echo "          saved when the channel was created. A successful probe adopts\n";
             echo "          it — no bridge change needed; or\n";
             echo "       b) Rotate the token, then put the new value in the bridge's\n";

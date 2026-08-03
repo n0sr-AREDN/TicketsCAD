@@ -1,7 +1,7 @@
 <?php
 /**
  * CLI helper to revoke an external API token (Phase 94 Stage 6 sibling
- * to tools/mint_external_api_token.php). The Settings → External API
+ * to tools/mint_external_api_token.php). The Settings → External API Tokens
  * Tokens UI also has a Revoke action; this CLI tool gives ops a
  * scripted path for emergency revocation without a browser.
  *

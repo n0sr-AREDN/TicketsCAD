@@ -30,7 +30,7 @@
  *
  *   sudo systemctl enable --now ticketscad-par-tick.timer
  *
- * Whichever you use, Settings → Status → Scheduled jobs now shows the last
+ * Whichever you use, Settings → System Health → Scheduled jobs now shows the last
  * successful run and goes red when this job stops.
  *
  * No-op when par_enabled=0 in settings.

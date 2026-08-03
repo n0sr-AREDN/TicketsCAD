@@ -167,7 +167,7 @@ if (!function_exists('dmr_token_mint')) {
         if (dmr_token_needs_regen($row)) {
             return 'This DMR channel\'s bridge token was stored hashed by an '
                  . 'older version of TicketsCAD and cannot be sent to the '
-                 . 'bridge. Regenerate it: Settings → Communications → DMR → '
+                 . 'bridge. Regenerate it: Settings → Communications & Integrations → DMR → '
                  . 'Rotate token, then paste the new value into the bridge\'s '
                  . 'DMR_BEARER_TOKEN and restart it.';
         }

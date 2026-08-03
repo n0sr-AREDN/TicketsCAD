@@ -25,7 +25,7 @@ you exactly what to add.
 
 Whatever you run, **check it** — the last section of this page is a one-minute
 test, and TicketsCAD now runs the same test for you on
-**Settings → Status → "Web exposure"**. Note the part about backups there: a
+**Settings → System Health → "Web exposure"**. Note the part about backups there: a
 `403` on `/backups/` proves nothing, and you have to ask for an archive by name.
 
 ---
@@ -54,7 +54,7 @@ over HTTP by the radio widget, so blocking `proxy/` breaks push-to-talk.
 
 ### The one exception inside `services/`
 
-Settings → Mesh gives you a command to install the Meshtastic bridge on your
+Settings → Mesh Bridges (LoRa) gives you a command to install the Meshtastic bridge on your
 radio computer, and that command downloads the bridge from your own server:
 
 ```
@@ -340,7 +340,7 @@ curl -s -o /dev/null -w 'tools %{http_code}\n' https://your-site/tools/
 > directory listing off and no rule denying the files, and it is exactly the
 > check a worried admin reaches for first.
 
-Get a filename from **Settings → Backup** (it lists every archive this install
+Get a filename from **Settings → Backup / Maintenance** (it lists every archive this install
 has written), then ask for that file:
 
 ```bash
@@ -349,7 +349,7 @@ curl -s -o /dev/null -w 'archive %{http_code}\n' \
 ```
 
 Only a request for a file answers this question. If you have no archive yet,
-take one first (Settings → Backup → "Back up now") — until then this is
+take one first (Settings → Backup / Maintenance → "Back up now") — until then this is
 **untested**, which is not the same as protected.
 
 On IIS, **`500` is not a pass.** It means the `web.config` in that directory is
@@ -360,7 +360,7 @@ shipped rule denies by file extension, and a denied request is a 404 logged with
 substatus `404.7`.
 
 TicketsCAD runs the same probes against itself and reports the result on
-**Settings → Status**, in the "Web exposure" row of the File & Code Health card.
+**Settings → System Health**, in the "Web exposure" row of the File & Code Health card.
 For backups it asks for a named archive; when there is no archive to name it
 writes a small random self-test file into the folder and asks for that back
 instead. If it can do neither, the row reads grey **"Not determined"** rather
@@ -401,7 +401,7 @@ differently, so TicketsCAD does not rely on them alone:
   `..` is only "outside the web root" if you know what `..` is. Two more layouts
   where it is not: `C:\xampp\htdocs\newui` (`..` is the XAMPP DocumentRoot) and
   `/var/www/html/newui` (`..` is the stock Apache DocumentRoot on Debian and
-  Ubuntu). **Settings → Backup → Backup folder** overrides the default on every
+  Ubuntu). **Settings → Backup / Maintenance → Backup folder** overrides the default on every
   platform and is the reliable fix — point it anywhere outside every site.
 * **The encryption keys are written outside the web root too** — and the rule is
   the same shape, for the same reason, because it was the same bug
@@ -423,7 +423,7 @@ differently, so TicketsCAD does not rely on them alone:
   **Existing keys are never moved for you.** If the old directory still holds
   `private.pem`, `public.pem` or `tfa.key`, that is the directory this install
   keeps using — so an upgrade cannot break field encryption or lock every 2FA
-  user out — and Settings → Status reports it, names it, and prints the
+  user out — and Settings → System Health reports it, names it, and prints the
   copy → verify → delete sequence. Override with
   `define('FE_KEYS_DIR', '/your/path');` in `config.php`.
 

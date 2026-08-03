@@ -62,7 +62,7 @@ Retention is **minimum 365 days**.
 | **CJI access logged** | category=`data`: per-incident view (when the incident has a sensitivity label), patient-info view, address-detail view (per-field perms) |
 | **System events** | category=`security`: TFA enrollment / disable, encryption key rotation, password policy change |
 | **Audit log access logged** | category=`admin`, action=`view_audit_log` — every admin who opens the audit log is themselves audit-logged |
-| **365-day retention** | Default 365 days, configurable in Settings → Audit & Compliance. **DO NOT set below 365 for CJIS deployments.** The `audit-log-trim` cron enforces retention |
+| **365-day retention** | `audit_log` is **never pruned** — there is no audit-retention setting in Settings and no trim job, so the 365-day floor is met by keeping everything. Corrected 2026-08-03: earlier revisions of this table described a retention control and an `audit-log-trim` cron. Neither exists. If you add pruning of your own, **do not go below 365 days for CJIS deployments** |
 | **Tamper resistance** | `audit_log` is append-only in code (no UPDATE / DELETE called from any endpoint). DB-level constraint: only the DB owner can DELETE; recommend revoking that grant from the application user (`REVOKE DELETE ON newui.audit_log FROM 'newui'@'localhost';`) |
 | **Time synchronisation** | We require chrony/systemd-timesyncd on the VM. The CJIS audit-log timeline is only as good as the system clock. See [INSTALLATION-CHECKLIST.md](INSTALLATION-CHECKLIST.md) |
 | **Export to SIEM** | Audit-log records can be exported via [`api/audit-log.php?action=export`](AUDIT-LOG-REFERENCE.md#export) in JSONL or CSV. Recommend a daily cron to a log aggregator (Splunk, ELK, Datadog) |
@@ -93,8 +93,8 @@ Retention is **minimum 365 days**.
 | **Force password change** | Phase 9 — `must_change_password` flag, auto-set on new-user creation and admin reset |
 | **Session timeout** | Configurable per-role. Default 24 h; CJIS deployments should set ≤ 30 min for non-trusted networks. Settings → Identity & Security → Session Timeouts |
 | **Idle session timeout** | Server-side check via `sm_is_session_valid()` on every API call; expired sessions return HTTP 401 |
-| **Forced logout** | Admin can destroy any active session from Settings → Active Sessions; password reset cascades to invalidate every session for that user (Phase 73aa) |
-| **Concurrent session count** | Visible in Settings → Active Sessions. No automatic limit, but admin can manually destroy excess sessions |
+| **Forced logout** | Admin can destroy any active session from Settings → Login Settings → Active Sessions; password reset cascades to invalidate every session for that user (Phase 73aa) |
+| **Concurrent session count** | Visible in Settings → Login Settings → Active Sessions. No automatic limit, but admin can manually destroy excess sessions |
 | **Remote access controls** | TLS 1.2+ for all HTTPS. Trusted CIDR feature allows extended sessions only from approved IP ranges (e.g. office LAN); from other IPs sessions are shorter and 2FA is enforced more aggressively |
 | **Per-entity access control** | `allocates` table + RBAC permissions both gate per-resource access. A user can see incident X iff their role has `screen.incidents` AND (admin OR their group is allocated to incident X). See [ACCESS-CHAIN.md](ACCESS-CHAIN.md) |
 | **Privilege use auditing** | Every privileged action (config change, role grant, user create, audit-log access) writes to `audit_log` |
@@ -240,7 +240,7 @@ deployment is fully supported; see the offline guidance in SECURITY.md.
 | **Per-member tokens (OwnTracks)** | OwnTracks devices authenticate with per-member tokens (server stores SHA-256 hash). Revocable instantly from Settings → User Accounts → row → OwnTracks → Revoke Token. |
 | **OwnTracks fail-closed** | Phase 73v hardening: OwnTracks ingest rejects unauthenticated posts unless `owntracks_allow_anonymous=1` is explicitly set. |
 | **Trusted CIDR for mobile** | Mobile devices outside the trusted CIDR are forced into shorter session timeouts and stricter 2FA. |
-| **No client-side data persistence** | The PWA stores no CJI in localStorage / IndexedDB — every page rerenders from the server. Stolen-device exposure is limited to the open session, which can be killed remotely (Settings → Active Sessions → Destroy). |
+| **No client-side data persistence** | The PWA stores no CJI in localStorage / IndexedDB — every page rerenders from the server. Stolen-device exposure is limited to the open session, which can be killed remotely (Settings → Login Settings → Active Sessions → Destroy). |
 | **HTTPS-only mobile traffic** | The PWA refuses to install over plain HTTP. |
 | **Lock screen integration** | Org-level (phone OS configures this); TicketsCAD inherits whatever auth the OS enforces to unlock the device. |
 
@@ -293,7 +293,7 @@ When the CJIS auditor visits, hand them:
 
 1. This document with your install-specific notes appended.
 2. The current `audit_log` retention setting screenshot.
-3. A sample audit-log export covering the last 30 days (Settings → Audit & Compliance → Export).
+3. A sample audit-log export covering the last 30 days (Settings → Audit Log → Export).
 4. The user-account list with last-login timestamps (proves periodic review).
 5. The role/permission matrix screenshot (Settings → Roles & Permissions).
 6. The TLS certificate chain (`openssl s_client -connect cad.example.org:443 -showcerts < /dev/null`).

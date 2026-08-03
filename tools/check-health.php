@@ -333,7 +333,7 @@ $we = $all['web_exposure'] ?? [];
 echo "\n-- Web exposure (are backups/, sql/, tools/ reachable over HTTP?) --\n";
 if (empty($we['checked'])) {
     echo "[INFO] " . ($we['error'] ?? 'not probed from the command line') . "\n";
-    echo "       Check it from a browser: Settings -> Status, \"Web exposure\".\n";
+    echo "       Check it from a browser: Settings -> System Health, \"Web exposure\".\n";
     echo "       Or by hand (anything answering 200 is a problem):\n";
     echo "         curl -s -o /dev/null -w '%{http_code}\\n' https://your-site/sql/run_migrations.php\n";
     echo "         curl -s -o /dev/null -w '%{http_code}\\n' https://your-site/tools/\n";
@@ -341,7 +341,7 @@ if (empty($we['checked'])) {
     // with directory listing off returns while it serves every archive inside;
     // @rjonesbsink measured exactly that on his own install. Ask for a file.
     echo "       For backups, ask for an ARCHIVE BY NAME - a 403 on the folder\n";
-    echo "       says nothing about the files in it. Filenames: Settings -> Backup.\n";
+    echo "       says nothing about the files in it. Filenames: Settings -> Backup / Maintenance.\n";
     echo "         curl -s -o /dev/null -w '%{http_code}\\n' \\\n";
     echo "              https://your-site/backups/ticketscad-YYYYMMDD-HHMMSS.zip\n";
 } else {

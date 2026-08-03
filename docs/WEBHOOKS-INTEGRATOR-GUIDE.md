@@ -548,7 +548,7 @@ The delivery log itself is retained according to `webhook_delivery_log_retention
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Test ping returns `succeeded` but real events don't arrive | Event subscription doesn't include the event type | Settings → row → Edit → add the event to Subscribed Events |
+| Test ping returns `succeeded` but real events don't arrive | Event subscription doesn't include the event type | Settings → Webhooks / Events → row → Edit → add the event to Subscribed Events |
 | Delivery log shows `failed: ssl certificate problem` | Receiver TLS cert is self-signed or expired | Fix the cert; don't disable TLS verification on the TicketsCAD side |
 | Delivery log shows `failed: timeout` | Receiver is too slow | Have receiver return 200 immediately, process async |
 | Delivery log shows `failed: 401 bad sig` | HMAC computed wrong (very common!) | Verify you're signing `<ts>.<raw_body>`, not just the body. Use constant-time compare. |

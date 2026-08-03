@@ -333,7 +333,7 @@ Most often: a backend query is slow. Common causes:
 
 1. **MariaDB needs tuning.** Default `innodb_buffer_pool_size` is tiny. Raise it to 25–50% of available RAM.
 2. **`audit_log` is huge.** Tens of millions of rows make some pages slow. Reduce retention or trim manually.
-3. **Map tiles slow.** Use the tile-proxy mode (Settings → Maps → Map Providers → mode = proxy) instead of direct OpenStreetMap.
+3. **Map tiles slow.** Use the tile-proxy mode (Settings → Tile Providers → mode = proxy) instead of direct OpenStreetMap.
 4. **Bridge daemons on the same VM.** Move them to a dedicated VM (the install playbook does this by default).
 
 ### How many concurrent users can I handle?

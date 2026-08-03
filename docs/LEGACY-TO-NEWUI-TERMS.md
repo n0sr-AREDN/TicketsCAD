@@ -75,7 +75,7 @@ https://www.youtube.com/playlist?list=PLeOKl8VFMO3ZmqFQ7Yxn8QZl2cqNfMLyh
 | **Meshtastic / MeshCore bridges** | LoRa mesh radio integration; bridge VMs proxy mesh ↔ TicketsCAD HTTPS. | [MESH-BRIDGE-GUIDE.md](MESH-BRIDGE-GUIDE.md) |
 | **APRS-IS persistent listener** | Python service that maintains a TCP connection to APRS-IS instead of 5-minute HTTP polling. | [APRS-LISTENER-SETUP.md](APRS-LISTENER-SETUP.md) |
 | **DVSwitch / DMR bridge** | Bridges digital-radio (DMR, P25, etc.) onto TicketsCAD with TTS for outbound + STT transcripts for inbound. | [DVSWITCH-ADMIN-GUIDE.md](DVSWITCH-ADMIN-GUIDE.md) |
-| **Geofence** | Polygon or circle alert zone. Notifies when a unit crosses the boundary. | Settings → Maps & Tracking → Alert Zones |
+| **Geofence** | Polygon or circle alert zone. Notifies when a unit crosses the boundary. | Settings → Alert Zones |
 | **Broker / channels** | Unified message fan-out. One `broker_send()` call dispatches to chat, SMS, SMTP, Slack, Meshtastic, DMR, etc. | [GLOSSARY § Broker](GLOSSARY.md#broker) |
 | **Routing engine** | Rules that forward messages between channels (e.g. "radio chatter on this talkgroup → post to chat"). | [ROUTING-ENGINE-REFERENCE.md](ROUTING-ENGINE-REFERENCE.md) |
 | **SSE / EventBus** | Real-time dashboard updates. Replaces v3's setInterval polling. | [GLOSSARY § SSE](GLOSSARY.md#sse-server-sent-events) |
@@ -84,7 +84,7 @@ https://www.youtube.com/playlist?list=PLeOKl8VFMO3ZmqFQ7Yxn8QZl2cqNfMLyh
 | **Webhooks** | Outbound HTTP POSTs to user-configured URLs on subscribed events. HMAC-signed, retried with backoff. | [WEBHOOKS-INTEGRATOR-GUIDE.md](WEBHOOKS-INTEGRATOR-GUIDE.md) |
 | **i18n / captions** | Server-side `t($key)` calls plus a database-overlayable translation registry. EN/DE/NL/FR/ES seeded; community-extensible. | [I18N-GUIDE.md](I18N-GUIDE.md) |
 | **ICS forms** | Built-in 213, 214, 202, 205, 205a, 213rr, 206, 214a, 221 with Winlink XML export. | Training video: Major incidents |
-| **Map overlay categories** | Group map markups so dispatchers can toggle them in bulk. | Settings → Maps & Places → Overlay Categories |
+| **Map overlay categories** | Group map markups so dispatchers can toggle them in bulk. | Settings → Map Overlays |
 | **Major incidents** | Link multiple sub-incidents under a campaign with command structure. | Training video: Major incidents |
 | **Quick-start wizard** | First-run setup wizard for new installations. | [INSTALLATION-CHECKLIST.md](INSTALLATION-CHECKLIST.md) |
 | **Command bar** (`/` prefix) | Type `/` anywhere to open a search-and-dispatch quick action menu. | [Help → Keyboard Shortcuts](../help.php) |
@@ -160,16 +160,16 @@ You can edit these defaults from Settings → Roles & Permissions, and create cu
 | Edit signal codes | Settings → Operations → **Signals / Codes** |
 | Configure 2FA | Settings → Identity & Security → **Two-Factor Authentication** |
 | Add an incident type | Settings → Operations → **Incident Types** |
-| Configure a tile provider | Settings → Maps & Places → **Map Providers** |
-| Bulk-add map markups | Settings → Maps & Places → **Overlays** → Import (GeoJSON/KML/GPX) |
-| See the system event log | Settings → Audit & Compliance → **Audit Log** (separate from the per-incident activity feed) |
+| Configure a tile provider | Settings → **Tile Providers** |
+| Bulk-add map markups | Settings → **Map Overlays** → Import (GeoJSON/KML/GPX) |
+| See the system event log | Settings → Audit Log → **Audit Log** (separate from the per-incident activity feed) |
 | Reset a user's password | Settings → User Accounts → row → **Reset Password** (requires reason for the audit log) |
 | Force a user to change password | Same row → toggle **Must Change Password** |
 | See who's currently logged in | Settings → Identity & Security → **Active Sessions** |
 | Force-logout a user | Same row → **Destroy session** |
 | Add a webhook | Settings → Integrations → **Webhooks** |
-| See what migrations have run | Settings → System → **Migrations** (read-only) |
-| Trigger a manual backup | Settings → System → **Backup** → **Backup now** |
+| See what migrations have run | Settings → **Database Migrations** (read-only) |
+| Trigger a manual backup | Settings → **Backup / Maintenance** → **Backup now** |
 
 ---
 

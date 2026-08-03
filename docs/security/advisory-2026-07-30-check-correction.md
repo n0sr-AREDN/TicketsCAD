@@ -31,7 +31,7 @@ curl -s -o /dev/null -w 'tools %{http_code}\n' https://your-site/tools/
 ```
 
 **2. Your backups — ask for an actual archive, by name.** Get a filename from
-**Settings → Backup**, which lists every archive this install has written (or
+**Settings → Backup / Maintenance**, which lists every archive this install has written (or
 list the backup folder on the server). Then request that file:
 
 ```bash
@@ -43,7 +43,7 @@ Substitute a real filename. **Do not shorten this to a request for
 `/backups/`.** Only a request for a file tells you whether files are served.
 
 If you have never taken a backup there is nothing to ask for. Take one
-(Settings → Backup → "Back up now") and then run the check. Until you do, this
+(Settings → Backup / Maintenance → "Back up now") and then run the check. Until you do, this
 is **untested** — which is not the same as safe.
 
 **Reading the result:**
@@ -62,7 +62,7 @@ is **untested** — which is not the same as safe.
 If your site is `http://` rather than `https://`, use that instead.
 
 TicketsCAD runs these checks against itself and reports the answer on
-**Settings → Status**, in the "Web exposure" row. From **v4.2.4** the backups
+**Settings → System Health**, in the "Web exposure" row. From **v4.2.4** the backups
 probe asks for a named archive — or, when there is no archive yet, writes a
 small random self-test file into the folder and asks for that back. If it can
 do neither, the row reads grey **"Not determined"** instead of green. Earlier

@@ -723,7 +723,7 @@ default; an admin can grant it to other roles under Config &raquo; Roles).</p>
     <li>If found, click <strong>Apply to Form</strong> to auto-fill name and license details.</li>
 </ol>
 <p>Works for both amateur radio and GMRS callsigns.</p>
-<p>The lookup source is set under <em>Settings &rarr; FCC Lookup</em>. The default,
+<p>The lookup source is set under <em>Settings &rarr; Lookup Services</em>. The default,
 <strong>OpenCallbook</strong>, is a free public service that covers both the amateur
 and GMRS databases. Other choices are a local offline copy of the FCC data, the
 amateur-only callook.info, or a self-hosted FCC-ULS-API. You can also choose how much
@@ -1263,7 +1263,7 @@ the old behaviour, set this to <em>Leave off the roll call</em>.</p>
                 'slug'  => 'webhooks-subscribe',
                 'title' => 'Subscribing to Webhooks',
                 'body'  => '
-<p>Go to <strong>Settings → Webhooks</strong> (requires <code>action.manage_webhooks</code> or admin). Click <strong>Add Webhook</strong> and fill in:</p>
+<p>Go to <strong>Settings → Webhooks / Events</strong> (requires <code>action.manage_webhooks</code> or admin). Click <strong>Add Webhook</strong> and fill in:</p>
 <ul>
     <li><strong>Name</strong> — short label (e.g., "Slack alerts").</li>
     <li><strong>Target URL</strong> — your HTTPS endpoint that will receive the POST.</li>
@@ -1287,7 +1287,7 @@ the old behaviour, set this to <em>Leave off the roll call</em>.</p>
                 'body'  => '
 <p>If your webhook secret leaks (committed to a repo, posted in chat, etc.):</p>
 <ol>
-    <li>Settings → Webhooks → click the row → enter a NEW secret in the HMAC field → Save.</li>
+    <li>Settings → Webhooks / Events → click the row → enter a NEW secret in the HMAC field → Save.</li>
     <li>Update your receiver to use the new secret BEFORE the next delivery fires.</li>
 </ol>
 <p><strong>Important — secret-edit behavior (since 2026-06-28):</strong> when you open an existing webhook for editing, the HMAC secret field is BLANK and the placeholder shows the first 8 characters of the current secret (e.g. "leave blank to keep (current starts: abc12345…)"). Submitting with the field blank means "keep the current secret unchanged"; entering a new value rotates it.</p>

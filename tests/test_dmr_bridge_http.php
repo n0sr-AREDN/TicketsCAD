@@ -133,7 +133,17 @@ if ($bearer === '') {
     $bearer = bin2hex(random_bytes(32));
 }
 
-$desc = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+// openises/TicketsCAD#28 — stdout/stderr are temp FILES, not pipes.
+// stream_set_blocking() returns false on a proc_open pipe on Windows and the
+// stream stays blocking, so the fread() below would block whenever the harness
+// has produced nothing yet, and the 20s deadline underneath it would be
+// unreachable — a wedged harness would hang the whole suite (and CI) forever
+// rather than failing this one test. Polling files cannot block.
+// stdin stays a PIPE deliberately: closing it at teardown is what tells the
+// harness to stop, and we never write to it, so nothing can block on it.
+$outFile = tempnam(sys_get_temp_dir(), 'hbp_out_');
+$errFile = tempnam(sys_get_temp_dir(), 'hbp_err_');
+$desc = [0 => ['pipe', 'r'], 1 => ['file', $outFile, 'w'], 2 => ['file', $errFile, 'w']];
 $proc = proc_open(
     escapeshellarg($python) . ' ' . escapeshellarg($base . '/tests/hbp_http_harness.py')
         . ' ' . escapeshellarg($bearer),
@@ -143,18 +153,15 @@ $proc = proc_open(
 $port = 0;
 $stderr = '';
 if (is_resource($proc)) {
-    stream_set_blocking($pipes[1], false);
-    stream_set_blocking($pipes[2], false);
     $deadline = microtime(true) + 20.0;
-    $buf = '';
     while (microtime(true) < $deadline) {
-        $chunk = fread($pipes[1], 8192);
-        if ($chunk !== false && $chunk !== '') $buf .= $chunk;
+        $buf = (string) @file_get_contents($outFile);
         if (preg_match('/PORT (\d+)/', $buf, $m)) { $port = (int) $m[1]; break; }
-        $stderr .= (string) fread($pipes[2], 8192);
+        $st = proc_get_status($proc);
+        if (!$st['running']) break;          // harness died — stop waiting
         usleep(100000);
     }
-    if ($port === 0) $stderr .= (string) fread($pipes[2], 65536);
+    $stderr = (string) @file_get_contents($errFile);
 }
 
 if ($port === 0) {
@@ -225,10 +232,10 @@ if (is_resource($proc)) {
     }
     $st = proc_get_status($proc);
     if ($st['running']) proc_terminate($proc);
-    @fclose($pipes[1]);
-    @fclose($pipes[2]);
+    // stdout/stderr are files now (#28), so there are no pipes 1/2 to close.
     proc_close($proc);
 }
+foreach ([$outFile, $errFile] as $f) { if (@is_file($f)) @unlink($f); }
 
 if ($chanId > 0) {
     try { db_query("DELETE FROM `{$prefix}dmr_channels` WHERE id = ?", [$chanId]); }

@@ -85,7 +85,7 @@ had been holding.
 
 ## It also broke 2FA, and the obvious remedy was the dangerous one
 
-On an affected IIS install, **Settings → Two-Factor Authentication → Migrate to
+On an affected IIS install, **Settings → Two-Factor Auth → Migrate to
 Dedicated Key** failed with:
 
 ```
@@ -185,7 +185,7 @@ lists them with their physical paths.
 folder and request it — if the `.txt` comes back, the folder is published and the
 key is one MIME entry away. That is exactly the experiment in the report.
 
-After upgrading, **Settings → Status** answers this for you: there is an
+After upgrading, **Settings → System Health** answers this for you: there is an
 "Encryption key location" row that grades the directory, and TicketsCAD writes a
 random token file into it and asks this host for the token back on the default
 ports. A `200` whose body contains the token is proof.
@@ -233,7 +233,7 @@ on its own, because the secrets are in the database. The exposure is that a
 hands. There is no one-click rotation for this key in 4.2.4; the two honest
 options are:
 
-- **Re-enrol.** Reset two-factor for each user (Settings → Users) and have them
+- **Re-enrol.** Reset two-factor for each user (Settings → User Accounts) and have them
   scan a fresh code. This invalidates every secret encrypted under the leaked
   key. It is disruptive and it is the complete fix.
 - **Accept and monitor**, if your database has never been exposed and is not

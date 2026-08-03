@@ -100,7 +100,7 @@ Cloudflare Tunnel — WebSocket upgrades pass through transparently.
 | daemon won't start, "Address already in use" | Old process still bound | `sudo pkill -9 -f dmr-proxy.php; sleep 3; systemctl restart` |
 | browser sees 502 from Apache on /dmr-ws | `proxy_wstunnel` not enabled | `a2enmod proxy_wstunnel && systemctl reload apache2` |
 | auth fails with "Invalid or expired token" | Browser took >2 min between `/api/dmr-token.php` and WS connect | Browser should request a fresh token each time it opens the WS; check `radio-widget.js` |
-| `bridge_token` empty in auth_ok logs | DB row `dmr_channels.bridge_token` is blank | Apply the dmr_channels migration; set via Settings → DMR |
+| `bridge_token` empty in auth_ok logs | DB row `dmr_channels.bridge_token` is blank | Apply the dmr_channels migration; set via Settings → DMR (DVSwitch) |
 | TX succeeds (tx_ack OK) but radio hears nothing | Bridge isn't subscribed to TG | Check `brandmeister.network/?page=device&id=YOURID`; ensure TG is in static-subscribed list |
 
 ## Reading order for the source

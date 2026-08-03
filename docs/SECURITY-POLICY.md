@@ -248,7 +248,7 @@ Four independent controls, because no single one covers every deployment:
   instead of reporting success.
 
 Self-verification: `health_check_web_exposure()` probes `backups/`, `sql/` and
-`tools/` over HTTP from the install itself and reports on Settings → Status;
+`tools/` over HTTP from the install itself and reports on Settings → System Health;
 `health_check_backups()` reports archives found in any served directory.
 
 ---
@@ -510,7 +510,7 @@ Tickets CAD provides the technical primitives (authentication, audit log, encryp
 
 When preparing for a CJIS audit, the administrator should:
 
-1. ✅ Open Settings → System → **Security Compliance Dashboard** and confirm all green badges (or document any yellow/red with justification).
+1. ✅ Open Settings → **Security Compliance** and confirm all green badges (or document any yellow/red with justification).
 2. ✅ Export the audit log: Settings → Audit Log → CSV Export (for the audit period). Auditor will review for completeness and consistency.
 3. ✅ Confirm all super-admin and admin accounts have 2FA enrolled.
 4. ✅ Confirm `force_pw_change_for_new_users` is ON.

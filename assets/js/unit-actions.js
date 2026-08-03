@@ -116,7 +116,7 @@
         }
         if (!visible.length) {
             _body('<div class="alert alert-info small mb-0">'
-                + 'No unit statuses are configured. Add one in Settings → Statuses.</div>');
+                + 'No unit statuses are configured. Add one in Settings → Unit Statuses.</div>');
             return;
         }
         var html = '<label class="form-label form-label-sm mb-1">Optional note</label>'

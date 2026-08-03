@@ -29,7 +29,7 @@
  *
  * OWNERSHIP OF backups/ — it has TWO writers, so it must be shared:
  *   - you, when you run this by hand (`php tools/backup_run.php --force`)
- *   - the web server user, via that cron line and Settings → Backup
+ *   - the web server user, via that cron line and Settings → Backup / Maintenance
  * Hand the directory entirely to www-data and the manual run fails with
  * "could not write archive"; keep it entirely yours and the scheduled/web
  * backup fails instead. The working shape (see docs/UPDATE-CHECKLIST.md §1):

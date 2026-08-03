@@ -144,7 +144,7 @@ Telegram.
 Configuring the channel does not by itself send anything. Traffic reaches
 Telegram through the routing engine, the same as any other channel:
 
-**Settings → Communications → Message Routing** → add a route with
+**Settings → Communications & Integrations → Message Routing** → add a route with
 `dest_channel = telegram`.
 
 See [`MESSAGE-ROUTING-GUIDE.md`](MESSAGE-ROUTING-GUIDE.md) for filters and
@@ -233,7 +233,7 @@ admin; sends then fail with `chat not found`.
 |---|---|
 | Channel adapter | [`inc/channels/telegram.php`](../inc/channels/telegram.php) |
 | Settings panel | Settings → Telegram Bot |
-| Routing | Settings → Communications → Message Routing, `dest_channel = telegram` |
+| Routing | Settings → Communications & Integrations → Message Routing, `dest_channel = telegram` |
 
 ---
 

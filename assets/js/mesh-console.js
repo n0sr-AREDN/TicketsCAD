@@ -1208,7 +1208,7 @@
     function refreshMap() {
         if (!meshMap && typeof L !== 'undefined' && !_meshMapInitInflight) {
             // First-time init: load the shared map defaults so this map
-            // respects Settings → Map Defaults instead of always showing
+            // respects Settings → Map Settings instead of always showing
             // Minneapolis. Re-entry guard: refreshMap may be called again
             // (timer / event) before our async init resolves; the flag
             // prevents stacking duplicate L.map() instances on the same

@@ -70,5 +70,5 @@ echo "OK ({$seeded} new)\n";
 
 echo "\nPhase 96 schema complete.\n";
 echo "Next: run tools/generate_vapid_keys.php to mint VAPID keys.\n";
-echo "Paste them into Settings → Push Notifications, then flip\n";
+echo "Paste them into Settings → Web Push Notifications, then flip\n";
 echo "push_enabled to 1.\n";

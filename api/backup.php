@@ -136,7 +136,7 @@ if ($action === 'filesystem' && $method === 'POST') {
     if (!is_dir($destDir)) {
         if (!@mkdir($destDir, 0755, true)) {
             json_error('Cannot create backup directory: ' . $destDir
-                . ' — create it yourself, or set a different one in Settings → Backup.');
+                . ' — create it yourself, or set a different one in Settings → Backup / Maintenance.');
         }
     }
     // If it ended up inside the web root anyway, put deny rules beside it.
@@ -258,7 +258,7 @@ if ($action === 'history' && $method === 'GET') {
     } else {
         // List EVERY directory this install may have written to, so the v4.2.3
         // move of the default out of the web root does not make an operator's
-        // existing restore points disappear from Settings → Backup. Retention
+        // existing restore points disappear from Settings → Backup / Maintenance. Retention
         // still prunes only the active directory.
         $history = [];
         $seen    = [];

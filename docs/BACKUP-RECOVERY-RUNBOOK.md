@@ -101,7 +101,7 @@ Method B.
 
 For ad-hoc snapshots before risky changes:
 
-1. Settings → System → **Backup** → **Backup now**.
+1. Settings → **Backup / Maintenance** → **Back up now**.
 2. The browser downloads a `.sql.gz` of the database.
 3. Move it somewhere safe (NOT the same VM).
 
@@ -225,7 +225,7 @@ The log-file test above is only valid for a **cron line that redirects into that
 file**. A systemd timer written per this method logs to the journal instead, so
 its log file stays zero bytes however healthy it is — check
 `journalctl -u <unit>` and the Scheduled background jobs card on
-Settings → Status, not the file.
+Settings → System Health, not the file.
 
 Either install cron (`sudo apt install cron`) or use a timer, which needs no
 extra package. `/etc/systemd/system/ticketscad-backup.service`:
@@ -584,7 +584,7 @@ After three drills, the second time is faster than the first, and the third fast
 |---|---|
 | Backup script | None shipped — use `mariadb-dump` + `tar` per Method B/C above (a packaged `tools/backup.php` is planned) |
 | Restore helper | None shipped — use `mariadb` + `tar -x` per the recovery scenarios above |
-| Admin UI | Settings → System → Backup (in [`settings.php`](../settings.php)) |
+| Admin UI | Settings → Backup / Maintenance (in [`settings.php`](../settings.php)) |
 | Cron script template | Above (Method C) |
 | `tools/upgrade/ROLLBACK.md` | [Upgrade rollback procedure](../tools/upgrade/ROLLBACK.md) |
 | Encryption key lifecycle | [SECURITY-POLICY.md](SECURITY-POLICY.md) |

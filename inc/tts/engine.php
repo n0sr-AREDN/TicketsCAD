@@ -262,27 +262,82 @@ function tts_bin_on_path(string $bin): bool
 /**
  * Pipe $input to a shell command's stdin, capture stdout. Returns null on
  * failure. Shared by the subprocess drivers (Piper, ffmpeg resample).
+ *
+ * openises/TicketsCAD#28 (@rjonesbsink) — this used pipes for all three
+ * descriptors and relied on stream_set_blocking() to keep them from wedging.
+ * **stream_set_blocking() cannot put a proc_open pipe into non-blocking mode
+ * on Windows**: it returns false and the stream stays blocking. Measured here
+ * on PHP 8.2.4/Windows (reporter saw the same on 8.4.22):
+ *
+ *     stream_set_blocking(stdout,false) returned: false
+ *     stdout meta blocked=true  stream_type=STDIO
+ *
+ * The old loop then blocked in stream_get_contents($pipes[1]), which reads to
+ * EOF, while NEVER draining stderr at all. A child that writes more stderr
+ * than one pipe buffer (Piper's startup logging does) blocks writing it, so
+ * stdout never reaches EOF and the parent never returns — and because the
+ * `$timeoutSec` check sits AFTER that blocking read, the guard is unreachable
+ * and cannot fire. Measured pre-fix: an internal 5s guard with a child writing
+ * 8192 bytes of stderr ran until an external kill at 20s; with the child
+ * exiting on its own after 6s, a 1s guard returned at 6.11s.
+ *
+ * Worse than hanging, it then returned what it had: the reporter saw ok=true /
+ * detail='ok' with 2,940 bytes (0.09s) of audio for a ~4s sentence.
+ *
+ * Fix: temp files for all three descriptors. The child writes as fast as the
+ * filesystem allows and can never block on a full pipe, there is nothing for
+ * the parent to block on, and the deadline check becomes reachable — so a
+ * genuinely wedged synth is now terminated and reported as a failure instead
+ * of being silently truncated into a caller's audio. Identical behaviour on
+ * POSIX, so this is not Windows-only code.
  */
 function tts_run_pipe(string $cmd, string $input, int $timeoutSec = 30): ?string
 {
-    $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+    $tag  = 'ttspipe_' . getmypid() . '_' . bin2hex(random_bytes(6));
+    $dir  = rtrim(sys_get_temp_dir(), "/\\") . DIRECTORY_SEPARATOR;
+    $fIn  = $dir . $tag . '.in';
+    $fOut = $dir . $tag . '.out';
+    $fErr = $dir . $tag . '.err';
+
+    $cleanup = static function () use ($fIn, $fOut, $fErr) {
+        foreach ([$fIn, $fOut, $fErr] as $f) { if (@is_file($f)) @unlink($f); }
+    };
+
+    if (@file_put_contents($fIn, $input) === false) { $cleanup(); return null; }
+
+    $descriptors = [
+        0 => ['file', $fIn,  'r'],
+        1 => ['file', $fOut, 'w'],
+        2 => ['file', $fErr, 'w'],
+    ];
     $proc = @proc_open($cmd, $descriptors, $pipes);
-    if (!is_resource($proc)) return null;
-    // Non-blocking write+read to avoid pipe deadlock on large payloads.
-    stream_set_blocking($pipes[1], false);
-    stream_set_blocking($pipes[2], false);
-    fwrite($pipes[0], $input);
-    fclose($pipes[0]);
-    $out = ''; $start = time();
-    do {
-        $out .= (string) stream_get_contents($pipes[1]);
+    if (!is_resource($proc)) { $cleanup(); return null; }
+
+    $timedOut = false;
+    $deadline = microtime(true) + max(1, $timeoutSec);
+    while (true) {
         $status = proc_get_status($proc);
-        if (!$status['running']) { $out .= (string) stream_get_contents($pipes[1]); break; }
-        if (time() - $start > $timeoutSec) { proc_terminate($proc); break; }
-        usleep(10000);
-    } while (true);
-    fclose($pipes[1]);
-    fclose($pipes[2]);
+        if (!$status['running']) break;
+        if (microtime(true) > $deadline) { $timedOut = true; proc_terminate($proc, 9); break; }
+        usleep(5000);
+    }
     proc_close($proc);
-    return $out === '' ? null : $out;
+
+    $out = (string) @file_get_contents($fOut);
+    $err = (string) @file_get_contents($fErr);
+    $cleanup();
+
+    // A timeout is a failure, not a short read. Returning the partial buffer is
+    // exactly the "success with truncated audio" the old code produced.
+    if ($timedOut) {
+        error_log('tts_run_pipe: timed out after ' . $timeoutSec . 's, killed: ' . $cmd
+            . ($err !== '' ? ' | stderr: ' . trim(substr($err, 0, 300)) : ''));
+        return null;
+    }
+    if ($out === '') {
+        error_log('tts_run_pipe: no stdout from: ' . $cmd
+            . ($err !== '' ? ' | stderr: ' . trim(substr($err, 0, 300)) : ''));
+        return null;
+    }
+    return $out;
 }

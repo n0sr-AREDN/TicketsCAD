@@ -1856,7 +1856,7 @@
                 console.error('Add Identifier: fields_json failed to parse for mode id=' + modeId, ex, meta.fields_json);
                 fieldsContainer.innerHTML = '<div class="alert alert-warning small mb-0">' +
                     'Could not parse the field definitions for this mode. Check the browser console for details, ' +
-                    'or visit Settings → Identifiers → ' + esc(meta.code || modeId) + ' to fix the JSON.' +
+                    'or visit Settings → Comm / Location Modes → ' + esc(meta.code || modeId) + ' to fix the JSON.' +
                     '</div>';
                 lookupArea.innerHTML = '';
                 return;
@@ -1864,7 +1864,7 @@
             if (!fd.length) {
                 console.warn('Add Identifier: mode id=' + modeId + ' (' + meta.code + ') has no fields defined.');
                 fieldsContainer.innerHTML = '<div class="alert alert-info small mb-0">' +
-                    'This mode has no field definitions yet. Add some in Settings → Identifiers, then come back.' +
+                    'This mode has no field definitions yet. Add some in Settings → Comm / Location Modes, then come back.' +
                     '</div>';
                 lookupArea.innerHTML = '';
                 return;

@@ -29,7 +29,7 @@ fi
 #    Both ../backups and ../keys live OUTSIDE the webroot ($APP is the Apache
 #    DocumentRoot). Backups moved out in v4.2.3: inside it, an archive was
 #    downloadable by anyone who guessed the filename.
-#    ../backups must exist and be writable by www-data (Settings → Backup) AND
+#    ../backups must exist and be writable by www-data (Settings → Backup / Maintenance) AND
 #    by a `docker compose exec app php tools/backup_run.php` run.
 #    ../tile-cache is the map-tile proxy's cache — also outside the webroot,
 #    because it records which map areas this install has viewed.

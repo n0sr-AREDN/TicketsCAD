@@ -259,7 +259,7 @@ $active_page = 'messaging';
                                         <option value="">— loading talkgroups —</option>
                                     </select>
                                     <div class="form-text" id="composeTalkgroupHelp">
-                                        Enabled talkgroups from Settings → Communications → Voice → DMR Talkgroups.
+                                        Enabled talkgroups from Settings → Communications & Integrations → Voice → DMR Talkgroups.
                                     </div>
                                 </div>
 

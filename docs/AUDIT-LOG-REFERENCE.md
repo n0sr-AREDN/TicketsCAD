@@ -3,7 +3,7 @@
 **Audience:** compliance officer, security analyst, developer querying the audit trail.
 **Schema:** OCSF (Open Cybersecurity Schema Framework) v1.x aligned.
 **Implementation:** [`inc/audit.php`](../inc/audit.php), `audit_log` table.
-**Admin UI:** Settings → Audit & Compliance → Audit Log.
+**Admin UI:** Settings → Audit Log.
 
 ---
 
@@ -329,7 +329,7 @@ Override per-record retention is **not** supported by design — every event has
 
 ### Admin UI
 
-Settings → Audit & Compliance → Audit Log → **Export**.
+Settings → Audit Log → **Export**.
 
 Filters: date range, category, severity, actor user, entity type.
 
@@ -448,7 +448,7 @@ Add the call AFTER the action succeeds (so a failed action doesn't get logged as
 | Trim cron | `tools/audit-log-trim.php` (planned) |
 | Export cron template | `tools/audit-log-export.php` (planned) |
 | Schema migration | `sql/setup_audit_log.php` (or per-feature migration that creates audit_log) |
-| Admin UI | Settings → Audit & Compliance in [`settings.php`](../settings.php) |
+| Admin UI | Settings → Audit Log in [`settings.php`](../settings.php) |
 
 ---
 

@@ -1,0 +1,36 @@
+# Navigation-label exceptions — tests/test_doc_navigation_labels.php
+#
+# That gate parses inc/config-sidebar.php for the labels the settings menu
+# really renders, then fails on any `Settings → X` in the shipped docs or in
+# the application's own operator-facing text where X is not one of them.
+#
+# The phrase "Settings → …" is not ours alone. ATAK, OwnTracks and the Traccar
+# Client all have a menu called Settings, and a doc that tells an operator to
+# open ATAK's Settings → Network Connections is CORRECT — it just is not
+# talking about TicketsCAD. Those lines are listed here so the gate stays
+# useful instead of being weakened for them.
+#
+# FORMAT   path | label | reason        (all three required; a reason-less
+#                                        entry fails the gate)
+#
+# Adding a line here is a claim that the path is right as written. It is NOT
+# the place to park a TicketsCAD path that is wrong but inconvenient to fix —
+# fix those. The gate also fails when an entry stops matching anything, so a
+# line cannot outlive the text it excuses.
+
+# ── ATAK / ATAK-CIV (Android) ────────────────────────────────────────────────
+docs/ATAK-FIRST-SMOKE.md | Tool Preferences | ATAK-CIV's own settings menu — the section header above it reads "In ATAK-CIV:"
+docs/ATAK-FIRST-SMOKE.md | Device Preferences | ATAK-CIV's own settings menu
+docs/ATAK-SETUP.md | Network Connections | ATAK's own settings menu — "In ATAK: Settings → Network Connections → Manage Server Connections"
+docs/training-scripts/atak-meshtastic-bridge.md | Network Connections | ATAK's own settings menu
+sql/run_atak_schema.php | Device Preferences | the field hint reads "Paste from ATAK → Settings → Device Preferences" — ATAK's menu, not ours
+
+# ── OwnTracks (iOS / Android) ────────────────────────────────────────────────
+assets/js/unit-edit.js | Configuration | the string reads "OwnTracks app → Settings → Configuration → Scan this QR"
+docs/NEWUI-USER-GUIDE.md | Configuration | OwnTracks iOS enrolment, not a TicketsCAD panel
+docs/TROUBLESHOOTING.md | Connection | "configure it in the OwnTracks phone app under Settings → Connection → Auth"
+docs/training-scripts/m27-location-owntracks.md | Connection | the OwnTracks app's own connection setup
+docs/training-scripts/m27-location-tracking-traccar-owntracks.md | Connection | the Traccar Client / OwnTracks app's own connection setup
+
+# ── Traccar Client (Android) ─────────────────────────────────────────────────
+docs/TRACCAR-SETUP.md | Connection | the Traccar Client app's own settings menu

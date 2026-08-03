@@ -9,7 +9,7 @@
  * an older schema" — but badly wrong here: the screen renders as EMPTY, so the
  * operator concludes their data is gone. A beta tester lost an evening to this
  * (2026-07-25): `teams` was damaged, the roster query LEFT JOINs `teams`, so
- * Personnel showed 0 people while Settings → System Overview — which counts
+ * Personnel showed 0 people while Settings → Welcome — which counts
  * `member` directly and never touches `teams` — correctly said 8.
  *
  * Empty because there is no data, and empty because the table is broken, must

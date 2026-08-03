@@ -45,7 +45,7 @@ not just headphones.
 ### Where it's configured
 
 - **Per-channel (DMR):** the `dmr_channels` table carries `tts_engine` +
-  `tts_voice` columns (Settings → Communications → DMR). Today `piper` is the
+  `tts_voice` columns (Settings → Communications & Integrations → DMR). Today `piper` is the
   implemented engine; the voice value is the model name the bridge loads.
 - **Weather bulletins:** the read-out voice is `weather_tts_voice` on the
   Weather Alerts settings page (blank = the channel's default voice).
@@ -70,6 +70,18 @@ seeded by `sql/run_zello_tts.php`):
 Install Piper on the proxy host with the same steps as above; `apt install
 ffmpeg` if it's missing. Restart the proxy service after changing these —
 the daemon caches its config at startup.
+
+> **On Windows, set `zello_tts_ffmpeg_bin` to an absolute path.** The default is
+> the bare name `ffmpeg`, resolved on `PATH`, which is genuinely all it takes on
+> Debian. The common Windows installers (WinGet, Scoop, Chocolatey per-user) put
+> it on the **per-user** `PATH`, and the proxy runs as a service — typically as
+> `SYSTEM`, whose environment has no such entry. The lookup then fails at the
+> point of use rather than at configuration, so everything looks configured and
+> the read-out simply produces no audio. Give the full path, e.g.
+> `C:\ffmpeg\bin\ffmpeg.exe`. Same shape as the `FE_KEYS_DIR` and backup-folder
+> traps in [INSTALL-WINDOWS-IIS.md](INSTALL-WINDOWS-IIS.md): a default that is
+> correct on Linux and silently wrong under a Windows service account. Reported
+> by @rjonesbsink ([#28](https://github.com/openises/TicketsCAD/issues/28)).
 
 ---
 

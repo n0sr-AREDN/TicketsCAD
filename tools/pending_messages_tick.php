@@ -27,7 +27,7 @@
  *
  *   sudo systemctl enable --now ticketscad-pending-msg.timer
  *
- * Whichever you use, Settings → Status → Scheduled jobs now shows the last
+ * Whichever you use, Settings → System Health → Scheduled jobs now shows the last
  * successful run and goes red when this job stops.
  *
  * Usage: php tools/pending_messages_tick.php

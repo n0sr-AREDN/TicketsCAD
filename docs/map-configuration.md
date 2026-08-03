@@ -263,7 +263,7 @@ Layer selections are saved automatically and persist across page reloads.
 
 - **Cause:** No OWM API key configured, or the key is empty
 - **Fix:** Follow the [OpenWeatherMap API Key](#openweathermap-api-key) steps
-  above — easiest via Settings → System → API Keys
+  above — easiest via Settings → API Keys
 
 ### Weather layers appear but show no data
 
@@ -277,7 +277,7 @@ Layer selections are saved automatically and persist across page reloads.
 
 - **Cause:** Default coordinates not set, or set in a key the consumer
   doesn't read
-- **Fix:** Open **Settings → Maps & Places → Map Settings**, pan/zoom the
+- **Fix:** Open **Settings → Map Settings**, pan/zoom the
   preview to the correct view, and save — the GUI writes the canonical
   keys
 

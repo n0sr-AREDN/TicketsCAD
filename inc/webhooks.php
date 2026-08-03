@@ -444,7 +444,7 @@ function _audit_to_webhook_event(string $cat, string $act, ?string $target): ?st
 
 /**
  * Send a test payload to an arbitrary URL. Does NOT go through the
- * subscription path. Used by the Settings → Webhooks "Test URL"
+ * subscription path. Used by the Settings → Webhooks / Events "Test URL"
  * button. For exercising a real subscription end-to-end, use the
  * action=fire_now admin endpoint instead (which goes through
  * webhook_fire's full audit→event→subscription chain).

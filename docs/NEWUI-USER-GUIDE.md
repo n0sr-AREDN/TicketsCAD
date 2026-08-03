@@ -598,7 +598,7 @@ This works for both amateur radio callsigns and GMRS callsigns registered with t
 
 ### Lookup source
 
-The lookup source is configured under **Settings → FCC Lookup**:
+The lookup source is configured under **Settings → Lookup Services**:
 
 - **OpenCallbook** (default) — a free public service ([opencallbook.com](https://opencallbook.com)) that resolves **both** amateur and GMRS call signs in a single query. This is the recommended default and the only internet provider that returns GMRS records.
 - **Local Database** — an offline copy of the FCC data imported with `php tools/import-fcc.php`. Best for installs with no internet access (e.g. AREDN mesh).
@@ -1133,7 +1133,7 @@ This is the path Eric and most of the volunteer pool will use.
 
 **Admin side (under a minute):**
 
-1. Make sure the member has a TicketsCAD user account (Settings → Users → User Accounts) — the OwnTracks setup uses their login as the device username.
+1. Make sure the member has a TicketsCAD user account (Settings → User Accounts) — the OwnTracks setup uses their login as the device username.
 2. On the Roster, click the member, expand **OwnTracks Tracking Tokens**.
 3. Click **New: File (Android)**.
 4. Two things happen:
@@ -1569,7 +1569,7 @@ Administrators can add, edit, reorder, and deactivate links from the Settings pa
 
 # Part 15: Mesh Bridges (LoRa Radio Backhaul)
 
-TicketsCAD can ingest and send text messages over LoRa-based mesh radios — Meshtastic and MeshCore — through any number of bridge hosts you deploy in the field. The **Mesh Console** at **Settings -> System -> Mesh Bridges** is where administrators see what's connected, watch traffic, send messages out, and configure attached radios remotely.
+TicketsCAD can ingest and send text messages over LoRa-based mesh radios — Meshtastic and MeshCore — through any number of bridge hosts you deploy in the field. The **Mesh Console** at **Settings -> Mesh Bridges (LoRa)** is where administrators see what's connected, watch traffic, send messages out, and configure attached radios remotely.
 
 ## What is a "bridge"?
 
@@ -1800,7 +1800,7 @@ The full admin guide lives in `docs/RBAC-GUIDE.md`. The short version:
 - Grants assign a role to a user with a scope (where it applies) and an optional expiry (when it stops).
 - The Privilege-Escalation Guard prevents an admin from granting a role they don't already hold.
 
-Open the dedicated **Roles & Permissions** page from the Personnel dropdown (or `Settings → Config → Roles & Permissions`).
+Open the dedicated **Roles & Permissions** page from the Personnel dropdown (or `Settings → Roles & Permissions`).
 
 ### Time-bound role grants
 

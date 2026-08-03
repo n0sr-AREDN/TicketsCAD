@@ -377,7 +377,7 @@ Together these two routes give you the "field units get only their assignments; 
 
 Most channels broadcast to whoever's listening — Meshtastic to the mesh, Slack to the configured channel, DMR to the talkgroup. The push channel is per-user: each push goes to one user's browser subscription endpoints. That means **the push channel only delivers when a recipient predicate is set**. A route with `dest_channel = "push"` and no predicate logs a 'failed' status with the message "push channel requires a recipient predicate."
 
-Push is enabled implicitly when VAPID keys are configured in Settings → Notifications. You don't need to add it to the enabled-channels list separately.
+Push is enabled implicitly when VAPID keys are configured in Settings → Web Push Notifications. You don't need to add it to the enabled-channels list separately.
 
 Push delivery uses the existing minishlink/web-push library, so endpoint health (404/410 marking, gone-stamping, retry behaviour) is consistent with the rest of the push system. The route just decides WHO gets the push; the channel adapter handles delivery + health tracking.
 
@@ -413,7 +413,7 @@ The other cause during the Phase 99v rollout: `push_fire()` was running both the
 
 Two layers to check:
 1. **The route resolved them as a recipient.** Verify via the route's Test button.
-2. **They have an active push subscription.** Check Settings → Notifications → Subscriptions. If their subscription has `last_error LIKE 'gone:%'` or `LIKE 'fail:%'`, the browser revoked or rejected it. They need to re-subscribe.
+2. **They have an active push subscription.** Check Settings → Web Push Notifications → Subscriptions. If their subscription has `last_error LIKE 'gone:%'` or `LIKE 'fail:%'`, the browser revoked or rejected it. They need to re-subscribe.
 
 ## 11. Audit trail
 

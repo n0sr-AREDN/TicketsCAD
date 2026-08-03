@@ -136,8 +136,8 @@ sudo find newui -path '*/.git' -prune -o -type f -exec chmod 644 {} \;
 sudo chown -R www-data:www-data newui/uploads newui/cache
 
 # backups/ is gitignored (absent on a fresh clone) and is written BOTH by
-# `php tools/backup_run.php` on the CLI as you, and by Settings → Backup /
-# the cron entry as www-data. Share it; do not hand it over.
+# `php tools/backup_run.php` on the CLI as you, and — as www-data — by the cron
+# entry and Settings → Backup / Maintenance. Share it; do not hand it over.
 sudo -u "$(id -un)" mkdir -p newui/backups
 sudo chown -R "$(id -un)":www-data newui/backups
 sudo chmod 2770 newui/backups
@@ -480,7 +480,7 @@ Before you let anyone real log in:
       ```
 
 - [ ] **Your backup archives are not downloadable.** Ask for an archive **by
-      name** — get a filename from Settings → Backup:
+      name** — get a filename from Settings → Backup / Maintenance:
 
       ```bash
       curl -s -o /dev/null -w 'archive %{http_code}\n' \
@@ -498,7 +498,7 @@ Before you let anyone real log in:
       **nginx never reads it and needs
       [`nginx/ticketscad-hardening.conf`](nginx/ticketscad-hardening.conf)**; IIS
       needs the per-directory `web.config` files. See
-      [WEB-SERVER-HARDENING.md](WEB-SERVER-HARDENING.md). Settings → Status runs
+      [WEB-SERVER-HARDENING.md](WEB-SERVER-HARDENING.md). Settings → System Health runs
       the same probes and shows the result under "Web exposure".
 - [ ] **Backups are outside the web root.** The default is `../backups` (a
       sibling of the install directory, like `keys/`). If you upgraded from
@@ -531,7 +531,7 @@ Next steps:
 
 1. Walk through the [training curriculum](TRAINING-CURRICULUM.md) yourself to learn the dispatcher workflow.
 2. Send new users to [`/quick-start.php`](../quick-start.php) — the built-in onboarding wizard.
-3. Subscribe to the upgrade-notification webhook (Settings → System → Updates) so you know when patches ship.
+3. Subscribe to the upgrade-notification webhook (Settings → System Health) so you know when patches ship.
 4. Schedule your first quarterly disaster-recovery drill from [BACKUP-RECOVERY-RUNBOOK.md](BACKUP-RECOVERY-RUNBOOK.md).
 
 ---

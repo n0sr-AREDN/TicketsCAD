@@ -239,7 +239,7 @@ These ports (36000) are internal to dvswitch-host — they connect Analog_Bridge
 
 In your browser, log in to TicketsCAD as admin.
 
-1. **Settings → Communications → DMR (DVSwitch)** → click **New Channel**.
+1. **Settings → Communications & Integrations → DMR (DVSwitch)** → click **New Channel**.
 2. Fill in:
    - **Label:** something short like `tg9990` (used in env file name)
    - **Talkgroup:** `9990` (Parrot, for first test)
@@ -348,7 +348,7 @@ You should see something like:
 
 ## Section 7 — Verify end to end
 
-Back in the TicketsCAD admin UI: **Settings → Communications → DMR (DVSwitch) → row → Test**.
+Back in the TicketsCAD admin UI: **Settings → Communications & Integrations → DMR (DVSwitch) → row → Test**.
 
 ### Test 1: /health probe
 
@@ -432,7 +432,7 @@ Storage budget: a 30-second call is ~480 KB. 100 calls/hour ≈ 50 MB/h. At the 
 
 The bridge prunes WAVs older than `DMR_RECORDING_RETENTION_HOURS` on an hourly sweep — no cron needed.
 
-The dispatcher reaches playback through the Settings → Communications → DMR panel. Each row in the **Recent transcripts** table shows a play button when its call has an `audio_path`; clicking opens an inline HTML5 audio player with a speed dropdown. The bridge bearer token is asked for once per session and reused via `sessionStorage` for subsequent plays.
+The dispatcher reaches playback through the Settings → Communications & Integrations → DMR panel. Each row in the **Recent transcripts** table shows a play button when its call has an `audio_path`; clicking opens an inline HTML5 audio player with a speed dropdown. The bridge bearer token is asked for once per session and reused via `sessionStorage` for subsequent plays.
 
 #### When DVR-style playback is useful
 
@@ -472,7 +472,7 @@ When a future TicketsCAD radio-control panel ships, it will read this flag to de
 
 For each additional talkgroup:
 
-1. **In the admin UI:** Settings → Communications → DMR → New Channel. Use different USRP ports (next free range): listen=33101, send=33100. HTTP port: 18191.
+1. **In the admin UI:** Settings → Communications & Integrations → DMR → New Channel. Use different USRP ports (next free range): listen=33101, send=33100. HTTP port: 18191.
 2. **On dvswitch-host:** create `/etc/ticketscad/dvswitch-<newinstance>.env` mirroring the first one with the new ports and a fresh bearer token.
 3. **Start the unit:**
 
@@ -490,7 +490,7 @@ Each channel runs independently. Restart one without affecting the others.
 
 ### Dispatch text → talkgroup
 
-Settings → Communications → DMR → row → Test modal → "Speak text on the talkgroup" composer. Type, send. Audit-logged with the dispatcher's username + message body.
+Settings → Communications & Integrations → DMR → row → Test modal → "Speak text on the talkgroup" composer. Type, send. Audit-logged with the dispatcher's username + message body.
 
 ### Receive radio → log
 
@@ -502,7 +502,7 @@ Anyone keying the talkgroup will land as a row in `dmr_messages` with:
 - `transcript_engine = 'vosk'`
 - `duration_ms`, `call_started_at`, `call_ended_at`
 
-To surface RX traffic in real-time on the dashboard, configure a route in **Settings → Routing** that forwards `dmr:rx` → `chat:dispatch`. Then transcripts post into the chat feed automatically.
+To surface RX traffic in real-time on the dashboard, configure a route in **Settings → Message Routing** that forwards `dmr:rx` → `chat:dispatch`. Then transcripts post into the chat feed automatically.
 
 ### Restart a channel after config change
 

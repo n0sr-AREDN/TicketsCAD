@@ -7,7 +7,7 @@
 # different host from the CAD (near your master, or on a box you keep up 24/7),
 # and it must keep running even when you redeploy the CAD.
 #
-# Point the CAD at it: in Settings → Communications → DMR, set the channel's
+# Point the CAD at it: in Settings → Communications & Integrations → DMR, set the channel's
 # bridge host to this container's reachable address and bridge port to 18091,
 # with the same bearer token as DMR_BEARER_TOKEN below.
 services:
