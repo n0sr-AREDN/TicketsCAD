@@ -22,15 +22,12 @@
 docs/ATAK-FIRST-SMOKE.md | Tool Preferences | ATAK-CIV's own settings menu — the section header above it reads "In ATAK-CIV:"
 docs/ATAK-FIRST-SMOKE.md | Device Preferences | ATAK-CIV's own settings menu
 docs/ATAK-SETUP.md | Network Connections | ATAK's own settings menu — "In ATAK: Settings → Network Connections → Manage Server Connections"
-docs/training-scripts/atak-meshtastic-bridge.md | Network Connections | ATAK's own settings menu
 sql/run_atak_schema.php | Device Preferences | the field hint reads "Paste from ATAK → Settings → Device Preferences" — ATAK's menu, not ours
 
 # ── OwnTracks (iOS / Android) ────────────────────────────────────────────────
 assets/js/unit-edit.js | Configuration | the string reads "OwnTracks app → Settings → Configuration → Scan this QR"
 docs/NEWUI-USER-GUIDE.md | Configuration | OwnTracks iOS enrolment, not a TicketsCAD panel
 docs/TROUBLESHOOTING.md | Connection | "configure it in the OwnTracks phone app under Settings → Connection → Auth"
-docs/training-scripts/m27-location-owntracks.md | Connection | the OwnTracks app's own connection setup
-docs/training-scripts/m27-location-tracking-traccar-owntracks.md | Connection | the Traccar Client / OwnTracks app's own connection setup
 
 # ── Traccar Client (Android) ─────────────────────────────────────────────────
 docs/TRACCAR-SETUP.md | Connection | the Traccar Client app's own settings menu

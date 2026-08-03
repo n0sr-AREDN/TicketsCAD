@@ -26,9 +26,10 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   ticks, so a late tick catches up instead of compounding: a 12-second clip
   that previously took 18+ seconds and underran on 608 of 608 frames now plays
   in real time with 1 underrun. Reported by Ron Jones (@rjonesbsink).
-- **Documentation named a Settings menu item that does not exist.** "Settings →
-  Status" and "Settings → Backup" appeared across install guides, runbooks and
-  advisories; the real labels are System Health and Backup / Maintenance. A gate
+- **Documentation named a Settings menu item that does not exist.** The labels
+  "Status" and "Backup" appeared across install guides, runbooks and advisories
+  as if they were Settings sidebar entries; the real labels are System Health
+  and Backup / Maintenance. A gate
   now derives the actual navigation labels from the source that renders them and
   fails on any documented path that doesn't exist — 159 stale paths corrected in
   this pass, including two that described a compliance mechanism (an audit-log
@@ -74,12 +75,13 @@ dispatcher every unit was clear while a crew was still assigned.
   Note this release fixes the two reported endpoints; a wider pass over the
   remaining incident read paths is tracked separately.
 - **Documentation named a menu item that does not exist.** Guidance across the
-  runbooks, install guides and security advisories said "Settings → Status".
-  The menu item is **System Health**; "Settings → Backup" is **Backup /
-  Maintenance**. An operator following a Critical advisory went looking for
-  something that was not there. The published advisories have been corrected in
-  place, and a gate now derives the real labels from the navigation source and
-  fails on any documented path that does not exist.
+  runbooks, install guides and security advisories pointed readers at a
+  Settings sidebar entry called "Status". The menu item is **System Health**;
+  the entry some docs called "Backup" is **Backup / Maintenance**. An operator
+  following a Critical advisory went looking for something that was not there.
+  The published advisories have been corrected in place, and a gate now derives
+  the real labels from the navigation source and fails on any documented path
+  that does not exist.
 
 ### Added
 
@@ -216,16 +218,39 @@ more serious of the two and affects a default installation:
 
 ### Check your own install — one minute
 
+> **Amendment, 2026-08-02:** the backups line below originally read
+> `curl .../backups/` — a request for the bare folder. Reported by Ron Jones
+> (@rjonesbsink): a `403` there does not mean your backups are protected. It is
+> the ordinary behaviour of a server with directory listing off and no rule
+> denying the files inside, and a live install measured exactly that — `403` on
+> the folder, `200` and a full database export on the archive inside it. If you
+> ran the original version of this check and saw `403`, **re-run the corrected
+> version below**; it asks for a file, which is the only request that actually
+> answers the question.
+
 ```bash
-curl -s -o /dev/null -w 'backups %{http_code}\n' https://your-site/backups/
-curl -s -o /dev/null -w 'sql     %{http_code}\n' https://your-site/sql/run_migrations.php
-curl -s -o /dev/null -w 'tools   %{http_code}\n' https://your-site/tools/
+curl -s -o /dev/null -w 'sql   %{http_code}\n' https://your-site/sql/run_migrations.php
+curl -s -o /dev/null -w 'tools %{http_code}\n' https://your-site/tools/
 ```
 
-`403` or `404` is good. **`200` means you are affected** — see the advisory.
-`301`/`302` is inconclusive; re-run against the address you land on. From this
-release onward TicketsCAD runs these same checks against itself and reports the
-answer on **Settings → System Health**, in the *Web exposure* row.
+`403` or `404` is good for both. **`200` means you are affected** — see the
+advisory. `301`/`302` is inconclusive; re-run against the address you land on.
+
+For backups, get a real archive filename from **Settings → Backup /
+Maintenance** (it lists every archive this install has written) and ask for
+that file specifically:
+
+```bash
+curl -s -o /dev/null -w 'archive %{http_code}\n' \
+     https://your-site/backups/ticketscad-20260728-020000.zip
+```
+
+`403` or `404` is good. **`200` means that archive is being served.** If you
+have no archive yet, take one first (Settings → Backup / Maintenance →
+"Back up now") — until then this is **untested**, which is not the same as
+protected. From this release onward TicketsCAD runs these same checks against
+itself and reports the answer on **Settings → System Health**, in the *Web
+exposure* row.
 
 ### Security
 
