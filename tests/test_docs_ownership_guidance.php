@@ -14,9 +14,13 @@
  *     for the very user the same docs tell to run it.
  *
  * The claims encoded here were verified against the code, not the QA report:
- *   - FE_KEYS_DIR      = NEWUI_ROOT . '/../keys'   (inc/field-encrypt.php)  →
+ *   - FE_KEYS_DIR      = fe_keys_dir_for(NEWUI_ROOT)  (inc/field-encrypt.php) →
  *     keys are OUTSIDE the install dir, so they are not part of a post-clone
- *     ownership fix-up at all.
+ *     ownership fix-up at all. Since 4.2.4 the exact path is platform-aware
+ *     (GHSA-3jmh-c6f6-64jc): a sibling of the install directory on POSIX,
+ *     %ProgramData%\TicketsCAD\keys on Windows, or wherever an install's
+ *     existing keys already are — but never inside the tree, which is the only
+ *     part this file's advice depends on.
  *   - BACKUP_DIR       = dirname(NEWUI_ROOT) . '/backups'  (inc/backup.php) →
  *     since v4.2.3 backups are ABOVE the install dir too, for the same reason
  *     the keys are: inside it, an archive was downloadable over HTTP. Created
@@ -56,8 +60,13 @@ require_once $root . '/inc/field-encrypt.php';
 
 $n = function (string $p): string { return str_replace('\\', '/', $p); };
 
-test('FE_KEYS_DIR resolves OUTSIDE the install directory (../keys)',
-    defined('FE_KEYS_DIR') && strpos($n(FE_KEYS_DIR), '/../keys') !== false,
+// 2026-08-03: this used to assert the literal '/../keys'. That string WAS the
+// defect (GHSA-3jmh-c6f6-64jc) — "one level up" is above the web root on Linux
+// and inside C:\inetpub\wwwroot on Windows — so the claim the docs rest on is
+// the one below: wherever the keys are, they are not in the install tree, so a
+// post-clone ownership fix-up has nothing to do with them.
+test('FE_KEYS_DIR resolves OUTSIDE the install directory',
+    defined('FE_KEYS_DIR') && strpos($n(FE_KEYS_DIR) . '/', $n($root) . '/') !== 0,
     'FE_KEYS_DIR=' . (defined('FE_KEYS_DIR') ? FE_KEYS_DIR : 'undefined'));
 // v4.2.3: backups moved ABOVE the web root, for the same reason the keys are
 // there. Inside it, `GET /backups/<archive>.zip` returned a 110 MB database dump

@@ -45,39 +45,59 @@ The routing engine forwards messages between [channels](GLOSSARY.md#channel) usi
 
 ## Route schema
 
-Each row in the `routes` table:
+Each row in the **`message_routes`** table:
 
 | Column | Type | Purpose |
 |---|---|---|
-| `id` | int | PK |
+| `id` | int unsigned | PK |
 | `enabled` | tinyint | 0 = rule is ignored |
 | `priority` | int | Lower = evaluated first (within all-matches-fire semantics, this just controls log order) |
-| `name` | varchar(120) | Human-readable label for the admin UI |
-| `source_channel` | varchar(32) | The channel the inbound message arrived on (`meshtastic`, `dmr`, `local_chat`, `slack`, `sms`, etc.). `*` matches any channel. |
+| `name` | varchar(100) | Human-readable label for the admin UI |
+| `description` | varchar(255) | Longer note shown in the admin UI |
+| `source_channel` | varchar(64) | The channel the message arrived on (`meshtastic`, `dmr`, `local_chat`, `slack`, `sms`, `audit_event`, etc.). `*` matches any channel. |
 | `direction` | enum | `inbound`, `outbound`, or `both` |
-| `dest_channel` | varchar(32) | The channel the forwarded copy gets sent to |
-| `routing_kind` | enum | `broadcast` (most messaging) or `direct` (one-to-one) |
+| `dest_channel` | varchar(64) | The channel the forwarded copy gets sent to |
 | `filters_json` | JSON | See [Filters](#filters) below |
 | `transform_json` | JSON | See [Transforms](#transforms) below |
-| `chat_channel` | varchar(64) | Optional override of `message.channel` on the forwarded copy |
+| `recipient_predicate_json` | JSON | Who the forwarded copy goes to. See [Recipient predicates](#recipient-predicates) below. |
+| `dest_subaddress_json` | JSON | Destination sub-address (e.g. a specific talkgroup or chat sub-channel) for adapters that accept one |
+| `attach_action` | varchar(16) | Optional incident attachment on forward — currently `add_note` |
+| `attach_ticket_id` | int | Fixed ticket id for `attach_action`, when not derived from the message |
 | `created_at` / `updated_at` | datetime | Audit |
-| `created_by` | int | User id of the admin who created it |
+| `created_by` | int unsigned | User id of the admin who created it |
+
+> The table is `message_routes`. There is no table called `routes` — earlier
+> revisions of this page said there was, and every SQL example on it failed with
+> `Base table or view not found`.
 
 ### Example row
 
 ```sql
-INSERT INTO routes
-  (enabled, priority, name, source_channel, direction,
-   dest_channel, routing_kind, filters_json, transform_json)
+INSERT INTO message_routes
+  (enabled, priority, name, description, source_channel, direction,
+   dest_channel, filters_json, transform_json)
 VALUES
-  (1, 100, 'DMR TG9990 → dispatch chat',
+  (1, 100, 'DMR urgent → dispatch chat', 'Bridge urgent radio traffic to dispatch',
    'dmr', 'inbound',
-   'local_chat', 'broadcast',
-   '{"talkgroup":["9990"],"min_severity":null}',
-   '{"prefix":"[DMR] ","channel_override":"dispatch"}');
+   'local_chat',
+   '{"priority_in":["urgent"],"exclude_keywords":["test","drill"]}',
+   '{"prefix":"[DMR] "}');
 ```
 
-When voice arrives on the DMR channel for TG 9990, this rule synthesises a chat message with body `"[DMR] " + transcript` and posts it to the `dispatch` chat channel.
+When an urgent message arrives on the DMR channel and does not mention "test" or
+"drill", this rule synthesises a chat message with body `"[DMR] " + transcript`
+and posts it to `local_chat`.
+
+**Two preconditions that are not on this row**, and that account for most routes
+which appear correct and never deliver:
+
+1. `dest_channel` must also be listed in the **`broker_enabled_channels`**
+   setting. If it is not, the route logs `skipped` with
+   `Destination channel 'X' is not enabled` (`inc/router.php:360`). Two
+   otherwise-identical routes will behave differently if one destination is in
+   that list and the other is not, and nothing in the routing UI shows it.
+2. For the shipped seed routes, `recipient_predicate_json` must match at least
+   one user — see below.
 
 ---
 
@@ -87,41 +107,44 @@ When voice arrives on the DMR channel for TG 9990, this rule synthesises a chat 
 
 ### Supported filter keys
 
+These are the keys `_router_match_filters()` reads. **An unrecognised key is
+ignored, not rejected** — a rule carrying one is saved happily by the UI and
+matches as though that condition were absent, so a misspelt key makes a route
+broader than intended rather than failing loudly.
+
 | Key | Type | Matches when |
 |---|---|---|
-| `incident_type` | string[] | `message.incident_type_id` (or `message.ticket.in_types_id`) is in the list |
-| `severity` | int[] | `message.severity` ≤ each value (filter is "max severity"; lower = more urgent in TicketsCAD's convention) |
-| `min_severity` | int | `message.severity` ≤ this value |
-| `priority` | string[] | `message.priority` in list (`urgent`, `high`, `normal`, `low`) |
-| `sender_role` | string[] | `message.sender_role` in list (RBAC role codes) |
-| `talkgroup` | string[] | For DMR: `message.talkgroup` in list (as strings) |
+| `incident_type_ids` | int[] | `message.in_types_id` (or `message.incident_type_id`) is in the list. These are `in_types.id` values, not type names. |
+| `severity_min` | int | `message.severity` **≥** this value |
+| `priority_in` | string[] | `message.priority` in list (`urgent`, `high`, `normal`, `low`) |
+| `sender_roles` | int[] | `message.sender_role` in list. RBAC **role ids** (`roles.id`), not role names, and not the retired `user.level`. |
 | `keywords` | string[] | Any keyword appears in `message.body` (case-insensitive substring) |
 | `exclude_keywords` | string[] | If any of these appears in `message.body`, the route is SKIPPED |
-| `chat_channel` | string[] | `message.channel` (chat sub-channel) in list |
-| `direction` | string | Redundant with the route's `direction` column; if present, also enforced |
-| `time_window` | object | `{"start_hour": 6, "end_hour": 22, "weekdays": [1,2,3,4,5]}` — restrict to certain hours/days. Times in install timezone. |
+| `incident_id` | int | `message.ticket_id` (or `message.incident_id`) equals this value — pins a route to one incident |
+
+There is no talkgroup, chat-sub-channel, direction or time-window filter. The
+route's own `direction` column is what enforces direction.
 
 ### Filter examples
 
-**Only urgent + high-priority chat:**
+**Only urgent + high-priority messages:**
 ```json
-{"priority": ["urgent", "high"]}
+{"priority_in": ["urgent", "high"]}
 ```
 
-**Only DMR traffic on TG 31xxx that doesn't mention "test":**
+**Only traffic that doesn't mention "test" or "drill":**
 ```json
 {
-  "talkgroup": ["31001", "31002", "31003"],
   "exclude_keywords": ["test", "drill"]
 }
 ```
 
-**Only major-incident messages from dispatchers, on weekdays 06:00–22:00:**
+**Only severity 3+ messages from Dispatchers (role id 3) on selected incident types:**
 ```json
 {
-  "incident_type": ["MAJOR"],
-  "sender_role": ["dispatcher", "supervisor"],
-  "time_window": {"start_hour": 6, "end_hour": 22, "weekdays": [1,2,3,4,5]}
+  "incident_type_ids": [12, 14],
+  "sender_roles": [3],
+  "severity_min": 3
 }
 ```
 
@@ -131,41 +154,76 @@ When voice arrives on the DMR channel for TG 9990, this rule synthesises a chat 
 
 `transform_json` reshapes the forwarded copy. Like filters, every present key applies; missing keys leave the field unchanged.
 
+These are the keys `_router_transform()` reads. As with filters, an unrecognised
+key is silently ignored.
+
 | Key | Effect |
 |---|---|
 | `prefix` | Prepended to `body`. Supports `{source}` substitution → the source-channel code. |
-| `suffix` | Appended to `body`. |
-| `body_template` | Full replacement using `{field}` substitution: `{body}`, `{source}`, `{talkgroup}`, `{sender}`. |
-| `priority_override` | Replace the message's priority. |
-| `channel_override` | Replace the chat sub-channel for the forwarded copy. |
-| `recipient_override` | Replace the recipient (e.g. force-broadcast). |
-| `truncate` | Integer max-length for body. |
+| `override_priority` | Replace the message's priority. |
+| `override_type` | Replace the message's type. |
+
+Note the spelling: `override_priority`, not `priority_override`. There is no
+suffix, body template, truncate, recipient-override or channel-override
+transform — the body cannot be templated, so an incident number or address
+cannot be injected into a forwarded message from a route.
 
 ### Transform examples
 
-**Prefix DMR traffic with the talkgroup and route to dispatch:**
+**Tag forwarded traffic with its source channel:**
 ```json
 {
-  "prefix": "[DMR TG{talkgroup}] ",
-  "channel_override": "dispatch"
+  "prefix": "[{source}] "
 }
 ```
 
-**Cap message length when bridging to SMS (which has a 160-char limit):**
+**Prefix and escalate:**
 ```json
 {
-  "truncate": 140,
-  "suffix": " (…)"
+  "prefix": "[DMR] ",
+  "override_priority": "high"
 }
 ```
 
-**Reformat a Slack post into a structured dispatch announcement:**
+---
+
+## Recipient predicates
+
+`recipient_predicate_json` decides **who** a forwarded copy reaches. It is
+separate from Filters: filters decide whether the route fires at all,
+predicates decide the audience. Both routes seeded by the installer rely on it,
+so this is not a corner feature.
+
 ```json
-{
-  "body_template": "Dispatch from Slack ({sender}): {body}",
-  "priority_override": "high"
-}
+{"predicate": "assigned_to_incident", "params": {"ticket_id": "$payload.ticket_id"}}
 ```
+
+A `$payload.<key>` string is substituted from the message payload at evaluation
+time.
+
+| Predicate | Selects |
+|---|---|
+| `assigned_to_incident` | Users assigned to the given incident |
+| `responder_status_in` | Users whose responder status is in a list |
+| `member_of_team` | Members of a team |
+| `user_id_in` | An explicit list of user ids |
+| `org_member` | Members of an organisation |
+| `rbac_can` | Users holding a given permission code |
+
+Compose them with `any_of`, `all_of` or `none_of`:
+
+```json
+{"type": "any_of", "predicates": [
+  {"predicate": "rbac_can", "params": {"permission_code": "screen.situation"}},
+  {"predicate": "rbac_can", "params": {"permission_code": "widget.incidents"}}
+]}
+```
+
+**A predicate that matches nobody logs `skipped`, not `failed`** —
+`recipient predicate matched zero users` (`inc/router.php:416`). That is
+deliberate: an empty audience is not an error. But it means a route can be
+enabled, correct, and reach no one, while the log line reads like a normal
+outcome. When a route is not delivering, check the predicate before the adapter.
 
 ---
 
@@ -214,8 +272,8 @@ If you want exclusive routing — "if it matches Route A, don't also fire B" —
 Example: route urgent messages one way, non-urgent another.
 
 ```
-Route A (priority 10): filters={"priority":["urgent"]}, dest=on-call SMS
-Route B (priority 20): filters={"priority":["normal","low"]}, dest=chat
+Route A (priority 10): filters={"priority_in":["urgent"]}, dest=on-call SMS
+Route B (priority 20): filters={"priority_in":["normal","low"]}, dest=chat
 ```
 
 Because the priority field is a "high" or a "low" per message (never both), exactly one rule matches.
@@ -256,9 +314,8 @@ POST /api/routing.php
   "test_message": {
     "channel": "dmr",
     "direction": "inbound",
-    "talkgroup": "9990",
     "body": "all clear at scene",
-    "priority": "normal"
+    "priority": "urgent"
   }
 }
 ```
@@ -269,7 +326,7 @@ Response:
 {
   "matched": true,
   "filter_results": {
-    "talkgroup": "matched (9990 in [9990])",
+    "priority_in": "matched (urgent in [urgent])",
     "exclude_keywords": "matched (no exclusion hit)"
   },
   "would_forward_to": "local_chat",
@@ -294,7 +351,7 @@ Every evaluation writes a row to `routing_log`:
 | `dest_channel` | Where the forwarded copy was sent (NULL on no-match) |
 | `source_message_id` | FK to the `messages` table for the source |
 | `dest_message_id` | FK for the forwarded copy (NULL on no-match) |
-| `status` | `forwarded`, `failed`, `skipped`, `loop_blocked`, `not_implemented` |
+| `status` | `forwarded`, `failed`, `skipped`, `loop_blocked` — those four are the column's ENUM; there is no `not_implemented` status (a stub adapter logs `failed` with that text in `error`) |
 | `error` | Free-text reason on failure |
 | `summary` | Short human-readable description |
 
@@ -318,7 +375,7 @@ SELECT error, COUNT(*) c
 
 -- Routes that have never matched anything
 SELECT r.id, r.name
-  FROM routes r
+  FROM message_routes r
   LEFT JOIN routing_log l ON l.route_id = r.id
  WHERE l.id IS NULL
    AND r.enabled = 1;
@@ -341,7 +398,7 @@ Transforms add a `[DMR TGxxx]` or `[Mesh @nodename]` prefix so dispatchers can t
 
 ```
 * (inbound) → sms (recipient = on_call_number)
-filters: {"priority":["urgent"]}
+filters: {"priority_in":["urgent"]}
 ```
 
 The `*` source matches any channel. Combine with `exclude_keywords:["test","drill"]` so test traffic doesn't page anyone.
@@ -349,18 +406,22 @@ The `*` source matches any channel. Combine with `exclude_keywords:["test","dril
 ### Pattern: cross-bridge translation (mesh ↔ DMR)
 
 ```
-Mesh (inbound) → DMR (talkgroup=9990, broadcast)
-DMR (inbound, talkgroup=9990) → Mesh (broadcast)
+Mesh (inbound) → DMR
+DMR  (inbound) → Mesh
 ```
 
 The loop-prevention `_routed` set keeps these from chaining infinitely.
+
+There is no talkgroup *filter*, so a route cannot be restricted to traffic from
+one talkgroup. A specific destination talkgroup is set on the route's
+`dest_subaddress_json`, not in `filters_json`.
 
 ### Pattern: routing-engine "off" switch
 
 Disable all routes via:
 
 ```bash
-sudo mariadb newui -e "UPDATE routes SET enabled = 0;"
+sudo mariadb newui -e "UPDATE message_routes SET enabled = 0;"
 ```
 
 Or per-route via the admin UI's toggle. The routing engine continues to log decisions but takes no forwarding action.
@@ -369,7 +430,7 @@ Or per-route via the admin UI's toggle. The routing engine continues to log deci
 
 ## Performance notes
 
-- Each `router_evaluate` is one cached query against `routes` for that source channel; the cache is per-request, so a high-throughput inbound (thousands of msgs/sec) won't hit the DB once-per-message.
+- Each `router_evaluate` is one cached query against `message_routes` for that source channel; the cache is per-request, so a high-throughput inbound (thousands of msgs/sec) won't hit the DB once-per-message.
 - The actual `broker_send` to the destination channel is what costs time. Slack and SMS adapters block on the external API; for high-volume bridging, configure adapter timeouts (`broker.timeout_ms` setting) so a slow adapter doesn't stall the source channel.
 - For very high throughput, consider moving forwarding to a queue (planned for a future phase; not yet implemented).
 
@@ -392,7 +453,16 @@ broker_register('my_channel', [
 
 Once registered, routes can target `my_channel` as their `dest_channel` and the engine doesn't know or care about the implementation.
 
-For inbound traffic, your channel adapter should call `broker_receive('my_channel', $message)` when a message arrives. The broker will then call `router_evaluate` to fan out routes.
+For inbound traffic, your channel adapter should call `broker_receive('my_channel')` when a message arrives. The broker logs each message and then calls `router_evaluate($channel, 'inbound', …)` to fan out routes.
+
+**`broker_receive()` currently has no caller in the shipped tree**, so
+`direction: inbound` routes cannot fire on their own. Push-style channels work
+because they receive an HTTP post and re-inject via `broker_send()`, which fires
+**outbound** rules — `api/dmr-ingest.php` and `api/atak-ingest.php` do this.
+A poll-based channel (Slack, Telegram, SMS) needs something to call
+`broker_receive()` on a schedule, and nothing does. Tracked as
+[#23](https://github.com/openises/TicketsCAD/issues/23); until it is resolved,
+treat inbound routing as unavailable rather than as configuration you got wrong.
 
 ---
 

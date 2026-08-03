@@ -243,7 +243,7 @@ work on Apache**:
 |---|---|
 | Apache | The shipped `.htaccess` files — but only if your `<Directory>` block sets `AllowOverride All` (or `FileInfo`). The vhost template above does. |
 | **nginx** | **Nothing, until you install [`docs/nginx/ticketscad-hardening.conf`](nginx/ticketscad-hardening.conf).** nginx never reads `.htaccess`. |
-| **IIS** | `sql/web.config` + `tools/web.config` ship; add hidden segments for `backups` and `inc`. IIS ignores `.htaccess`. |
+| **IIS** | `sql/web.config` + `tools/web.config` ship; copy the same file into `backups\` and `inc\`. IIS ignores `.htaccess`. Do **not** use site-level hidden segments — they match any path segment and would also block `assets/vendor/`. |
 | Caddy | See [`WEB-SERVER-HARDENING.md`](WEB-SERVER-HARDENING.md). |
 
 Full instructions, and a three-command test to confirm it worked, are in
@@ -340,8 +340,13 @@ You should be able to do all of these on a clean install:
 - [ ] `sudo -u www-data php sql/run_migrations.php --list` reports `Pending: 0`
 - [ ] `sudo apache2ctl configtest` reports `Syntax OK`
 - [ ] The private directories are NOT served — each of these prints `403` or `404`, never `200`:
-      `for p in backups/ sql/run_migrations.php tools/; do curl -s -o /dev/null -w "$p %{http_code}\n" https://your.host.name/$p; done`
-      (Settings → Status shows the same check under "Web exposure".)
+      `for p in sql/run_migrations.php tools/; do curl -s -o /dev/null -w "$p %{http_code}\n" https://your.host.name/$p; done`
+- [ ] Backup archives are NOT served. Ask for one **by name** (filenames are in
+      Settings → Backup); requesting `/backups/` does not answer this, because a
+      `403` on the folder is what a server with directory listing off returns
+      while it serves every file inside:
+      `curl -s -o /dev/null -w "archive %{http_code}\n" https://your.host.name/backups/ticketscad-20260728-020000.zip`
+      (Settings → Status shows the same checks under "Web exposure".)
 - [ ] `journalctl -u apache2 --since "10 min ago" | grep -iE "error|warn"` is quiet
 
 ---

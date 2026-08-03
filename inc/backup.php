@@ -14,9 +14,6 @@
 
 // ── Where backup archives live ───────────────────────────────────────────────
 //
-// ABOVE the web root: a sibling of the install directory, the same shape
-// FE_KEYS_DIR (inc/field-encrypt.php) already uses for the encryption keys.
-//
 // Until v4.2.3 this was NEWUI_ROOT . '/backups' — INSIDE the served tree. The
 // documented install points the web root at the application root, so on
 // 2026-07-30 an unauthenticated `GET /backups/<archive>.zip` returned a 110 MB
@@ -28,72 +25,140 @@
 // covers every install — nginx ignores .htaccess entirely and Apache ignores it
 // under AllowOverride None. So the files moved rather than relying on it.
 //
-// BACKUP_DIR_LEGACY is kept deliberately: archives an older install already
-// wrote inside the web root stay visible and downloadable in Settings → Backup,
-// and pruning never touches them. Nothing is moved or deleted automatically —
-// that is the operator's decision, and the Status page tells them it needs
-// making. See docs/WEB-SERVER-HARDENING.md and
+// ── …and then v4.2.3's own fix re-exposed them on Windows (2026-08-02) ──────
+//
+// v4.2.3 wrote `dirname(NEWUI_ROOT) . '/backups'` unconditionally. That is
+// "above the web root" only on a POSIX-shaped layout (/var/www/newui →
+// /var/www). @rjonesbsink reported the Windows case: a stock IIS install lives
+// at C:\inetpub\wwwroot\<app>, so dirname() gives **C:\inetpub\wwwroot** — the
+// physical path of Default Web Site, bound to *:80. The "safe" destination was
+// the document root of a DIFFERENT site, on a different port, with none of this
+// application's deny rules anywhere near it, and the health check reported OK
+// because it only ever probes THIS install's own base URL. A complete database
+// archive was one `http://<host>/backups/<file>.zip` away — more exposed than
+// before the fix, and now with a green tick beside it.
+//
+// C:\inetpub\wwwroot is not an exotic layout; it is where the IIS default site
+// lives on every Windows machine. The same shape bites XAMPP
+// (C:\xampp\htdocs\newui → C:\xampp\htdocs, the DocumentRoot).
+//
+// So the default is platform-aware, and — deliberately — UNCONDITIONAL per
+// platform rather than "sibling unless it looks unsafe". BACKUP_DIR is a
+// define(); a constant whose value depends on mutable filesystem state (does
+// C:\inetpub\wwwroot\web.config exist today?) would silently relocate an
+// install's archives when something unrelated changed. One rule per platform,
+// and an operator who wants a different directory sets `backup_dir` in
+// Settings → Backup, which overrides all of this.
+//
+//   POSIX    dirname(NEWUI_ROOT)/backups        (unchanged — correct there)
+//   Windows  %ProgramData%\TicketsCAD\backups   (never a site root on any
+//                                                stock configuration, and not
+//                                                specific to IIS, so it is also
+//                                                right for XAMPP and nginx)
+//
+// C:\inetpub\backups — @rjonesbsink's own suggestion — is equally safe on an
+// IIS box and is a perfectly good value for `backup_dir`; it is not the default
+// only because it is meaningless on a machine that has no IIS.
+//
+// TWO historical locations are kept so nothing an install already wrote is
+// orphaned. Both stay listed and downloadable in Settings → Backup, and pruning
+// never touches either. Nothing is moved automatically — that is the operator's
+// decision, and the Status page tells them it needs making:
+//
+//   BACKUP_DIR_LEGACY          pre-4.2.3, inside the application tree
+//   BACKUP_DIR_LEGACY_SIBLING  the 4.2.3 default (identical to BACKUP_DIR on
+//                              POSIX; on Windows this is the wwwroot directory
+//                              above, and archives found there are reported
+//                              CRITICAL with the reason spelled out)
+//
+// See docs/WEB-SERVER-HARDENING.md and
 // docs/security/advisory-2026-07-30-exposed-directories.md.
-define('BACKUP_DIR', dirname(NEWUI_ROOT) . '/backups');
+//
+// ── …and then the same assumption turned up a THIRD time (2026-08-03) ───────
+//
+// FE_KEYS_DIR — the RSA private key and the 2FA key — was `NEWUI_ROOT .
+// '/../keys'`, chosen for the same reason and wrong on Windows in the same way
+// (GHSA-3jmh-c6f6-64jc). So the three helpers that answer "is this directory
+// published, and can we fence it?" now live in inc/served-dir.php and are
+// shared. The backup_* names below are kept as the callers' vocabulary; they
+// delegate, so there is one implementation to be right.
+
+require_once __DIR__ . '/served-dir.php';
+
+/**
+ * The default backup directory for an application root, per platform.
+ *
+ * Exposed as a function, and taking the platform explicitly, for two reasons:
+ * tests can assert BOTH platforms' answers from one machine, and the Docker
+ * checks (a Linux image, whatever the developer's laptop is) can ask for the
+ * POSIX answer rather than hard-coding a literal that would drift.
+ *
+ * @param string    $appRoot  The application root (NEWUI_ROOT).
+ * @param bool|null $windows  NULL = detect from this machine.
+ */
+function backup_default_dir_for(string $appRoot, ?bool $windows = null): string
+{
+    if ($windows === null) {
+        $windows = (DIRECTORY_SEPARATOR === '\\');
+    }
+    if (!$windows) {
+        return dirname($appRoot) . '/backups';
+    }
+
+    // %ProgramData% is set by Windows itself on every install and is inherited
+    // by IIS worker processes and by the CLI alike, so the web UI and
+    // tools/backup_run.php resolve the same directory. Its fallbacks (for a
+    // scrubbed environment) are in served_dir_program_data(), which is also
+    // what the encryption keys use, so the two cannot drift apart.
+    return served_dir_program_data() . '\\TicketsCAD\\backups';
+}
+
+define('BACKUP_DIR', backup_default_dir_for(NEWUI_ROOT));
 define('BACKUP_DIR_LEGACY', NEWUI_ROOT . '/backups');
+define('BACKUP_DIR_LEGACY_SIBLING', dirname(NEWUI_ROOT) . '/backups');
 
 /**
  * Is a path inside the served application tree (and therefore potentially
- * reachable over HTTP)? Used by the health check and by backup_harden_dir().
+ * reachable over HTTP)?
+ *
+ * The implementation is served_dir_is_in_app_tree() in inc/served-dir.php —
+ * shared with the encryption-key directory, which had the identical defect
+ * (GHSA-3jmh-c6f6-64jc). This name is kept because it is the one api/backup.php
+ * and the tests speak.
  */
 function backup_dir_is_web_served(string $dir): bool
 {
-    $n    = function (string $p): string { return rtrim(str_replace('\\', '/', $p), '/'); };
-    $real = @realpath($dir);
-    $dirN = $n($real !== false ? $real : $dir);
-    $rootReal = @realpath(NEWUI_ROOT);
-    $rootN    = $n($rootReal !== false ? $rootReal : NEWUI_ROOT);
-    return $dirN === $rootN || strpos($dirN, $rootN . '/') === 0;
+    return served_dir_is_in_app_tree($dir);
 }
 
 /**
- * If a backup directory ends up inside the web root anyway — an operator who
- * pointed the `backup_dir` setting there, or the compatibility fallback on a
- * host where the parent directory cannot be written — drop deny rules beside
- * the archives so at least Apache and IIS refuse to serve them.
+ * Could this backup directory be published over HTTP by some web site on this
+ * machine? Graded verdict, never a bare boolean — see served_dir_exposure() in
+ * inc/served-dir.php for what it can and cannot know, which is the whole point
+ * of it.
+ */
+function backup_dir_exposure(string $dir): array
+{
+    return served_dir_exposure($dir);
+}
+
+/**
+ * If a backup directory is — or may be — published by a web server, drop deny
+ * rules beside the archives so at least Apache and IIS refuse to serve them.
  *
- * Best effort by design: a failure here must never stop a backup from being
- * taken. The Status page reports the exposure either way.
+ * Widened 2026-08-02: the trigger used to be "inside OUR tree", which is
+ * precisely the case that missed C:\inetpub\wwwroot\backups. It now fires on
+ * any directory served_dir_exposure() calls served OR suspect, which is the
+ * whole point — the archives that most need a fence are the ones sitting in
+ * somebody else's document root.
+ *
+ * Unlike the keys directory, this does NOT fence unconditionally: a deny file
+ * in a backup folder no server can see is one more file an operator has to
+ * reason about, and the Status page reports the exposure either way.
  */
 function backup_harden_dir(string $dir): void
 {
-    try {
-        if (!is_dir($dir) || !backup_dir_is_web_served($dir)) {
-            return;
-        }
-        $ht = rtrim($dir, '/\\') . '/.htaccess';
-        if (!file_exists($ht)) {
-            @file_put_contents($ht,
-                "# Database backups. Never serve these over HTTP.\n"
-                . "# Written automatically because this directory sits inside the web root;\n"
-                . "# see docs/WEB-SERVER-HARDENING.md. nginx ignores this file — use\n"
-                . "# docs/nginx/ticketscad-hardening.conf there.\n"
-                . "<IfModule mod_alias.c>\n"
-                . "    RedirectMatch 404 (^|/)backups(/|\$)\n"
-                . "</IfModule>\n"
-                . "<IfModule mod_rewrite.c>\n"
-                . "    RewriteEngine On\n"
-                . "    RewriteRule .* - [F,L]\n"
-                . "</IfModule>\n");
-        }
-        $wc = rtrim($dir, '/\\') . '/web.config';
-        if (!file_exists($wc)) {
-            @file_put_contents($wc,
-                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-                . "<!-- Database backups. IIS ignores .htaccess; this is the equivalent. -->\n"
-                . "<configuration>\n  <system.webServer>\n"
-                . "    <authorization><deny users=\"*\" /></authorization>\n"
-                . "    <directoryBrowse enabled=\"false\" />\n"
-                . "  </system.webServer>\n</configuration>\n");
-        }
-    } catch (Throwable $e) {
-        error_log('[backup] could not harden backup directory: ' . $e->getMessage());
-    }
+    served_dir_harden($dir, 'Database backups', false);
 }
 
 /**

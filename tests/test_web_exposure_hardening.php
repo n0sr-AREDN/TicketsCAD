@@ -312,11 +312,23 @@ test('BACKUP_DIR resolves OUTSIDE the web root',
     defined('BACKUP_DIR') && strpos($n(BACKUP_DIR) . '/', $n($root) . '/') !== 0,
     'BACKUP_DIR=' . (defined('BACKUP_DIR') ? BACKUP_DIR : 'undefined')
     . ' root=' . $root);
-test('BACKUP_DIR is a sibling of the install directory (like FE_KEYS_DIR)',
-    defined('BACKUP_DIR') && $n(dirname(BACKUP_DIR)) === $n(dirname($root)));
+// NOT "a sibling of the install directory" any more. That was the whole of the
+// 2026-08-02 regression: dirname() is above the web root on /var/www/newui and
+// is C:\inetpub\wwwroot — another site's document root, on port 80 — for a
+// stock Windows install. The platform split is asserted properly, both sides,
+// in tests/test_backup_dir_platform.php.
+test('the POSIX default is a sibling of the install directory (like FE_KEYS_DIR)',
+    $n(backup_default_dir_for('/var/www/newui', false)) === '/var/www/backups');
+test('the Windows default is NOT a sibling of the install directory',
+    $n(backup_default_dir_for('C:\\inetpub\\wwwroot\\TicketsV4', true))
+        !== $n('C:/inetpub/wwwroot/backups'),
+    'dirname() on a stock IIS install is C:\\inetpub\\wwwroot — Default Web Site, port 80');
 test('BACKUP_DIR_LEGACY still names the old in-webroot path',
     defined('BACKUP_DIR_LEGACY') && strpos($n(BACKUP_DIR_LEGACY), $n($root) . '/backups') === 0,
     'without it, archives an existing install already wrote would be orphaned');
+test('BACKUP_DIR_LEGACY_SIBLING names the v4.2.3 default, so its archives are not orphaned',
+    defined('BACKUP_DIR_LEGACY_SIBLING')
+    && $n(BACKUP_DIR_LEGACY_SIBLING) === $n(dirname($root)) . '/backups');
 
 test('backup_dir_is_web_served() recognises the old location',
     backup_dir_is_web_served(BACKUP_DIR_LEGACY) === true);

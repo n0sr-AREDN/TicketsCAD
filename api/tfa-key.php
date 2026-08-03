@@ -21,7 +21,9 @@ if (!is_admin()) {
 $prefix = $GLOBALS['db_prefix'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 
-$keysDir = defined('FE_KEYS_DIR') ? FE_KEYS_DIR : (NEWUI_ROOT . '/../keys');
+// FE_KEYS_DIR, never a guess: inc/tfa.php requires inc/field-encrypt.php, which
+// is the one place that decides where keys live (GHSA-3jmh-c6f6-64jc).
+$keysDir = FE_KEYS_DIR;
 $keyFile = $keysDir . '/tfa.key';
 
 if ($method === 'GET') {
@@ -34,9 +36,18 @@ if ($method === 'GET') {
         );
     } catch (Exception $e) {}
 
+    // The directory is reported whether or not the key exists. Nothing in the
+    // UI named it before, so an administrator hitting the write failure below
+    // had no way to see that the path was inside a web root.
+    $exposure = served_dir_exposure($keysDir);
+
     json_response([
         'key_source'     => $hasDedicatedKey ? 'dedicated_file' : 'db_password_derived',
         'key_file'       => $hasDedicatedKey ? $keyFile : '(not created)',
+        'keys_dir'       => $keysDir,
+        'keys_dir_exposed' => $exposure['served'] || $exposure['suspect'],
+        'keys_dir_note'  => ($exposure['served'] || $exposure['suspect'])
+            ? fe_keys_dir_hint($keysDir) : '',
         'dedicated_exists' => $hasDedicatedKey,
         'enrollments'    => $enrollments,
     ]);
@@ -77,7 +88,12 @@ if ($method === 'POST') {
                     'message'  => 'Dedicated key generated. No enrollments to migrate.',
                 ]);
             } else {
-                json_error('Failed to generate key file. Check directory permissions.', 500);
+                // Name the directory. "Check directory permissions" was true and
+                // led an administrator straight to granting write access to
+                // C:\inetpub\wwwroot\keys — a directory published on port 80,
+                // where the only thing that had kept the 2FA key out of it was
+                // the permission failure itself (GHSA-3jmh-c6f6-64jc).
+                json_error('Failed to generate key file. ' . fe_keys_dir_hint($keysDir), 500);
             }
         }
 
@@ -105,8 +121,9 @@ if ($method === 'POST') {
         if (!is_dir($keysDir)) {
             @mkdir($keysDir, 0700, true);
         }
-        if (file_put_contents($keyFile, $newKey) === false) {
-            json_error('Failed to write key file', 500);
+        fe_harden_keys_dir();
+        if (@file_put_contents($keyFile, $newKey) === false) {
+            json_error('Failed to write key file. ' . fe_keys_dir_hint($keysDir), 500);
         }
         @chmod($keyFile, 0600);
 

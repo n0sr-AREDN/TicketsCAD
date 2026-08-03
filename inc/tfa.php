@@ -12,6 +12,14 @@
 require_once __DIR__ . '/https.php';   // is_https(), is_https_verified()
 
 require_once __DIR__ . '/totp.php';
+// FE_KEYS_DIR, and the resolver behind it. Required rather than defaulted: the
+// `defined(...) ? … : NEWUI_ROOT . '/../keys'` fallbacks below used to be
+// harmless because the fallback WAS the definition. Since 4.2.4 the directory
+// is platform-aware and may be a historical location that already holds keys
+// (GHSA-3jmh-c6f6-64jc), so a file that guesses would write tfa.key somewhere
+// field-encrypt.php is not looking — and a 2FA key in the wrong directory locks
+// out every enrolled user.
+require_once __DIR__ . '/field-encrypt.php';
 
 // ═══════════════════════════════════════════════════════════════
 //  ENCRYPTION HELPERS
@@ -21,7 +29,7 @@ require_once __DIR__ . '/totp.php';
  * Get the encryption key for 2FA secrets.
  *
  * Key resolution order:
- *   1. Dedicated key file: ../keys/tfa.key (preferred — independent of DB password)
+ *   1. Dedicated key file: FE_KEYS_DIR/tfa.key (preferred — independent of DB password)
  *   2. Fallback: derived from DB password + fixed salt via SHA-256 (legacy)
  *
  * The dedicated key file is generated on first use or via tfa_generate_key().
@@ -32,7 +40,7 @@ require_once __DIR__ . '/totp.php';
  */
 function tfa_encryption_key()
 {
-    $keyFile = defined('FE_KEYS_DIR') ? FE_KEYS_DIR . '/tfa.key' : (NEWUI_ROOT . '/../keys/tfa.key');
+    $keyFile = FE_KEYS_DIR . '/tfa.key';
 
     // Prefer dedicated key file if it exists
     if (file_exists($keyFile)) {
@@ -92,19 +100,21 @@ function tfa_encryption_key()
  */
 function tfa_generate_key()
 {
-    $keysDir = defined('FE_KEYS_DIR') ? FE_KEYS_DIR : (NEWUI_ROOT . '/../keys');
+    $keysDir = FE_KEYS_DIR;
     $keyFile = $keysDir . '/tfa.key';
 
     if (!is_dir($keysDir)) {
         if (!@mkdir($keysDir, 0700, true)) {
-            error_log('tfa: Cannot create keys directory: ' . $keysDir);
+            error_log('tfa: Cannot create keys directory: ' . fe_keys_dir_hint($keysDir));
             return false;
         }
     }
+    // Deny rules beside the key, wherever it lands. See fe_harden_keys_dir().
+    fe_harden_keys_dir();
 
     $key = random_bytes(32);
     if (file_put_contents($keyFile, $key) === false) {
-        error_log('tfa: Cannot write TFA key file');
+        error_log('tfa: Cannot write TFA key file — ' . fe_keys_dir_hint($keysDir));
         return false;
     }
     @chmod($keyFile, 0600);

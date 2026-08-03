@@ -82,28 +82,64 @@ the web server access logs — see "Was I actually hit?" below.
 
 ## Check your own install — one minute
 
+> **Corrected 2026-08-02.** An earlier version of this section told you to
+> request `https://your-site/backups/` and treat a `403` as safe. **That check
+> is wrong and it can tell you that you are fine when you are not.**
+> @rjonesbsink measured it on his own install: the folder answered `403` while
+> the archive inside it answered `200` and downloaded in full — the complete
+> database export. Any server with directory listing turned off but no rule
+> denying the files behaves that way, which on Apache is the ordinary default.
+> **If you ran the old check and saw `403`, you have not checked your backups.
+> Run the corrected one below.**
+
 Run this from any computer, replacing `your-site`. You can also paste the URLs
 into a browser.
 
+**1. The two script directories** — these paths always exist, so the answer
+means what it says:
+
 ```bash
-curl -s -o /dev/null -w 'backups %{http_code}\n' https://your-site/backups/
-curl -s -o /dev/null -w 'sql     %{http_code}\n' https://your-site/sql/run_migrations.php
-curl -s -o /dev/null -w 'tools   %{http_code}\n' https://your-site/tools/
+curl -s -o /dev/null -w 'sql   %{http_code}\n' https://your-site/sql/run_migrations.php
+curl -s -o /dev/null -w 'tools %{http_code}\n' https://your-site/tools/
 ```
+
+**2. Your backups — ask for an actual archive, by name.** Get a filename from
+**Settings → Backup**, which lists every archive this install has written (or
+look in the backup folder on the server). Then:
+
+```bash
+curl -s -o /dev/null -w 'archive %{http_code}\n' \
+     https://your-site/backups/ticketscad-20260728-020000.zip
+```
+
+Substitute a real filename. **Do not shorten this to a request for
+`/backups/`** — that is the check that lies. Only a request for a file tells
+you whether files are served.
+
+If you have never taken a backup, there is no file to ask for. Take one
+(Settings → Backup → "Back up now"), then run the check. Until you do, this
+is untested, not safe — and from v4.2.4 the Status page says exactly that
+instead of showing a green tick.
 
 **Reading the result:**
 
-* `403` or `404` — good. That path is blocked.
+* `403`, `404` or `401` on a request for **a real archive filename** — good.
+  That file is not being served.
+* `403` on `/backups/` — **means nothing.** See the correction above.
 * `200` — **affected.** That path is being served. Go to "Fix it now".
 * `301` / `302` — inconclusive; you are being redirected (often HTTP → HTTPS).
   Re-run against the address you are redirected to.
+* On IIS, `500` is **not** a pass — it means the `web.config` in that folder is
+  invalid, so nothing is denying anything. You want `401`.
 
 If your site is `http://` rather than `https://`, use that instead.
 
-From **v4.2.3 onward TicketsCAD runs these same three checks against itself**
-and reports the answer on **Settings → Status**, in the "Web exposure" row. If
-that row is green, you are covered — and it will go red again if a future server
-change ever re-opens one of these.
+From **v4.2.3 onward TicketsCAD runs these checks against itself** and reports
+the answer on **Settings → Status**, in the "Web exposure" row. From **v4.2.4
+the backups probe asks for a named archive** — or, when there is no archive
+yet, writes a small random self-test file into the folder and asks for that
+back. If it can do neither, the row reads grey **"Not determined"** rather than
+green: an install with no backups is untested, not safe.
 
 ---
 
@@ -166,8 +202,9 @@ IIS does not read `.htaccess` either. In IIS Manager, select your site →
 
 ### If you cannot change the web server right now
 
-Move the backups out of the published folder, which removes the worst of it in
-one command:
+Move the backups out of the published folder, which removes the worst of it.
+
+**Linux / macOS:**
 
 ```bash
 cd /path/to/your/ticketscad
@@ -175,7 +212,33 @@ mkdir -p ../backups
 mv backups/ticketscad-* ../backups/
 ```
 
-That is where v4.2.3 keeps them permanently.
+One check before you run it: `..` must not itself be published. If your install
+is at `/var/www/html/ticketscad`, then `..` is `/var/www/html` — the stock
+Apache DocumentRoot — and you would be moving the archives from one served
+folder to another. Use a directory outside the site entirely, e.g.
+`/var/backups/ticketscad`, and set **Settings → Backup → Backup folder** to it.
+
+**Windows / IIS:** do **not** use the Linux commands above, and do not use `..`.
+On a stock IIS install the application is at `C:\inetpub\wwwroot\<YourSite>`, so
+`..` is `C:\inetpub\wwwroot` — the physical path of **Default Web Site**, which
+is bound to port 80. Moving archives there publishes them on a *different* site
+from the one TicketsCAD answers on. From an elevated PowerShell prompt:
+
+```powershell
+New-Item -ItemType Directory -Force -Path 'C:\ProgramData\TicketsCAD\backups'
+Move-Item -Path 'C:\inetpub\wwwroot\<YourSite>\backups\ticketscad-*' `
+          -Destination 'C:\ProgramData\TicketsCAD\backups\'
+icacls 'C:\ProgramData\TicketsCAD\backups' /grant 'IIS AppPool\<YourPool>:(OI)(CI)M'
+```
+
+Then set **Settings → Backup → Backup folder** to
+`C:\ProgramData\TicketsCAD\backups`. `C:\inetpub\backups` is equally safe if you
+would rather keep the archives on the same volume as the site — the point is
+only that it must not be inside any site's physical path.
+
+From v4.2.4 that is where TicketsCAD keeps them by default on each platform
+(`../backups` on Linux, `%ProgramData%\TicketsCAD\backups` on Windows), and the
+**Settings → Backup → Backup folder** setting overrides both.
 
 ---
 
@@ -188,9 +251,43 @@ Four independent layers, because no single one covers every install:
    Archives already in the old location are left where they are (nothing is
    deleted or moved for you), they stay listed and downloadable in
    Settings → Backup, and the Status page tells you to move them.
+
+   > **Windows and IIS operators: `../backups` was the wrong destination on your
+   > platform, and v4.2.4 corrects it.** `..` is above the web root on a Linux
+   > layout (`/var/www/newui` → `/var/www`). On a stock Windows install the
+   > application sits at `C:\inetpub\wwwroot\<YourSite>`, so `..` is
+   > **`C:\inetpub\wwwroot`** — the physical path of **Default Web Site**, bound
+   > to `*:80`. v4.2.3 therefore moved database archives out of TicketsCAD's own
+   > site and into a *different* published one, on a port TicketsCAD does not
+   > use and where none of its deny rules apply, reachable at
+   > `http://<host>/backups/<archive>.zip`. The Status page reported the install
+   > healthy throughout, because its self-probe only ever asked TicketsCAD's own
+   > address. The same shape affects XAMPP (`C:\xampp\htdocs\newui` →
+   > `C:\xampp\htdocs`, the DocumentRoot) and any Linux install placed directly
+   > under a DocumentRoot such as `/var/www/html/newui`.
+   >
+   > From v4.2.4 the default is `%ProgramData%\TicketsCAD\backups` on Windows
+   > and unchanged on Linux; archives v4.2.3 left in `..\backups` stay listed in
+   > Settings → Backup and are reported as Critical with the reason, instead of
+   > being silently orphaned; and the Status page now verifies the **destination**
+   > — including from the default ports, where another site answers — and states
+   > in plain words what its probe cannot see.
+   >
+   > **If you took v4.2.3 on Windows, or followed its "move your backups"
+   > instructions, treat any archive that sat in `C:\inetpub\wwwroot\backups` as
+   > having been downloadable**, and work through
+   > [If your backups directory was exposed](#if-your-backups-directory-was-exposed)
+   > below. Reported by @rjonesbsink.
 2. **Deny rules ship in the repository** — the root `.htaccess`, plus
    `sql/.htaccess`, `tools/.htaccess` and `web.config` files for IIS. They arrive
    with the update rather than having to be added by hand.
+
+   > **IIS operators who took the v4.2.3 update: take the next one too.** The
+   > `web.config` files in v4.2.3 were invalid and answered **HTTP 500.19**
+   > rather than denying. The folders were unreachable, but because the file
+   > threw — not because the rule ran — so the protection would have evaporated
+   > the moment anything made the file parse. Corrected from v4.2.4. On IIS a
+   > `500` from the self-check below is not a pass; you want `401`.
 3. **Every script under `sql/` and `tools/` refuses to run over HTTP** — 296 of
    them now answer `403 CLI only` and stop before touching the database. This is
    the layer that works on any web server in any configuration, including one

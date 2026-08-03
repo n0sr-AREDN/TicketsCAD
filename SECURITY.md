@@ -448,17 +448,28 @@ php tests/test_pre_release_fixes.php             # regression bundle
   `200` is a problem:
 
   ```bash
-  curl -s -o /dev/null -w 'backups %{http_code}\n' https://your-site/backups/
-  curl -s -o /dev/null -w 'sql     %{http_code}\n' https://your-site/sql/run_migrations.php
-  curl -s -o /dev/null -w 'tools   %{http_code}\n' https://your-site/tools/
+  curl -s -o /dev/null -w 'sql   %{http_code}\n' https://your-site/sql/run_migrations.php
+  curl -s -o /dev/null -w 'tools %{http_code}\n' https://your-site/tools/
+  # Backups: ask for an ARCHIVE BY NAME. Filenames: Settings -> Backup.
+  curl -s -o /dev/null -w 'archive %{http_code}\n' \
+       https://your-site/backups/ticketscad-20260728-020000.zip
   ```
 
+  **Do not test backups by requesting `/backups/`.** A `403` on the folder
+  proves nothing about the files in it — @rjonesbsink measured a `403` on the
+  directory and a `200` on the archive inside it, on the same install, on
+  2026-08-02. Any server with directory listing off and no deny rule on files
+  behaves that way. If you have no archive yet, take one before you claim this
+  is checked.
+
   TicketsCAD runs the same probes against itself and reports them on
-  Settings → Status ("Web exposure"). **Which file protects you depends on your
+  Settings → Status ("Web exposure"); with no archive to name it uses a random
+  self-test file, and if it can do neither the row reads "Not determined"
+  rather than green. **Which file protects you depends on your
   web server:** Apache reads the shipped `.htaccess` (only when `AllowOverride`
   is `All` or `FileInfo`); **nginx never reads `.htaccess` and needs
   [`docs/nginx/ticketscad-hardening.conf`](docs/nginx/ticketscad-hardening.conf)**;
-  IIS needs `web.config` / hidden segments. Full instructions:
+  IIS needs the per-directory `web.config` files. Full instructions:
   [`docs/WEB-SERVER-HARDENING.md`](docs/WEB-SERVER-HARDENING.md). Background:
   [`docs/security/advisory-2026-07-30-exposed-directories.md`](docs/security/advisory-2026-07-30-exposed-directories.md).
 - Keep database backups **outside** the webroot. v4.2.3 changed the default to

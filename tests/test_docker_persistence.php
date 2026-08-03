@@ -70,11 +70,25 @@ $toContainer = function (string $abs) use ($norm, $rootN): ?string {
     return null;
 };
 
+// The image is Linux whatever the developer's laptop is, so the backup path is
+// asked for explicitly as the POSIX default rather than read from BACKUP_DIR.
+// Since 2026-08-02 that constant is platform-aware — on a Windows workstation it
+// resolves to %ProgramData%\TicketsCAD\backups, which has no container path and
+// would fail this test for a reason that has nothing to do with Docker. Still
+// derived from the code, not a literal: backup_default_dir_for() is the same
+// function the constant is defined from.
+// FE_KEYS_DIR is asked for the same way, and for the same reason, since
+// 2026-08-03 (GHSA-3jmh-c6f6-64jc): it is platform-aware too, AND it may resolve
+// to wherever a given machine's existing keys already are. Reading the constant
+// happened to work on a Windows box with keys beside the checkout and would fail
+// on one without them — a Docker test failing for a reason that has nothing to
+// do with Docker. fe_default_keys_dir_for() is the same function the constant is
+// built from.
 $writePaths = [
     'uploads'                    => $root . '/uploads',
     'cache'                      => $root . '/cache',
-    'backups (BACKUP_DIR)'       => BACKUP_DIR,
-    'keys (FE_KEYS_DIR)'         => FE_KEYS_DIR,
+    'backups (BACKUP_DIR)'       => backup_default_dir_for($root, false),
+    'keys (FE_KEYS_DIR)'         => fe_default_keys_dir_for($root, false),
     'tiles (TILE_CACHE_DIR)'     => TILE_CACHE_DIR,
 ];
 

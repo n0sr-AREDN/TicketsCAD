@@ -233,10 +233,19 @@ Four independent controls, because no single one covers every deployment:
 - **CLI-only guards** — every script under `sql/` and `tools/` refuses to execute
   under a web SAPI (`403 CLI only`) before loading configuration or touching the
   database. Server-independent; gated by `tests/test_web_exposure_hardening.php`.
-- **Backups outside the web root** — `BACKUP_DIR` defaults to `../backups`, a
-  sibling of the install directory, on the same reasoning as `FE_KEYS_DIR`.
-  Archives written by older versions are left in place, stay listable, and are
-  reported by the health check until moved.
+- **Backups outside the web root** — `BACKUP_DIR` is platform-aware: `../backups`
+  on POSIX, a sibling of the install directory on the same reasoning as
+  `FE_KEYS_DIR`, and `%ProgramData%\TicketsCAD\backups` on Windows, where
+  `dirname()` of a stock install is `C:\inetpub\wwwroot` — the physical path of
+  IIS's Default Web Site (v4.2.3 regression, corrected in v4.2.4; reported by
+  @rjonesbsink). Archives written by older versions, in either historical
+  location, are left in place, stay listable, are never pruned, and are reported
+  by the health check until moved.
+  The destination is verified rather than assumed: `backup_dir_exposure()`
+  grades the local file layout and `health_check_backup_probe()` proves
+  reachability with a random canary served back over HTTP on the default ports.
+  Where neither settles it, the Status page prints what the check could not see
+  instead of reporting success.
 
 Self-verification: `health_check_web_exposure()` probes `backups/`, `sql/` and
 `tools/` over HTTP from the install itself and reports on Settings → Status;

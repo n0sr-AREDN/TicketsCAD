@@ -23,9 +23,10 @@ you exactly what to add.
 | **Caddy** | Nothing ships that helps you. | See below. |
 | **Docker (the shipped image)** | Apache inside the container, with the shipped `.htaccess` | Nothing extra. `backups/` also lives outside the web root from v4.2.3. |
 
-Whatever you run, **check it** — the last section of this page is a
-three-command test, and TicketsCAD now runs the same test for you on
-**Settings → Status → "Web exposure"**.
+Whatever you run, **check it** — the last section of this page is a one-minute
+test, and TicketsCAD now runs the same test for you on
+**Settings → Status → "Web exposure"**. Note the part about backups there: a
+`403` on `/backups/` proves nothing, and you have to ask for an archive by name.
 
 ---
 
@@ -151,15 +152,143 @@ the same file to `backups\` and `inc\`:
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
   <system.webServer>
-    <authorization><deny users="*" /></authorization>
+    <security>
+      <requestFiltering>
+        <fileExtensions allowUnlisted="false" />
+      </requestFiltering>
+    </security>
     <directoryBrowse enabled="false" />
   </system.webServer>
 </configuration>
 ```
 
-Or, better, configure Request Filtering once at the site level (IIS Manager →
-your site → Request Filtering → Hidden Segments) and add `backups`, `inc`,
-`sql`, `tools`, `tests`, `specs`, `vendor`, `keys`.
+That is the whole file, and it is the same four lines in every folder — the two
+shipped ones and any you add. TicketsCAD writes exactly this into the backup
+folder as well, when it finds the backups somewhere a web server publishes.
+
+### What it does, and what it does not
+
+`allowUnlisted="false"` with nothing listed as allowed means **every request
+whose URL has a file name extension is refused** — `.php`, `.sql`, `.zip`,
+`.bak`, anything. That is the property that matters here: it denies **the file**,
+not merely the listing. The report that started this work was `/backups/`
+answering `403` while the archive inside it answered `200` and handed over a
+complete database export. A rule that hides the index and serves the file is not
+a fix.
+
+| Request | Answer |
+|---|---|
+| `GET /backups/archive.zip` | 404 — logged as **404.7**, "File Extension Denied" |
+| `GET /sql/run_migrations.php` | 404 / 404.7 |
+| `GET /tools/` — no extension at all | 404 / 404.7 (see below) |
+| `GET /tools/does-not-exist.php` | 404 / 404.7 — filtering runs before the file is looked up, so a real script and an imaginary one answer identically |
+
+**Extension-less URLs are refused too**, and that is the one part a reader
+should not have to assume. With `allowUnlisted="false"` IIS treats "no
+extension" as unlisted, so a request for the folder itself is denied on the same
+rule. It is why extension-less applications (ASP.NET MVC) have to add
+`<add fileExtension="." allowed="true" />` before they work at all; Microsoft's
+own note on the subject is titled *"Getting 404.7 error for '/' root requests
+after Disabling Allow Unlisted file extension"*. **Do not add a `.` entry to
+these files** — it would re-open every folder URL in one line.
+`<directoryBrowse enabled="false" />` stays in the file anyway, as an
+independent second stop for exactly that case.
+
+Two limits, stated rather than glossed:
+
+* **Inherited allow-lists.** If your server or site already sets
+  `allowUnlisted="false"` *and* allow-lists extensions — a hardened setup, not
+  a stock one — those entries are inherited into these folders and an
+  allow-listed extension would still be served out of them. Stock IIS ships
+  `allowUnlisted="true"` with every listed extension denied, so out of the box
+  nothing is inherited as allowed. If yours is the hardened case, add
+  `<clear />` as the first child of `<fileExtensions>`.
+* **This is not the last line of defence.** Every script under `sql\` and
+  `tools\` refuses to run under a non-CLI SAPI and answers `403 CLI only`
+  before touching the database. That one works on any server in any
+  configuration, including none of this.
+
+### Why this and not `<authorization>`
+
+IIS has a second mechanism, URL Authorization
+(`<security><authorization><add accessType="Deny" users="*" />`), and v4.2.4
+briefly shipped it. It denies correctly and was measured at `401`. It is not
+what TicketsCAD ships, for one reason: **Request Filtering is in the default IIS
+feature set and URL Authorization is an optional role service.** A `web.config`
+naming a section whose module is absent does not fall back to something safe —
+IIS answers **500.19** for the whole folder. That blocks by accident, it is
+precisely the v4.2.3 bug, and it is what leads an administrator to delete the
+file and re-open the folder.
+
+The `401` was measured on a machine where the reporter had just run DISM to
+install the feature (he later concluded it had been there all along). So the
+`500` failures are confirmed on an untouched host; a `401` on a host where URL
+Authorization was never installed is not. A capable administrator investigating
+his own machine first concluded the feature was missing — which is the whole
+point: you cannot tell by looking.
+
+**Optional extra layer.** If you know the role service is installed and you want
+belt and braces, add the `<authorization>` block *underneath* the file-extension
+rule — never instead of it:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <system.webServer>
+    <security>
+      <requestFiltering>
+        <fileExtensions allowUnlisted="false" />
+      </requestFiltering>
+      <authorization>
+        <remove users="*" />
+        <add accessType="Deny" users="*" />
+      </authorization>
+    </security>
+    <directoryBrowse enabled="false" />
+  </system.webServer>
+</configuration>
+```
+
+Install the role service first — Server Manager → Add Roles and Features → Web
+Server (IIS) → Security → URL Authorization, or on Windows client
+`Enable-WindowsOptionalFeature -Online -FeatureName IIS-URLAuthorization`. If
+`web.config` is rejected with *"This configuration section cannot be used at
+this path"*, that is the feature missing.
+
+**Copy the block exactly.** Its three lines each look optional and none of them
+are; v4.2.3 got all three wrong at once:
+
+| What is easy to write instead | What IIS does |
+|---|---|
+| `<authorization>` directly under `<system.webServer>` | 500.19 — URL Authorization lives under `<security>` |
+| `<deny users="*" />` | 500.19 — that is the ASP.NET element (`system.web`). IIS URL Authorization uses `<add accessType="Deny" …>` |
+| `<add accessType="Deny" users="*" />` with no `<remove>` first | 500.19, `0x800700b7` — `applicationHost.config` already has a `users="*"` entry and the collection is keyed on `users`, so yours is a duplicate |
+
+> **Do not add these directory names to site-level Hidden Segments.** Request
+> Filtering's hidden segments match **any** segment of the path, not just the
+> first, so a site-level `vendor` entry also blocks `assets/vendor/…` and every
+> page loses its CSS. The same applies to `tests` (`services/audio-matrix/tests/`)
+> and `backups` (`tools/upgrade/backups/`). Per-directory `web.config` files, as
+> above, only affect the directory they sit in.
+
+### What still needs confirming on a real IIS host
+
+The behaviour above is read off Microsoft's documentation. TicketsCAD has a test
+that models it (`tests/test_iis_webconfig_syntax.php`) but no live IIS, so if
+you run one, these are the five checks worth a minute of your time — and please
+report anything that disagrees:
+
+1. The shipped `sql\web.config` loads without a 500.19 on a **stock** IIS —
+   i.e. `system.webServer/security/requestFiltering` is unlocked for
+   `web.config` in a default install, as it is believed to be.
+2. `GET /sql/run_migrations.php` answers 404, and the IIS log line for it ends
+   in substatus **7**.
+3. `GET /tools/` — with no extension — answers 404 as well, rather than a
+   directory listing or a default document.
+4. `GET /backups/<a real archive>.zip` answers 404. This is the one that
+   matters most.
+5. `GET /tools/nothing-here.php` answers the same as a real script, with no
+   difference a scanner could use to enumerate what exists.
 
 ---
 
@@ -194,19 +323,50 @@ explicit `handle` block.
 
 ## Check your own install
 
-Run these three from any machine, replacing the host. **Anything that answers
-`200` is a problem.** `403`, `404` or a connection refusal are all fine.
+Run these from any machine, replacing the host. **Anything that answers `200`
+is a problem.** `401`, `403`, `404` or a connection refusal are all fine.
 
 ```bash
-curl -s -o /dev/null -w 'backups %{http_code}\n' https://your-site/backups/
-curl -s -o /dev/null -w 'sql     %{http_code}\n' https://your-site/sql/run_migrations.php
-curl -s -o /dev/null -w 'tools   %{http_code}\n' https://your-site/tools/
+curl -s -o /dev/null -w 'sql   %{http_code}\n' https://your-site/sql/run_migrations.php
+curl -s -o /dev/null -w 'tools %{http_code}\n' https://your-site/tools/
 ```
 
-TicketsCAD runs the same three probes against itself and reports the result on
+### Backups: ask for an archive, not for the folder
+
+> **A `403` on `/backups/` does not mean your backups are protected.** Reported
+> 2026-08-02 by @rjonesbsink, measured on a live install: the folder answered
+> `403` while the archive inside it answered `200` and served in full — the
+> complete database export. That is the ordinary behaviour of a server with
+> directory listing off and no rule denying the files, and it is exactly the
+> check a worried admin reaches for first.
+
+Get a filename from **Settings → Backup** (it lists every archive this install
+has written), then ask for that file:
+
+```bash
+curl -s -o /dev/null -w 'archive %{http_code}\n' \
+     https://your-site/backups/ticketscad-20260728-020000.zip
+```
+
+Only a request for a file answers this question. If you have no archive yet,
+take one first (Settings → Backup → "Back up now") — until then this is
+**untested**, which is not the same as protected.
+
+On IIS, **`500` is not a pass.** It means the `web.config` in that directory is
+invalid, so the deny rule is not running — the folder is unreachable only for as
+long as the file stays broken, and the message tells an attacker exactly where
+your application lives. Fix the file until the same request answers `404` — the
+shipped rule denies by file extension, and a denied request is a 404 logged with
+substatus `404.7`.
+
+TicketsCAD runs the same probes against itself and reports the result on
 **Settings → Status**, in the "Web exposure" row of the File & Code Health card.
-It is checked on every visit to that page, so it will tell you if a server
-upgrade or a config change ever re-opens one of these.
+For backups it asks for a named archive; when there is no archive to name it
+writes a small random self-test file into the folder and asks for that back
+instead. If it can do neither, the row reads grey **"Not determined"** rather
+than green — an untested install is not reported as a safe one. It is checked
+on every visit to that page, so it will tell you if a server upgrade or a config
+change ever re-opens one of these.
 
 ---
 
@@ -220,12 +380,71 @@ differently, so TicketsCAD does not rely on them alone:
   HTTP it answers `403 CLI only` and stops before touching the database. This
   works on any web server with any configuration, including one where the deny
   rules were never installed.
-* **Backups are written above the web root.** From v4.2.3 the default backup
-  directory is `../backups`, a sibling of the install directory, so no web
-  server can serve them however it is configured — the same approach already
-  used for the encryption keys in `../keys`.
+* **Backups are written outside the web root**, and where that is depends on the
+  platform:
+
+  | Platform | Default backup directory |
+  |---|---|
+  | Linux, macOS, the Docker image | `../backups` — a sibling of the install directory |
+  | Windows (IIS, XAMPP, anything) | `%ProgramData%\TicketsCAD\backups` |
+
+  **Why Windows is different, and why you should check yours.** v4.2.3 used
+  `../backups` everywhere. That is above the web root on `/var/www/newui`, and
+  it is `C:\inetpub\wwwroot` on a stock IIS install — the physical path of
+  **Default Web Site**, bound to port 80. So the "safe" location was another
+  published site, on a port TicketsCAD does not use, carrying none of the rules
+  above; a complete database archive was reachable at
+  `http://<host>/backups/<archive>.zip`. Corrected in v4.2.4, which also keeps
+  listing anything v4.2.3 left there and reports it as Critical. Reported by
+  @rjonesbsink.
+
+  `..` is only "outside the web root" if you know what `..` is. Two more layouts
+  where it is not: `C:\xampp\htdocs\newui` (`..` is the XAMPP DocumentRoot) and
+  `/var/www/html/newui` (`..` is the stock Apache DocumentRoot on Debian and
+  Ubuntu). **Settings → Backup → Backup folder** overrides the default on every
+  platform and is the reliable fix — point it anywhere outside every site.
+* **The encryption keys are written outside the web root too** — and the rule is
+  the same shape, for the same reason, because it was the same bug
+  (GHSA-3jmh-c6f6-64jc, v4.2.4):
+
+  | Platform | Default keys directory |
+  |---|---|
+  | Linux, macOS, the Docker image | `../keys` — a sibling of the install directory (unchanged) |
+  | Windows (IIS, XAMPP, anything) | `%ProgramData%\TicketsCAD\keys` |
+
+  Until v4.2.4 it was `../keys` everywhere, which on `C:\inetpub\wwwroot\<app>`
+  means `C:\inetpub\wwwroot\keys` — inside Default Web Site. It was confirmed
+  served: `GET /keys/_probe.txt` → **200**. `GET /keys/private.pem` returned
+  404.3, but only because IIS ships no MIME mapping for `.pem`; add one for any
+  unrelated reason and the key is served, any mapped extension in that directory
+  already is, and **Apache serves `.pem` as plain text** with no MIME allow-list
+  to fall back on.
+
+  **Existing keys are never moved for you.** If the old directory still holds
+  `private.pem`, `public.pem` or `tfa.key`, that is the directory this install
+  keeps using — so an upgrade cannot break field encryption or lock every 2FA
+  user out — and Settings → Status reports it, names it, and prints the
+  copy → verify → delete sequence. Override with
+  `define('FE_KEYS_DIR', '/your/path');` in `config.php`.
+
+  TicketsCAD also writes a `web.config` and a `.htaccess` into the keys
+  directory whenever it creates or touches it, wherever that directory is. Those
+  are the same Request Filtering rules described above. They are a mitigation,
+  not a reason to leave a private key in a published folder.
 * **The Status page probes itself** and says so loudly if any of the three paths
-  is still reachable.
+  is still reachable. It also writes a small random file into the backup
+  directory and asks this host for it back on the **default** ports — the only
+  way to prove from inside the application that another site is publishing that
+  folder. A positive result is certain, because the response body has to contain
+  a token generated moments earlier.
+
+  **What it cannot see, stated plainly:** it probes the address this install
+  answers on, plus ports 80 and 443 on the same hostname. A directory published
+  under a different hostname, on some other port, or through a reverse proxy is
+  outside its reach, and the Status page says so on the row rather than
+  reporting a clean bill of health. Use the `curl` checks above against every
+  hostname and port your server answers on.
 
 See also: [`SECURITY.md`](../SECURITY.md), [`docs/SECURITY-POLICY.md`](SECURITY-POLICY.md),
-[`docs/security/advisory-2026-07-30-exposed-directories.md`](security/advisory-2026-07-30-exposed-directories.md).
+[`docs/security/advisory-2026-07-30-exposed-directories.md`](security/advisory-2026-07-30-exposed-directories.md),
+[`docs/security/advisory-2026-08-03-fe-keys-dir.md`](security/advisory-2026-08-03-fe-keys-dir.md).

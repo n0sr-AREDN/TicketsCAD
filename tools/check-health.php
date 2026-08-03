@@ -259,6 +259,33 @@ if (empty($bk['checked'])) {
     }
 }
 
+// ── Encryption key location (GHSA-3jmh-c6f6-64jc) ────────────────────
+// The same mistake as the backups, one directory over: FE_KEYS_DIR was a
+// sibling of the install directory on every platform, which is above the web
+// root on Linux and inside C:\inetpub\wwwroot on a stock IIS box. Nothing is
+// ever moved automatically — losing tfa.key un-enrols every 2FA user — so this
+// is how an operator on the command line finds out.
+$ky = $all['keys'] ?? [];
+echo "\n-- Encryption key location --\n";
+if (empty($ky['checked'])) {
+    echo "[INFO] Could not determine the keys directory.\n";
+} else {
+    $sev = (string) ($ky['severity'] ?? 'ok');
+    $tag = $sev === 'critical' ? '[CRIT]' : ($sev === 'warn' ? '[WARN]' : '[OK]  ');
+    echo "$tag " . ($ky['summary'] ?? '') . "\n";
+    if (!empty($ky['key_files'])) {
+        echo '       key files: ' . implode(', ', (array) $ky['key_files']) . "\n";
+    }
+    foreach (($ky['notes'] ?? []) as $note) {
+        echo '       ' . $note . "\n";
+    }
+    if ($sev !== 'ok' && !empty($ky['remedy'])) {
+        foreach (explode("\n", (string) $ky['remedy']) as $line) {
+            echo '       ' . $line . "\n";
+        }
+    }
+}
+
 // ── Can BOTH writers actually write there? ───────────────────────────
 // Deliberately only on the command line. The backup directories have two
 // writers — you, and the web server — and from a browser there is no way to
@@ -308,13 +335,31 @@ if (empty($we['checked'])) {
     echo "[INFO] " . ($we['error'] ?? 'not probed from the command line') . "\n";
     echo "       Check it from a browser: Settings -> Status, \"Web exposure\".\n";
     echo "       Or by hand (anything answering 200 is a problem):\n";
-    echo "         curl -s -o /dev/null -w '%{http_code}\\n' https://your-site/backups/\n";
     echo "         curl -s -o /dev/null -w '%{http_code}\\n' https://your-site/sql/run_migrations.php\n";
     echo "         curl -s -o /dev/null -w '%{http_code}\\n' https://your-site/tools/\n";
+    // Deliberately NOT `.../backups/`. A 403 on the directory is what a server
+    // with directory listing off returns while it serves every archive inside;
+    // @rjonesbsink measured exactly that on his own install. Ask for a file.
+    echo "       For backups, ask for an ARCHIVE BY NAME - a 403 on the folder\n";
+    echo "       says nothing about the files in it. Filenames: Settings -> Backup.\n";
+    echo "         curl -s -o /dev/null -w '%{http_code}\\n' \\\n";
+    echo "              https://your-site/backups/ticketscad-YYYYMMDD-HHMMSS.zip\n";
 } else {
     foreach (($we['probes'] ?? []) as $p) {
-        $tag = ($p['state'] === 'exposed') ? '[CRIT]' : (($p['state'] === 'unknown') ? '[WARN]' : '[OK]  ');
-        echo "$tag " . $p['url'] . ' → ' . var_export($p['status'], true) . "\n";
+        // 'untested' must never print [OK]. A backups path that could not be
+        // asked for is not a pass, and the whole point of the 2026-08-02 fix is
+        // that it stops looking like one.
+        $st  = (string) ($p['state'] ?? '');
+        $tag = $st === 'exposed'  ? '[CRIT]'
+             : ($st === 'unknown'  ? '[WARN]'
+             : ($st === 'untested' ? '[????]' : '[OK]  '));
+        echo "$tag " . ($p['url'] ?? $p['path']) . ' → ' . var_export($p['status'] ?? null, true) . "\n";
+        if ($st === 'untested' || $st === 'unknown') {
+            $note = trim((string) ($p['note'] ?? ''));
+            if ($note !== '') {
+                echo "       " . wordwrap($note, 68, "\n       ") . "\n";
+            }
+        }
     }
     if (($we['severity'] ?? 'ok') === 'critical') {
         echo "       " . wordwrap((string) ($we['remedy'] ?? ''), 68, "\n       ") . "\n";

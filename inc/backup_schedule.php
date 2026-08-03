@@ -133,34 +133,79 @@ function backup_retention_count(): int {
  *
  * Preference order:
  *   1. The operator's explicit `backup_dir` setting, if any.
- *   2. BACKUP_DIR (above the web root) once it exists — so the choice is stable
- *      from the moment the directory is there, whichever user is asking.
- *   3. BACKUP_DIR when its parent can be written, i.e. it can be created.
- *   4. BACKUP_DIR_LEGACY (the pre-4.2.3 in-webroot path) when it already
- *      exists and step 3 is impossible — some shared hosting gives the account
- *      no writable directory above the web root. Backing up to a served
- *      directory is bad; NOT backing up is worse, and this path is reported as
- *      a failure on Settings → Status with the fix, plus backup_harden_dir()
- *      drops deny rules beside the archives.
+ *   2. BACKUP_DIR (outside the web root) once it exists — so the choice is
+ *      stable from the moment the directory is there, whichever user is asking.
+ *   3. BACKUP_DIR when it can be CREATED, i.e. its nearest existing ancestor is
+ *      writable. The ancestor walk matters on Windows, where the default is
+ *      %ProgramData%\TicketsCAD\backups and neither of the last two segments
+ *      exists on a fresh install — testing only the immediate parent said "not
+ *      creatable" for a directory mkdir(…, true) makes without complaint.
+ *   4. A historical location that already exists, when step 3 is impossible —
+ *      some shared hosting gives the account no writable directory outside the
+ *      web root at all. Backing up to a served directory is bad; NOT backing up
+ *      is worse, and this path is reported as a failure on Settings → Status
+ *      with the fix, plus backup_harden_dir() drops deny rules beside the
+ *      archives.
  *   5. BACKUP_DIR, so the failure message names the directory we actually want.
  */
 function backup_dir(): string {
     $d = backup_setting('backup_dir', '');
     if ($d !== '') return $d;
     if (is_dir(BACKUP_DIR)) return BACKUP_DIR;
+    if (backup_dir_creatable(BACKUP_DIR)) return BACKUP_DIR;
 
-    $parent = dirname(BACKUP_DIR);
-    if (is_dir($parent) && is_writable($parent)) return BACKUP_DIR;
-
-    if (defined('BACKUP_DIR_LEGACY') && is_dir(BACKUP_DIR_LEGACY)) {
-        return BACKUP_DIR_LEGACY;
+    foreach (backup_legacy_dirs() as $legacy) {
+        if (is_dir($legacy)) return $legacy;
     }
     return BACKUP_DIR;
 }
 
 /**
+ * Can mkdir($dir, …, true) plausibly succeed? Walks up to the nearest existing
+ * ancestor and asks whether THAT is writable, because the recursive mkdir the
+ * writers use will create every missing segment beneath it.
+ */
+function backup_dir_creatable(string $dir): bool {
+    $p    = rtrim(str_replace('\\', '/', $dir), '/');
+    $seen = 0;
+    while ($p !== '' && $seen++ < 24) {
+        if (is_dir($p)) return is_writable($p);
+        $up = dirname($p);
+        if ($up === $p) break;
+        $p = $up;
+    }
+    return false;
+}
+
+/**
+ * Locations this application has defaulted to in the past, newest first, minus
+ * whatever the current default is.
+ *
+ * There are two, and the second one is the reason this function exists rather
+ * than a single constant. v4.2.3's `dirname(NEWUI_ROOT)/backups` is correct on
+ * POSIX and lands inside C:\inetpub\wwwroot on a stock Windows/IIS install, so
+ * a Windows install that ran 4.2.3 has archives in a directory this version no
+ * longer writes to. Forgetting it would orphan them: absent from Settings →
+ * Backup, absent from the Status page, and still downloadable by anyone on port
+ * 80. They must stay visible precisely BECAUSE that location is wrong.
+ */
+function backup_legacy_dirs(): array {
+    $cur  = rtrim(str_replace('\\', '/', BACKUP_DIR), '/');
+    $out  = [];
+    foreach ([
+        defined('BACKUP_DIR_LEGACY_SIBLING') ? BACKUP_DIR_LEGACY_SIBLING : null,  // 4.2.3
+        defined('BACKUP_DIR_LEGACY') ? BACKUP_DIR_LEGACY : null,                  // pre-4.2.3
+    ] as $d) {
+        if ($d === null) continue;
+        if (rtrim(str_replace('\\', '/', $d), '/') === $cur) continue;            // == BACKUP_DIR on POSIX
+        $out[] = $d;
+    }
+    return $out;
+}
+
+/**
  * Every directory that may hold archives THIS install has written: the active
- * one, plus the pre-4.2.3 in-webroot location when it still exists.
+ * one, the current default, plus every historical default that still exists.
  *
  * History listing and downloads read from all of them, so moving the default
  * out of the web root never makes an operator's existing restore points vanish
@@ -170,8 +215,10 @@ function backup_dir(): string {
  */
 function backup_dirs_all(): array {
     $dirs = [backup_dir()];
-    if (defined('BACKUP_DIR_LEGACY') && is_dir(BACKUP_DIR_LEGACY)) {
-        $dirs[] = BACKUP_DIR_LEGACY;
+    foreach (backup_legacy_dirs() as $legacy) {
+        if (is_dir($legacy)) {
+            $dirs[] = $legacy;
+        }
     }
     if (is_dir(BACKUP_DIR)) {
         $dirs[] = BACKUP_DIR;

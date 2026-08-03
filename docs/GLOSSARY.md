@@ -332,7 +332,7 @@ A named bundle of [Permissions](#permission). Six come pre-seeded; admins can cr
 The list of [Personnel](#personnel). The `roster.php` page is the admin view; members include FCC callsign, OwnTracks tokens, comm identifiers, team memberships.
 
 ### Route
-A row in the `routes` table that defines a [Routing engine](#routing-engine) rule: source channel + direction + optional filters → destination channel(s) + optional transforms.
+A row in the `message_routes` table that defines a [Routing engine](#routing-engine) rule: source channel + direction + optional filters → destination channel(s) + optional transforms.
 
 ### Route playback
 Time-scrubbing UI on the map ([`assets/js/route-playback.js`](../assets/js/route-playback.js)) that shows a unit's historical position trail.

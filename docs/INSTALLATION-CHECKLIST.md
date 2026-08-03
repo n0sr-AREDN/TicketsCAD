@@ -471,20 +471,33 @@ Each integration has its own admin guide. None are required for basic dispatch.
 
 Before you let anyone real log in:
 
-- [ ] **The private directories are not published.** Run these three; anything
+- [ ] **The private directories are not published.** Run these; anything
       answering `200` must be fixed before this install faces a network:
 
       ```bash
-      curl -s -o /dev/null -w 'backups %{http_code}\n' https://your-site/backups/
-      curl -s -o /dev/null -w 'sql     %{http_code}\n' https://your-site/sql/run_migrations.php
-      curl -s -o /dev/null -w 'tools   %{http_code}\n' https://your-site/tools/
+      curl -s -o /dev/null -w 'sql   %{http_code}\n' https://your-site/sql/run_migrations.php
+      curl -s -o /dev/null -w 'tools %{http_code}\n' https://your-site/tools/
       ```
+
+- [ ] **Your backup archives are not downloadable.** Ask for an archive **by
+      name** — get a filename from Settings → Backup:
+
+      ```bash
+      curl -s -o /dev/null -w 'archive %{http_code}\n' \
+           https://your-site/backups/ticketscad-20260728-020000.zip
+      ```
+
+      **Requesting `/backups/` is not this check.** A `403` on the folder proves
+      nothing about the files inside it, and a server with directory listing off
+      returns exactly that while serving every archive (reported by
+      @rjonesbsink, 2026-08-02). If this install has no archive yet, take one
+      first — untested is not the same as protected.
 
       **Which file protects you depends on your web server.** Apache reads the
       shipped `.htaccess` (only when `AllowOverride` is `All`/`FileInfo`);
       **nginx never reads it and needs
       [`nginx/ticketscad-hardening.conf`](nginx/ticketscad-hardening.conf)**; IIS
-      needs `web.config` / hidden segments. See
+      needs the per-directory `web.config` files. See
       [WEB-SERVER-HARDENING.md](WEB-SERVER-HARDENING.md). Settings → Status runs
       the same probes and shows the result under "Web exposure".
 - [ ] **Backups are outside the web root.** The default is `../backups` (a

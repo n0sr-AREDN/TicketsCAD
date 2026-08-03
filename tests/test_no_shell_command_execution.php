@@ -401,7 +401,11 @@ foreach ($convertedFiles as $relPath) {
 // enforcement at those call sites, so it must not be relaxed to `mixed` or
 // dropped. Only asserted once the helpers exist (i.e. after PR #10 merges).
 $helperChecks = [
-    'api/health.php'         => 'runShellCapture',
+    // runShellCapture() moved out of api/health.php into inc/host-uptime.php
+    // when the Windows uptime probe gained its PowerShell fallback. The check
+    // below self-skips when a file does not declare the function, so leaving
+    // the stale path here would have quietly stopped checking anything.
+    'inc/host-uptime.php'    => 'runShellCapture',
     'tools/check-schema.php' => 'run_via_proc_open',
 ];
 foreach ($helperChecks as $relPath => $fn) {

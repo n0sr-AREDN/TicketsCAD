@@ -195,8 +195,16 @@ There is a suite gate (`tests/test_no_shell_command_execution.php`) that fails i
 any of them comes back.
 
 **One Windows-specific bonus:** `wmic` does not exist on Windows 11 24H2 or
-later. `api/health.php` now falls back to
-`Get-CimInstance Win32_OperatingSystem` for the uptime figure.
+later, nor on recent Windows Server. The host-uptime figure on the System
+Status page therefore tries `wmic` first (it is present on older hosts and
+about 4x faster), then falls back to
+`powershell.exe -Command (Get-CimInstance Win32_OperatingSystem).LastBootUpTime`,
+formatted with `InvariantCulture` so the host's locale cannot change the shape.
+The logic lives in `inc/host-uptime.php`; `tests/test_host_uptime.php` gates it.
+
+If NEITHER is available, the page says so and names what it tried — it does not
+print a bare "Unknown", because that reads the same as "this host has no uptime"
+and tells you nothing about what to fix.
 
 If you would rather allow subprocesses outright, remove `exec` and `shell_exec`
 from `disable_functions` — but you do not need to, and leaving them disabled is
@@ -242,12 +250,48 @@ TicketsCAD ships `.htaccess` denies, and **IIS does not read them**, as
 completely as nginx does not.
 
 What ships for IIS: `sql\web.config` and `tools\web.config`, covering the two
-worst directories. You should add the equivalent for `backups\` and `inc\`.
+worst directories. You should add the equivalent for `backups\` and `inc\` —
+it is the same four lines every time:
 
-Full instructions and a three-command test to prove it worked are in
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <system.webServer>
+    <security>
+      <requestFiltering>
+        <fileExtensions allowUnlisted="false" />
+      </requestFiltering>
+    </security>
+    <directoryBrowse enabled="false" />
+  </system.webServer>
+</configuration>
+```
+
+That is **Request Filtering**, which is part of a default IIS installation, so
+there is no role service to add. It denies every URL that carries a file name
+extension — the archive itself, not merely the directory listing — and
+extension-less URLs such as `GET /tools/` with it. A denied request answers
+`404`, logged with substatus **404.7**.
+
+> **If you installed v4.2.3 or v4.2.4, replace those two files.** The v4.2.3
+> version was invalid and returned **HTTP 500.19** on a stock IIS install
+> instead of denying. The directory was unreachable, but only because the
+> configuration was broken — the deny rule itself never ran, and anything that
+> made the file parse would have opened the directory. v4.2.4 corrected it using
+> IIS **URL Authorization**, which works but depends on an optional role
+> service; where that service is absent the file 500s again, so the shipped
+> files now use Request Filtering instead. A `git pull` picks them up. Why the
+> mechanisms differ, and how to add URL Authorization as an optional extra
+> layer, is in [`WEB-SERVER-HARDENING.md`](WEB-SERVER-HARDENING.md#iis-windows).
+
+Full instructions and the test to prove it worked are in
 [`WEB-SERVER-HARDENING.md`](WEB-SERVER-HARDENING.md#iis-windows). Do not skip the
 test — this is the class of problem where everything looks fine right up until it
-is found by someone else.
+is found by someone else. **A `200` means exposed; on IIS a `500` means your
+`web.config` is broken, not that you are protected — you want `404` (`401` and
+`403` are fine too if you added the optional URL Authorization block).** Ask for
+a backup **archive by name**, not just for `/backups/`: a directory that answers
+`403` can still hand over every file inside it.
 
 TicketsCAD also probes its own public URLs and reports the result on
 **Settings → Status**, so a later `applicationHost.config` edit that re-opens one
@@ -257,6 +301,113 @@ There is a second layer regardless of web server: every script under `sql\` and
 `tools\` refuses to run under a non-CLI SAPI. That is the only protection that
 works in any configuration, and it is why an exposed `sql\run_migrations.php`
 cannot be triggered over HTTP even if your `web.config` is missing.
+
+### Where the database backups go — check this one by hand
+
+A backup archive is a complete copy of everything in your system, so it is the
+single worst file to leave published. On Windows, "outside the web root" is not
+where you would guess.
+
+**`C:\inetpub\wwwroot` is not a safe place.** It is the physical path of
+**Default Web Site**, which IIS binds to `*:80` on every stock install. A folder
+in it is public even when TicketsCAD answers on some other port and carries all
+the deny rules above — the deny rules belong to *your* site, and this is a
+different one. Run `Get-Website` and look at the `Physical Path` column if you
+want to see it for yourself.
+
+This bit TicketsCAD itself. v4.2.3 fixed a real problem by moving backups to
+`..\backups`, which is above the web root on Linux and is `C:\inetpub\wwwroot`
+here — so on Windows the fix published the archives on port 80 and then reported
+the install healthy, because its self-check only ever asked TicketsCAD's own
+address. From v4.2.4 the Windows default is:
+
+```
+C:\ProgramData\TicketsCAD\backups
+```
+
+`C:\inetpub\backups` is equally safe if you would rather keep the archives on
+the same volume as the site — `C:\inetpub` is not the physical path of any site.
+Whatever you choose, set it in **Settings → Backup → Backup folder**; that
+overrides the default and is the fix that needs no shell.
+
+The application pool identity must be able to write there. From an **elevated**
+PowerShell prompt, with your pool name:
+
+```powershell
+New-Item -ItemType Directory -Force -Path 'C:\ProgramData\TicketsCAD\backups'
+icacls 'C:\ProgramData\TicketsCAD\backups' /grant 'IIS AppPool\<YourPool>:(OI)(CI)M'
+```
+
+If you are upgrading and already have archives in the old place, move them and
+then confirm nothing is left:
+
+```powershell
+Move-Item -Path 'C:\inetpub\wwwroot\backups\ticketscad-*' `
+          -Destination 'C:\ProgramData\TicketsCAD\backups\'
+Get-ChildItem 'C:\inetpub\wwwroot\backups'
+```
+
+Anything that was sitting in a published folder should be treated as having been
+downloadable — see
+[`security/advisory-2026-07-30-exposed-directories.md`](security/advisory-2026-07-30-exposed-directories.md).
+
+TicketsCAD checks the destination itself now, and will tell you on
+**Settings → Status** if the folder it is writing to turns out to be published —
+including on port 80, which is the case that was missed. It also says, on the
+same row, what its probe cannot see: other hostnames, other ports, and anything
+behind a reverse proxy. Reported by @rjonesbsink.
+
+### Where the encryption keys go — the same trap, one directory over
+
+The keys directory holds `private.pem` (which decrypts field-encrypted form
+data), `public.pem`, and `tfa.key` (which decrypts **every enrolled
+authenticator**). It had the identical defect, and for the identical reason:
+until v4.2.4 it was always a sibling of the install directory, so on this
+platform it was
+
+```
+C:\inetpub\wwwroot\keys
+```
+
+— inside Default Web Site again. @rjonesbsink confirmed it was being served:
+`GET http://localhost/keys/_probe.txt` returned **200**. A request for
+`private.pem` returned 404.3, but only because IIS has no MIME mapping for
+`.pem`; that is an accident of the file's name, not a control, and on Apache the
+same layout hands the key over as plain text.
+
+From v4.2.4 the Windows default is:
+
+```
+C:\ProgramData\TicketsCAD\keys
+```
+
+```powershell
+New-Item -ItemType Directory -Force -Path 'C:\ProgramData\TicketsCAD\keys'
+icacls 'C:\ProgramData\TicketsCAD\keys' /grant 'IIS AppPool\<YourPool>:(OI)(CI)M'
+```
+
+**If you already have key files, they are not moved for you.** TicketsCAD keeps
+using the old directory for as long as it holds any of the three files, because
+half a key move is worse than the exposure: without `tfa.key` every 2FA user is
+locked out at once and there is no way back. Settings → Status names the
+directory, says whether it is published, and prints the copy → verify → delete
+sequence. Do it when nobody is signing in.
+
+> If **Settings → Two-Factor Authentication → Migrate to Dedicated Key** told you
+> to "check directory permissions", read the path in that message before you act
+> on it. On the reported install the only thing keeping the 2FA key out of a
+> folder published on port 80 was that IIS could not write there. Granting write
+> access would have completed the exposure, not fixed it. The message names the
+> directory now, and warns when it is one nothing should be written to.
+
+To keep the keys somewhere else entirely, add this to `config.php`:
+
+```php
+define('FE_KEYS_DIR', 'C:\\ProgramData\\TicketsCAD\\keys');
+```
+
+See
+[`security/advisory-2026-08-03-fe-keys-dir.md`](security/advisory-2026-08-03-fe-keys-dir.md).
 
 ---
 
@@ -355,9 +506,11 @@ Two notes on translating it:
 
 - **Ownership.** The Unix `chown`/`chmod` steps have no direct equivalent. What
   matters is the same: the application pool identity (typically
-  `IIS AppPool\<PoolName>`) needs **write** access to `uploads\`, `cache\` and
-  `backups\`, and **read** everywhere else. Do not grant write access to the
-  whole tree.
+  `IIS AppPool\<PoolName>`) needs **write** access to `uploads\` and `cache\`
+  inside the site, plus the backup folder — which from v4.2.4 is **outside** the
+  site, at `C:\ProgramData\TicketsCAD\backups`, and needs its own `icacls`
+  grant (see [4](#4-iis-ignores-htaccess)). Everywhere else is **read**. Do not
+  grant write access to the whole tree.
 
   A trap worth knowing about, because it does not present as a permissions
   problem: if the webroot loses its explicit user ACL, `BUILTIN\Users` still

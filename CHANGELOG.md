@@ -3,6 +3,95 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.4] - 2026-08-03
+
+**A security release, and if you run TicketsCAD on Windows it is urgent.
+Updating to 4.2.3 is what created two of the problems below — no
+misconfiguration was needed and no instruction had to be followed.**
+
+Three advisories accompany this release. Two are new; the third was published
+with 4.2.3 and has been corrected, because the one-minute self-check it told you
+to run does not prove what it said it proved.
+
+- **[GHSA-p579-pg9g-fvw5](https://github.com/openises/TicketsCAD/security/advisories/GHSA-p579-pg9g-fvw5)**
+  — Critical. 4.2.3 moved database backups "above the web root", computed as the
+  parent of the install directory. That is correct on Linux (`/var/www/newui` →
+  `/var/www`) and **inverted on Windows**: `C:\inetpub\wwwroot\TicketsV4` gives
+  `C:\inetpub\wwwroot`, the document root of IIS's Default Web Site on port 80.
+  XAMPP does the same thing. So on those hosts the upgrade moved every archive
+  out of one published directory into another one.
+- **[GHSA-3jmh-c6f6-64jc](https://github.com/openises/TicketsCAD/security/advisories/GHSA-3jmh-c6f6-64jc)**
+  — High. The same mistake, one directory over: the RSA field-encryption private
+  key and the 2FA encryption key were written to `<install>/../keys`, which is
+  outside the web root on Linux and inside a served one on Windows. That
+  directory was confirmed reachable — a control file in it returned HTTP 200.
+  `private.pem` returned 404 only because IIS ships no MIME mapping for `.pem`,
+  which is an accident of the file's name rather than a control, and **Apache
+  serves it as plain text**.
+- **[GHSA-rrp6-pqhj-w5wj](https://github.com/openises/TicketsCAD/security/advisories/GHSA-rrp6-pqhj-w5wj)**
+  — Critical, published with 4.2.3, **now corrected**. It told you to request
+  `https://your-site/backups/` and read a `403` as "blocked". On a real install
+  the folder answered `403` while the archive inside it answered `200` and
+  downloaded in full. Any server with directory listing off and no rule denying
+  files behaves that way, and on Apache that is the default.
+
+### If you checked before, check again
+
+The old check was wrong, so a clean result from it means nothing. Ask for **an
+actual archive by name** — get a filename from Settings → Backup — and ask every
+site and port your server publishes, not only the one TicketsCAD runs on:
+
+```bash
+curl -s -o /dev/null -w 'archive %{http_code}\n' \
+     https://your-site/backups/ticketscad-20260728-020000.zip
+```
+
+`403`, `404` or `401` on a real filename is good. `200` means that archive is
+being served. A `403` on the folder proves nothing either way.
+
+### Security
+
+- **Backups and encryption keys now default outside every site root on Windows**
+  (`%ProgramData%\TicketsCAD\...`). POSIX defaults are unchanged, because they
+  were correct. **Nothing is moved for you** — an interrupted key move is worse
+  than the exposure it would fix, and an install whose keys are already in the
+  old location keeps using them, so upgrading cannot break field encryption or
+  lock every 2FA user out. Settings → Status gains rows that grade both
+  directories, prove reachability with a short-lived random-token canary, print
+  platform-correct move instructions, and say plainly what they could not see.
+- **The exposure check can no longer answer "safe" from a directory request.**
+  It names a real archive, or writes a canary and asks for that back, or reports
+  a distinct grey **"Not determined"**. An install with no backup yet is
+  reported as untested, which is not the same as safe.
+- **The IIS `web.config` files shipped in 4.2.3 did not deny anything** — they
+  returned HTTP 500.19 on a stock install, so the directory was blocked by the
+  file being invalid rather than by the rule working. Three independent defects,
+  each fatal alone. If you see 500.19 on a directory after upgrading, **replace
+  the file rather than deleting it**; deleting it restores the exposure.
+- **Hidden Segments is no longer recommended anywhere.** Our own hardening
+  documentation told IIS administrators to add segments for `backups`, `inc`,
+  `sql`, `tools`, `tests`, `specs`, `vendor` and `keys`. That rule matches *any*
+  path segment, so `vendor` also blocks `assets/vendor/` and serves every page
+  unstyled — and it does not protect the directory either. If you applied it,
+  remove those entries.
+
+### Fixed
+
+- **Windows system uptime** no longer depends on `wmic`, removed in Windows 11
+  24H2. It falls back to PowerShell and, where neither is available, says why
+  instead of reporting "Unknown".
+- **The routing engine reference documented filter keys the engine never reads.**
+  An unrecognised filter key is ignored rather than rejected, so a rule copied
+  from that page saved cleanly and then matched as though the condition were
+  absent — a route meant to narrow to one incident type fired on all of them.
+
+### Credits
+
+Every security item in this release was reported by **Ron Jones**
+([@rjonesbsink](https://github.com/rjonesbsink)), who tested what the shipped
+fix actually did on his own server rather than assuming it had worked, and
+reported each finding privately with a verified correction.
+
 ## [4.2.3] - 2026-08-02
 
 **A security release. Please update, and please run the one-minute self-check

@@ -1,6 +1,7 @@
 <?php
 
-require_once __DIR__ . '/../inc/https.php';   // is_https(), is_https_verified()
+require_once __DIR__ . '/../inc/https.php';        // is_https(), is_https_verified()
+require_once __DIR__ . '/../inc/host-uptime.php'; // host_uptime(), runShellCapture()
 /**
  * NewUI v4.0 API - System Health Check
  *
@@ -217,95 +218,38 @@ function checkPhp(): array
     ];
 }
 
-/**
- * Run a program and return its stdout, discarding stderr. Best-effort: any
- * failure yields '' so the caller degrades to "Unknown".
- *
- * NO SHELL IS INVOLVED. The argv-ARRAY form of proc_open() goes straight to
- * execvp()/CreateProcess(), so `;`, `|`, `$(…)` and backticks inside an element
- * are inert data rather than syntax. That is precisely why there is no
- * escapeshellarg() here — escapeshellarg() is a shell-QUOTING function, and
- * with no shell to unquote them the child would receive literal quote
- * characters. The `array` type hint is load-bearing, not decoration: it makes
- * passing a command STRING a TypeError instead of a shell invocation.
- *
- * Replaces shell_exec(), which hardened Windows/IIS hosts remove via
- * disable_functions — and @ does not suppress "call to undefined function", so
- * this endpoint died mid-request with an empty body instead of degrading.
- */
-function runShellCapture(array $argv): string
-{
-    if ($argv === [] || !function_exists('proc_open')) return '';
-    $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-    $pipes = [];
-    $proc = @proc_open($argv, $descriptors, $pipes);
-    if (!is_resource($proc)) return '';
-    fclose($pipes[0]);
-    $out = (string) stream_get_contents($pipes[1]);
-    fclose($pipes[1]);
-    stream_get_contents($pipes[2]);   // drain stderr (was 2>NUL / 2>/dev/null)
-    fclose($pipes[2]);
-    proc_close($proc);
-    return $out;
-}
-
 function checkOs(): array
 {
     $os     = PHP_OS_FAMILY;
     $osDesc = php_uname('s') . ' ' . php_uname('r');
 
-    // Try to get uptime
-    $uptimeSec = null;
-    $uptimeText = 'Unknown';
+    // Boot time lives in inc/host-uptime.php so it can be tested — and so the
+    // Windows path can fall back from wmic (gone in Windows 11 24H2) to
+    // PowerShell's Get-CimInstance. See that file for the format contract.
+    $up        = host_uptime($os);
+    $uptimeSec = $up['uptime_sec'];
 
-    if ($os === 'Windows') {
-        // Use wmic to get boot time
-        $output = runShellCapture(['wmic', 'os', 'get', 'LastBootUpTime']);
-        if ($output) {
-            $lines = array_filter(array_map('trim', explode("\n", $output)));
-            // Skip header line
-            foreach ($lines as $line) {
-                if (preg_match('/^(\d{14})/', $line, $m)) {
-                    $bootTime = $m[1];
-                    $year  = substr($bootTime, 0, 4);
-                    $month = substr($bootTime, 4, 2);
-                    $day   = substr($bootTime, 6, 2);
-                    $hour  = substr($bootTime, 8, 2);
-                    $min   = substr($bootTime, 10, 2);
-                    $sec   = substr($bootTime, 12, 2);
-                    $bootTs = mktime((int)$hour, (int)$min, (int)$sec, (int)$month, (int)$day, (int)$year);
-                    if ($bootTs) {
-                        $uptimeSec = time() - $bootTs;
-                        $uptimeText = formatUptime($uptimeSec);
-                    }
-                    break;
-                }
-            }
-        }
+    if ($uptimeSec !== null) {
+        $uptimeText = formatUptime($uptimeSec);
+        $message    = $osDesc . ' — up ' . $uptimeText;
     } else {
-        // Linux/Mac: read /proc/uptime
-        if (is_readable('/proc/uptime')) {
-            $raw = file_get_contents('/proc/uptime');
-            $uptimeSec = (int) floatval($raw);
-            $uptimeText = formatUptime($uptimeSec);
-        } else {
-            $output = runShellCapture(['uptime', '-s']);
-            if ($output) {
-                $bootTs = strtotime(trim($output));
-                if ($bootTs) {
-                    $uptimeSec = time() - $bootTs;
-                    $uptimeText = formatUptime($uptimeSec);
-                }
-            }
-        }
+        // Degrade with the REASON, never a bare "Unknown". An operator cannot
+        // act on "Unknown": it reads identically whether the host has no
+        // uptime source, whether PHP may not spawn processes, or whether WMI
+        // is broken — three different fixes.
+        $uptimeText = 'Unknown — ' . $up['reason'];
+        $message    = $osDesc . ' — uptime unavailable: ' . $up['reason'];
     }
 
     // Server time and timezone
     $tz = date_default_timezone_get();
 
     return [
+        // Still 'ok': uptime is informational, and a host that merely cannot
+        // report it is not a degraded dispatch system. A check that cries wolf
+        // gets muted, and then it is the silent one.
         'status'  => 'ok',
-        'message' => $osDesc . ' — up ' . $uptimeText,
+        'message' => $message,
         'details' => [
             'os'          => $osDesc,
             'os_family'   => $os,
@@ -313,6 +257,9 @@ function checkOs(): array
             'architecture' => php_uname('m'),
             'uptime_sec'  => $uptimeSec,
             'uptime_text' => $uptimeText,
+            'uptime_source' => $up['source'],
+            'uptime_reason' => $up['reason'],
+            'uptime_tried'  => $up['attempted'],
             'server_time' => date('Y-m-d H:i:s'),
             'timezone'    => $tz,
         ],

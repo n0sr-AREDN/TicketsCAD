@@ -106,6 +106,14 @@ function _tts_write_key(string $engineKey, string $key): string
 {
     $dir = tts_keys_dir();
     if (!is_dir($dir)) { @mkdir($dir, 0750, true); }
+    // Deny rules beside the keys. This directory IS inside the served tree
+    // (NEWUI_ROOT/keys/tts), so it depends on the shipped .htaccess or the
+    // nginx include — and IIS reads neither. On IIS a `.key` file is currently
+    // refused only because there is no MIME mapping for that extension, which
+    // is an accident of naming rather than a control; see
+    // docs/security/advisory-2026-08-03-fe-keys-dir.md.
+    require_once __DIR__ . '/../inc/served-dir.php';
+    served_dir_harden($dir, 'TicketsCAD text-to-speech API keys', true);
     $file = preg_replace('/[^a-z0-9_\-]/i', '_', $engineKey) . '.key';
     $path = $dir . '/' . $file;
     file_put_contents($path, trim($key));

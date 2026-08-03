@@ -3,7 +3,7 @@
  * TFA Key Migration Tool
  *
  * Migrates 2FA secrets from the legacy DB-password-derived key to a
- * dedicated key file (../keys/tfa.key). This decouples TFA security
+ * dedicated key file (FE_KEYS_DIR/tfa.key). This decouples TFA security
  * from database credentials.
  *
  * Usage:
@@ -24,7 +24,11 @@ require_once __DIR__ . '/../inc/tfa.php';
 $dryRun = in_array('--dry-run', $argv ?? []);
 $statusOnly = in_array('--status', $argv ?? []);
 
-$keysDir = defined('FE_KEYS_DIR') ? FE_KEYS_DIR : (NEWUI_ROOT . '/../keys');
+// FE_KEYS_DIR, never a guess: inc/tfa.php requires inc/field-encrypt.php, and
+// since 4.2.4 the directory is platform-aware and may be a historical location
+// that already holds keys. A second guess here would migrate enrollments to a
+// key file the application does not read (GHSA-3jmh-c6f6-64jc).
+$keysDir = FE_KEYS_DIR;
 $keyFile = $keysDir . '/tfa.key';
 
 echo "=== TFA Key Migration Tool ===\n\n";

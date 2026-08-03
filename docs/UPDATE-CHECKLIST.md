@@ -46,7 +46,33 @@ your actual install path.
 | `uploads/` | web server user | attachments + map overlays (`api/upload.php`) |
 | `cache/` | web server user | weather tiles, Zello audio |
 | `../backups/` — e.g. `/var/www/backups` | **you**, group = web server user, mode `2770` | written by BOTH `php tools/backup_run.php` on the CLI (as you) and Settings → Backup / the cron entry (as the web user). Give it away entirely and the CLI backup fails with `could not write archive`. **One level ABOVE the install directory since v4.2.3**, like `../keys/`: inside the tree, `GET /backups/<archive>.zip` handed a complete database dump to anyone who asked. If you have archives in the old `backups/` folder, move them — see below. |
-| `../keys/` — e.g. `/var/www/keys` | web server user, mode `700` | 2FA + RSA field-encryption keys. **One level ABOVE the install directory, on purpose** (`inc/field-encrypt.php`: `FE_KEYS_DIR = NEWUI_ROOT . '/../keys'`) so the private key is not HTTP-reachable. git never touches it, so it is not part of a post-pull fix-up — see INSTALLATION-CHECKLIST.md Section 6. |
+| the keys directory — `/var/www/keys` on Linux, `C:\ProgramData\TicketsCAD\keys` on Windows | web server user, mode `700` | 2FA + RSA field-encryption keys. git never touches it, so it is not part of a post-pull fix-up — see INSTALLATION-CHECKLIST.md Section 6. **The exact path is platform-dependent — see the note below**, and Settings → Status prints the one this install is actually using. |
+
+> **Why the keys directory is not simply "one level up" (v4.2.4, GHSA-3jmh-c6f6-64jc)**
+>
+> Until v4.2.4 this table said the keys live one level above the install
+> directory *"on purpose … so the private key is not HTTP-reachable"*, and
+> `FE_KEYS_DIR` was `NEWUI_ROOT . '/../keys'` on every platform.
+>
+> That reasoning is true on Linux and **backwards on Windows**. A Linux install
+> at `/var/www/newui` gives `/var/www`, which no server publishes. An IIS site
+> at `C:\inetpub\wwwroot\TicketsV4` gives `C:\inetpub\wwwroot\keys` — *inside*
+> Default Web Site's root, bound to port 80. XAMPP is the same shape
+> (`C:\xampp\htdocs\newui` → `C:\xampp\htdocs`, the DocumentRoot). The directory
+> was confirmed to be served.
+>
+> So the default is per-platform: a sibling of the install directory on Linux
+> and macOS (unchanged — correct there), `%ProgramData%\TicketsCAD\keys` on
+> Windows. **Keys you already have are not moved**: if the old location still
+> holds `private.pem`, `public.pem` or `tfa.key`, that is where this install
+> keeps reading them, and Settings → Status tells you if that directory is
+> published. Nothing is relocated for you — losing `tfa.key` un-enrols every
+> 2FA user at once, so that decision is yours, and the Status page prints the
+> exact commands.
+>
+> To put the keys anywhere you like, add `define('FE_KEYS_DIR', '/your/path');`
+> to `config.php`. That define is honoured as of v4.2.4; before then the
+> application's own `define()` always won.
 
 ```bash
 # SHORTCUT: `sudo php tools/fix-permissions.php` does all of the below for you.

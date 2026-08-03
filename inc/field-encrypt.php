@@ -16,15 +16,242 @@
  * the digest for CSR/signing operations, NOT the OAEP encryption padding.
  * Both sides intentionally use SHA-1 for OAEP to ensure interoperability.
  *
- * Key storage: ../keys/ (outside webroot)
+ * Key storage: see the block below — a sibling of the install directory on
+ * POSIX, %ProgramData%\TicketsCAD\keys on Windows.
  */
 
 require_once __DIR__ . '/https.php';   // is_https(), is_https_verified()
+require_once __DIR__ . '/served-dir.php';
 
-// Directory for RSA keys — outside the webroot
-define('FE_KEYS_DIR', NEWUI_ROOT . '/../keys');
+// This file has always needed NEWUI_ROOT at include time, and every caller has
+// always loaded config.php first. The guard is here because inc/tfa.php now
+// requires this file (so that one place decides where keys live), which widens
+// the set of include paths that reach it — and the same fallback is already the
+// convention in inc/file-write.php, inc/geocode.php and inc/tile-proxy.php.
+if (!defined('NEWUI_ROOT')) {
+    define('NEWUI_ROOT', dirname(__DIR__));
+}
+
+// ── Where the key files live ────────────────────────────────────────────────
+//
+// This directory holds:
+//
+//   private.pem   the RSA private key that decrypts field-encrypted form data
+//   public.pem    its public half
+//   tfa.key       the AES key that decrypts every enrolled TOTP secret and
+//                 every backup code
+//   archive/      superseded copies of the above, kept by fe_archive_keys()
+//
+// ── WHAT WAS WRONG (GHSA-3jmh-c6f6-64jc, 2026-08-03) ───────────────────────
+//
+// Until 4.2.4 this was, unconditionally:
+//
+//     define('FE_KEYS_DIR', NEWUI_ROOT . '/../keys');
+//
+// with the stated intent (docs/UPDATE-CHECKLIST.md) "one level ABOVE the
+// install directory, on purpose … so the private key is not HTTP-reachable".
+//
+// That holds on a POSIX layout: /var/www/newui gives /var/www, which no server
+// publishes. It INVERTS on a stock Windows one. IIS sites are subdirectories of
+// a SERVED C:\inetpub\wwwroot, so C:\inetpub\wwwroot\TicketsV4\..\keys is
+// C:\inetpub\wwwroot\keys — inside Default Web Site's root, bound to *:80.
+// XAMPP is the same shape (C:\xampp\htdocs\newui → C:\xampp\htdocs, the
+// DocumentRoot). @rjonesbsink proved the directory was being served:
+//
+//     GET http://localhost/keys/_probe.txt   ->  200  "control-file"
+//     GET http://localhost/keys/private.pem  ->  404.3 (MIME type restriction)
+//
+// The .pem refusal is an ACCIDENT OF FILE NAMING, not a control. IIS has no
+// MIME mapping for .pem so it is incidentally refused; add one for any
+// unrelated reason and the key is served. Any mapped extension in that
+// directory IS served, which is what the .txt shows. And on Apache — same
+// layout, same "one level up" reasoning — .pem is served as plain text, with
+// no MIME allow-list to fall back on. The directory had no web.config and no
+// .htaccess.
+//
+// This is the third time the same assumption has shipped; the shared reasoning
+// and the detection live in inc/served-dir.php.
+//
+// ── AND WHY THE FIX IS NOT SIMPLY "MOVE IT" ────────────────────────────────
+//
+// BACKUP_DIR could be relocated outright (commit 5b88fbb) because a missed
+// archive is an inconvenience. A missed KEY is not:
+//
+//   * private.pem decrypts field-encrypted data. Lose the path and that data
+//     is unreadable.
+//   * tfa.key decrypts enrolled 2FA secrets. Lose the path and EVERY 2FA user
+//     is locked out of the system, at once, with no self-service recovery.
+//
+// So the new default governs where keys are CREATED, and reading still finds
+// keys wherever they already are. FE_KEYS_DIR_LEGACY is the historical
+// location; if it holds key material, that is where this install keeps working,
+// in place, with no operator action — and the Status page says so, loudly,
+// naming the path, rather than anything being moved for you. A half-completed
+// key move is worse than the exposure it was meant to fix.
+//
+//   POSIX    <parent of install>/keys          (unchanged — correct there, and
+//                                               identical to the old value)
+//   Windows  %ProgramData%\TicketsCAD\keys     (never a site root under IIS,
+//                                               XAMPP or nginx; the same base
+//                                               the backup fix chose, so an
+//                                               operator has one place to look)
+//
+// An operator who wants a different directory defines FE_KEYS_DIR in
+// config.php, which overrides everything here — that define is guarded for
+// exactly that reason, and was not before.
+
+/**
+ * The default keys directory for an application root, per platform.
+ *
+ * The platform is a parameter, not a read of DIRECTORY_SEPARATOR, so both
+ * answers are assertable from one machine. A test that can only see its own
+ * platform's answer is how the Windows case shipped twice.
+ */
+function fe_default_keys_dir_for(string $appRoot, ?bool $windows = null): string
+{
+    if ($windows === null) {
+        $windows = (DIRECTORY_SEPARATOR === '\\');
+    }
+    if (!$windows) {
+        return served_dir_parent_of($appRoot, false) . '/keys';
+    }
+    return served_dir_program_data() . '\\TicketsCAD\\keys';
+}
+
+/**
+ * Where every version up to 4.2.3 put the keys: a sibling of the install
+ * directory, on every platform. Still the default on POSIX; on Windows it is
+ * the directory that turned out to be published.
+ */
+function fe_legacy_keys_dir_for(string $appRoot, ?bool $windows = null): string
+{
+    if ($windows === null) {
+        $windows = (DIRECTORY_SEPARATOR === '\\');
+    }
+    return served_dir_parent_of($appRoot, $windows) . ($windows ? '\\keys' : '/keys');
+}
+
+/**
+ * Does this directory hold key material an install is depending on?
+ *
+ * The three files that decrypt something. An empty directory — the state a
+ * fresh install or the Docker entrypoint leaves behind — is deliberately NOT
+ * key material: there is nothing to lose by creating the next key elsewhere.
+ */
+function fe_dir_holds_keys(string $dir): bool
+{
+    $base = rtrim(str_replace('\\', '/', $dir), '/');
+    foreach (['private.pem', 'public.pem', 'tfa.key'] as $f) {
+        if (@is_file($base . '/' . $f)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Choose between the historical location and the new default.
+ *
+ * Takes both paths rather than an application root and a platform flag, so the
+ * decision can be driven with two REAL directories on any machine — including
+ * the Linux CI box, where the two would otherwise be the same path and the only
+ * branch that matters would never be exercised.
+ *
+ * The rule is deliberately asymmetric. If the legacy directory holds keys, it
+ * wins, even when the new default holds keys too:
+ *
+ *   * If an operator copied the keys to the new location and left the
+ *     originals, both directories hold the same bytes and either answer works —
+ *     but the Status page keeps naming the exposed copy until it is gone, which
+ *     is the outcome we want.
+ *   * If some other key had been created in the new location, preferring it
+ *     would decrypt nothing and lock out every 2FA user. Preferring the legacy
+ *     one cannot have that failure mode.
+ *
+ * An install therefore keeps working across the upgrade with no operator
+ * action, which is the entire requirement.
+ */
+function fe_keys_dir_resolve(string $legacy, string $default): string
+{
+    $n = function (string $p): string { return rtrim(str_replace('\\', '/', $p), '/'); };
+    if ($n($legacy) === $n($default)) {
+        return $default;                       // POSIX: the same directory
+    }
+    return fe_dir_holds_keys($legacy) ? $legacy : $default;
+}
+
+/** The keys directory this install should use, before any config.php override. */
+function fe_keys_dir_for(string $appRoot, ?bool $windows = null): string
+{
+    return fe_keys_dir_resolve(
+        fe_legacy_keys_dir_for($appRoot, $windows),
+        fe_default_keys_dir_for($appRoot, $windows)
+    );
+}
+
+// Guarded, so config.php can set it. Unguarded until 4.2.4, which meant the
+// documented escape hatch ("put your keys somewhere else") did not exist: the
+// define here always won and PHP cannot redefine a constant.
+if (!defined('FE_KEYS_DIR')) {
+    define('FE_KEYS_DIR', fe_keys_dir_for(NEWUI_ROOT));
+}
+// The built-in locations, reported by the health check whichever one is in use
+// and whatever FE_KEYS_DIR was overridden to.
+if (!defined('FE_KEYS_DIR_DEFAULT')) {
+    define('FE_KEYS_DIR_DEFAULT', fe_default_keys_dir_for(NEWUI_ROOT));
+}
+if (!defined('FE_KEYS_DIR_LEGACY')) {
+    define('FE_KEYS_DIR_LEGACY', fe_legacy_keys_dir_for(NEWUI_ROOT));
+}
 define('FE_PRIVATE_KEY', FE_KEYS_DIR . '/private.pem');
 define('FE_PUBLIC_KEY',  FE_KEYS_DIR . '/public.pem');
+
+/**
+ * Put deny rules beside the keys, wherever they are.
+ *
+ * Unconditional — unlike backup_harden_dir(), which fences only a directory
+ * that looks published. A private key has no legitimate reachable-over-HTTP
+ * state anywhere, the cost is two inert files, and the whole history of this
+ * constant is that "outside the web root" was a belief about a layout rather
+ * than a fact about the machine.
+ *
+ * Called before the early return in fe_ensure_keys() on purpose: the installs
+ * that need this most are the ones whose keys already exist in a served
+ * directory, and those never reach the generation path at all.
+ */
+function fe_harden_keys_dir(): void
+{
+    served_dir_harden(FE_KEYS_DIR, 'TicketsCAD encryption keys', true);
+}
+
+/**
+ * One sentence an administrator can act on when a key file cannot be written.
+ *
+ * "Check directory permissions" was accurate and led straight to the wrong
+ * action: on the reported install the only thing keeping the 2FA key out of a
+ * directory published on port 80 was that IIS could not write there. Nothing in
+ * the UI or the error named the path, so granting write access looked like the
+ * fix. Name the directory, and say when it is one nothing should be written to.
+ */
+function fe_keys_dir_hint(?string $dir = null): string
+{
+    $dir = $dir ?? (defined('FE_KEYS_DIR') ? FE_KEYS_DIR : '');
+    $msg = 'Key directory: ' . $dir;
+    try {
+        $x = served_dir_exposure($dir);
+        if ($x['served'] || $x['suspect']) {
+            $msg .= ' — WARNING: that directory is ' . $x['why']
+                 . '. Do not grant write access to it. Set FE_KEYS_DIR in config.php to a '
+                 . 'directory no web site publishes (' . FE_KEYS_DIR_DEFAULT . ') and move '
+                 . 'any existing key files there; see docs/WEB-SERVER-HARDENING.md.';
+        } else {
+            $msg .= ' — the web server user needs write access to it.';
+        }
+    } catch (Throwable $e) {
+        $msg .= ' — the web server user needs write access to it.';
+    }
+    return $msg;
+}
 
 // Maximum age (seconds) for encrypted payloads before rejection
 define('FE_MAX_AGE', 120); // 2 minutes (tightened from 5 min to reduce replay window)
@@ -38,6 +265,11 @@ define('FE_MAX_AGE', 120); // 2 minutes (tightened from 5 min to reduce replay w
  */
 function fe_ensure_keys()
 {
+    // Before the early return, not after it: an install whose keys already sit
+    // in a published directory never reaches the generation path, and it is
+    // exactly that install which needs the fence.
+    fe_harden_keys_dir();
+
     if (file_exists(FE_PRIVATE_KEY) && file_exists(FE_PUBLIC_KEY)) {
         return true;
     }
@@ -45,9 +277,10 @@ function fe_ensure_keys()
     // Create keys directory if needed
     if (!is_dir(FE_KEYS_DIR)) {
         if (!@mkdir(FE_KEYS_DIR, 0700, true)) {
-            error_log('field-encrypt: Cannot create keys directory: ' . FE_KEYS_DIR);
+            error_log('field-encrypt: Cannot create keys directory: ' . fe_keys_dir_hint());
             return false;
         }
+        fe_harden_keys_dir();
     }
 
     return fe_generate_keypair();
@@ -106,10 +339,11 @@ function fe_generate_keypair()
     // Create keys directory if needed
     if (!is_dir(FE_KEYS_DIR)) {
         if (!@mkdir(FE_KEYS_DIR, 0700, true)) {
-            error_log('field-encrypt: Cannot create keys directory: ' . FE_KEYS_DIR);
+            error_log('field-encrypt: Cannot create keys directory: ' . fe_keys_dir_hint());
             return false;
         }
     }
+    fe_harden_keys_dir();
 
     // Write keys to disk.
     // The @ suppression prevents PHP from emitting a "Failed to open stream"
@@ -121,7 +355,7 @@ function fe_generate_keypair()
     // an off-centre login form on the your-server.example.com install.
     if (@file_put_contents(FE_PRIVATE_KEY, $privPem) === false) {
         error_log('field-encrypt: Cannot write private key to ' . FE_PRIVATE_KEY
-            . ' — check that the keys directory exists and is writable by the web server user');
+            . ' — ' . fe_keys_dir_hint());
         return false;
     }
     if (@file_put_contents(FE_PUBLIC_KEY, $pubPem) === false) {
@@ -456,7 +690,7 @@ function fe_inject_js()
 
 /**
  * Archive existing RSA keys before regeneration.
- * Creates timestamped copies in ../keys/archive/ so old keys
+ * Creates timestamped copies in the keys directory's archive/ so old keys
  * are recoverable if any stored data was encrypted with them.
  *
  * @return bool TRUE if archive succeeded (or no keys to archive)

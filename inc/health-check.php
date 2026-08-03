@@ -1220,6 +1220,43 @@ function health_check_dependencies(): array
  *     server may only be reachable through a tunnel or an external proxy.
  *   - 403 / 404 / 401 are all a pass. Which one an install returns depends on
  *     whether mod_rewrite or mod_alias won, and it does not matter.
+ *   - A DIRECTORY that answers 403 proves NOTHING about the files inside it,
+ *     so this never asks for one. See below.
+ *
+ * ── ASKING FOR A DIRECTORY IS NOT A TEST (2026-08-02) ──────────────────────
+ *
+ * @rjonesbsink, on his own install: `/backups/` answered **403 while the
+ * archive inside it answered 200 and served in full** — the complete database
+ * export. That is not an exotic configuration. It is what any server with
+ * directory browsing turned off and no deny rule on files does, which on
+ * Apache is the default posture: `Options -Indexes` alone earns the 403.
+ *
+ * So a 403 on `backups/` is the single most reassuring and least informative
+ * answer a server can give, and it was the fallback this function reached for
+ * whenever it could not name an archive — the check an operator runs to
+ * confirm they are safe, returning "good" while their database was being
+ * served. The published advisory taught the same wrong check.
+ *
+ * The backups probe therefore asks for a FILE or it does not claim an answer:
+ *
+ *   1. A real archive, named, from any backup directory this install knows
+ *      about that lies inside the served tree (the operator may have pointed
+ *      `backup_dir` at one, and there are two historical defaults). Its 200 or
+ *      its 403 is about a file, and means what it says.
+ *   2. Failing that, the canary — health_check_backup_probe() writes a few
+ *      dozen bytes of random hex into the directory and asks for it back,
+ *      counting a 200 only when the body is the token. Also a file, also
+ *      conclusive, and it never puts an archive URL into a proxy or CDN log.
+ *   3. Failing both, the state is 'untested' and says why. NOT 'blocked'.
+ *      An install with no archive yet is genuinely untested, not safe, and the
+ *      Status row renders grey "Not determined" rather than a green tick.
+ *
+ * The one determination made without a request: when no backup directory
+ * exists inside the served tree at all, nothing can be served from that URL,
+ * which is a fact about the filesystem rather than a claim about the server.
+ * That is still reported as 'untested' — with the reason, and pointing at the
+ * Backup archive location row, which is where the answer for an out-of-tree
+ * directory actually lives.
  *
  * Cached for 12 hours in cache/, because this is on a page an admin may
  * refresh repeatedly and each call is three outbound requests.
@@ -1253,31 +1290,18 @@ function health_check_web_exposure(bool $force = false): array
         }
 
         // What to ask for. sql/ and tools/ always exist, so a 200 on either is
-        // unambiguous. The backups probe is the one that matters most, so when
-        // an archive really is sitting in a web-served directory we ask for THAT
-        // file by name rather than for the directory index — a server with
-        // indexes off but no deny rule hands out the archive while answering 403
-        // for the directory.
+        // unambiguous — a request for those two IS a request for something that
+        // is there. The backups probe is the one that matters most and the one
+        // that cannot be built that way; it is assembled separately below.
         $probes = [
             ['path' => 'sql/run_migrations.php', 'label' => 'sql/ (database migration scripts)'],
             ['path' => 'tools/',                 'label' => 'tools/ (maintenance scripts)'],
         ];
 
-        $archive = null;
-        try {
-            if (defined('BACKUP_DIR_LEGACY') && is_dir(BACKUP_DIR_LEGACY)) {
-                $found = glob(rtrim(BACKUP_DIR_LEGACY, '/\\') . '/ticketscad-*.{zip,gz}', GLOB_BRACE) ?: [];
-                if (!empty($found)) { $archive = basename($found[0]); }
-            }
-        } catch (Throwable $e) { /* fall through to the directory probe */ }
-
-        $probes[] = $archive !== null
-            ? ['path' => 'backups/' . $archive, 'label' => 'backups/ (a real database archive)']
-            : ['path' => 'backups/',            'label' => 'backups/ (database archives)'];
-
         $results  = [];
         $exposed  = 0;
         $unknown  = 0;
+        $untested = 0;
         foreach ($probes as $p) {
             $code = _health_probe_head($base . '/' . $p['path']);
             $state = ($code === null) ? 'unknown' : (($code >= 200 && $code < 300) ? 'exposed' : 'blocked');
@@ -1289,10 +1313,21 @@ function health_check_web_exposure(bool $force = false): array
                 'url'    => $base . '/' . $p['path'],
                 'status' => $code,
                 'state'  => $state,
+                'note'   => '',
             ];
         }
 
-        $severity = $exposed > 0 ? 'critical' : ($unknown === count($probes) ? 'warn' : 'ok');
+        $bk = _health_backups_probe_result($base, $force);
+        $results[] = $bk;
+        if ($bk['state'] === 'exposed') { $exposed++; }
+        if ($bk['state'] === 'unknown') { $unknown++; }
+        // Only the ambiguous kind of untested escalates — see the note on
+        // 'untested_reason' in _health_backups_probe_result().
+        if ($bk['state'] === 'untested' && ($bk['untested_reason'] ?? '') !== 'absent') {
+            $untested++;
+        }
+
+        $severity = _health_exposure_severity($results);
         $out = [
             'checked'  => true,
             'cached'   => false,
@@ -1300,14 +1335,37 @@ function health_check_web_exposure(bool $force = false): array
             'probes'   => $results,
             'exposed'  => $exposed,
             'unknown'  => $unknown,
+            'untested' => $untested,
             'severity' => $severity,
             'summary'  => $exposed > 0
-                ? $exposed . ' director' . ($exposed === 1 ? 'y is' : 'ies are')
+                ? $exposed . ' path' . ($exposed === 1 ? ' is' : 's are')
                     . ' reachable over HTTP that should not be'
-                : ($unknown === count($probes)
+                : ($unknown === count($results)
                     ? 'Could not reach this install from itself — check by hand '
                         . '(docs/WEB-SERVER-HARDENING.md)'
-                    : 'No non-public directory answered over HTTP'),
+                    : ($untested > 0 || $unknown > 0
+                        // Never "no directory answered" when one of them was
+                        // not asked. That sentence is what an operator reads as
+                        // a clean bill of health.
+                        ? 'Partly checked only — ' . ($untested + $unknown) . ' of '
+                            . count($results) . ' could not be tested'
+                        : (($bk['untested_reason'] ?? '') === 'absent'
+                            // Says what was actually established rather than
+                            // implying the backups path was tested and passed.
+                            ? 'sql/ and tools/ are not served; no backups directory '
+                                . 'exists inside the served tree'
+                            : 'Nothing private answered over HTTP'))),
+            // Said out loud, always, including on a clean result. These probes go
+            // to ONE address: the one this install answers on. Everything about
+            // the 2026-08-02 Windows regression turned on that limit — a database
+            // archive was public on port 80 while every probe here, aimed at the
+            // application's own port, came back clean. A check that quietly
+            // reports "ok" for the part it never looked at is the failure, not
+            // the report.
+            'blind_spot' => 'Probed ' . $base . ' only. Other web sites on this machine, '
+                . 'other ports, and anything published through a reverse proxy are outside '
+                . 'what this can see — including directories that hold this install\'s own '
+                . 'files. See docs/WEB-SERVER-HARDENING.md to check those by hand.',
             'remedy'   => $exposed > 0
                 ? 'Apache: confirm AllowOverride is All or FileInfo so the shipped '
                     . '.htaccess is read. nginx: install '
@@ -1335,17 +1393,259 @@ function health_check_web_exposure(bool $force = false): array
 }
 
 /**
- * Are any database archives sitting in a directory the web server serves?
+ * Turn a set of probe rows into one verdict.
  *
- * The filesystem half of the web-exposure check, and the half that also works
- * from the CLI. v4.2.3 moved the default backup directory above the web root,
- * but an install that has been running for a while still has its older archives
- * in the old place — nothing moves them automatically, because the ownership and
- * the free space are the operator's to judge. This is what tells them the job is
- * outstanding, and how many files it is about.
+ * Its own function so the classification can be driven directly with rows the
+ * real prober produced, for every combination a single machine cannot get into
+ * at once. (A developer box has archives inside the tree; a correctly
+ * configured install has none; only one of those is true here today.)
  *
- * CRITICAL when archives are present in a served directory: one of those files
- * is a complete copy of the database.
+ * The order is the whole policy:
+ *   critical  anything answered 200. Nothing else matters beside it.
+ *   warn      every probe failed to reach the host — the report is empty.
+ *   unknown   at least one probe could not be answered. NOT a pass: the
+ *             unanswered one is usually backups/, and a green tick over an
+ *             unasked question is the defect @rjonesbsink reported.
+ *   ok        every probe was answered and none of them was 200.
+ *
+ * 'untested' rows marked 'absent' are excluded from that count deliberately:
+ * "there is no such directory in the served tree" is a certain answer from the
+ * filesystem, not an unanswered question, and it is the ordinary state of a
+ * correctly configured install. Colouring that grey for ever is how a row stops
+ * being read.
+ */
+function _health_exposure_severity(array $probes): string
+{
+    $exposed = 0;
+    $unknown = 0;
+    $open    = 0;   // could not be answered, and it mattered
+    foreach ($probes as $p) {
+        $state = (string) ($p['state'] ?? '');
+        if ($state === 'exposed') { $exposed++; continue; }
+        if ($state === 'unknown') { $unknown++; $open++; continue; }
+        if ($state === 'untested' && (string) ($p['untested_reason'] ?? '') !== 'absent') {
+            $open++;
+        }
+    }
+    if ($exposed > 0)                                    { return 'critical'; }
+    if (!empty($probes) && $unknown === count($probes))  { return 'warn'; }
+    if ($open > 0)                                       { return 'unknown'; }
+    return 'ok';
+}
+
+/**
+ * Every backup directory this install knows about that lies INSIDE the served
+ * tree, as URL paths relative to the application root, in preference order.
+ *
+ * Only in-tree directories can appear at `<base>/…` at all, so only they can be
+ * tested by this probe. An out-of-tree directory (the v4.2.4 default on every
+ * platform) is the other row's job — health_check_backups(), which asks the
+ * default ports, where a *different* site's document root answers.
+ *
+ * Four sources, because 5b88fbb made "the backups directory" a list rather than
+ * a constant: the operator's `backup_dir` setting, the current default, and the
+ * two historical defaults. backup_dirs_all() resolves the first three; the
+ * constants are re-added so this still answers on an install with no database
+ * (a fresh clone, or the CLI before config.php exists).
+ *
+ * @return array<string,string> url path (no leading slash) => absolute dir
+ */
+function _health_backup_dirs_in_tree(): array
+{
+    $out = [];
+    if (!defined('NEWUI_ROOT')) { return $out; }
+
+    $norm = function (string $p): string {
+        $r = @realpath($p);
+        return rtrim(str_replace('\\', '/', $r !== false ? $r : $p), '/');
+    };
+    $root = $norm(NEWUI_ROOT);
+    if ($root === '') { return $out; }
+
+    $dirs = [];
+    try {
+        require_once __DIR__ . '/backup.php';
+        require_once __DIR__ . '/backup_schedule.php';
+        if (function_exists('backup_dirs_all')) { $dirs = backup_dirs_all(); }
+    } catch (Throwable $e) {
+        // No database yet. The compiled-in constants below still describe every
+        // place this code has ever written an archive.
+        $dirs = [];
+    }
+    foreach ([
+        defined('BACKUP_DIR')                ? BACKUP_DIR                : null,
+        defined('BACKUP_DIR_LEGACY')         ? BACKUP_DIR_LEGACY         : null,
+        defined('BACKUP_DIR_LEGACY_SIBLING') ? BACKUP_DIR_LEGACY_SIBLING : null,
+    ] as $d) {
+        if ($d !== null) { $dirs[] = $d; }
+    }
+
+    foreach ($dirs as $d) {
+        if (!is_string($d) || $d === '' || !is_dir($d)) { continue; }
+        $n = $norm($d);
+        // Strictly BELOW the root: the application root itself is not a backup
+        // directory, and mapping it to '' would probe the home page.
+        if ($n === $root || strpos($n, $root . '/') !== 0) { continue; }
+        $rel = substr($n, strlen($root) + 1);
+        if ($rel === '' || isset($out[$rel])) { continue; }
+        $out[$rel] = $d;
+    }
+    return $out;
+}
+
+/**
+ * The backups row of the web-exposure report — a request for a FILE, or a
+ * stated refusal to claim an answer.
+ *
+ * Never returns 'blocked' on the strength of a directory request. See the
+ * 2026-08-02 note on health_check_web_exposure() for why: a 403 on `backups/`
+ * is what a server with indexes off and no deny rule returns while it hands out
+ * every archive inside.
+ *
+ * $inTree is a parameter, defaulting to real discovery, for the same reason
+ * backup_default_dir_for() takes $windows: every branch has to be assertable
+ * from one machine. A developer box has archives in the tree and a fresh
+ * install has none, and both states are ordinary — a test that can only see the
+ * one its own machine happens to be in is how the directory fallback survived.
+ *
+ * @param array<string,string>|null $inTree NULL = discover for real.
+ * @return array{path:string,label:string,url:?string,status:?int,state:string,note:string}
+ */
+function _health_backups_probe_result(string $base, bool $force = false, ?array $inTree = null): array
+{
+    // 'untested_reason' separates two things that both mean "no answer", because
+    // treating them alike breaks the check in one direction or the other:
+    //
+    //   absent       — there is no backup directory inside the served tree, so
+    //                  no request to that URL could return one of our archives.
+    //                  Certain, and from the filesystem. This is the ordinary
+    //                  state of a correctly configured v4.2.4 install, and
+    //                  colouring it grey forever would train operators to
+    //                  ignore the row — after which it is the silent one.
+    //   inconclusive — a directory IS there and we could not ask for anything
+    //                  in it. Files may be published and we do not know. That
+    //                  escalates.
+    $mk = function (string $path, string $label, ?string $url, ?int $status,
+                    string $state, string $note, string $why = ''): array {
+        return ['path' => $path, 'label' => $label, 'url' => $url,
+                'status' => $status, 'state' => $state, 'note' => $note,
+                'untested_reason' => $why];
+    };
+
+    if ($inTree === null) {
+        try {
+            $inTree = _health_backup_dirs_in_tree();
+        } catch (Throwable $e) { $inTree = []; }
+    }
+
+    if (empty($inTree)) {
+        // Certain, and from the filesystem rather than from the server: there
+        // is no such directory under the served tree, so no request to it could
+        // return one of this install's archives. Still not a pass — the archives
+        // are somewhere else, and "somewhere else" is the Backup archive
+        // location row, which probes the default ports this one never sees.
+        return $mk('backups/', 'backups/ (database archives)', null, null, 'untested',
+            'No backup directory exists inside the served tree, so there is nothing at '
+            . 'that URL to request. Where this install actually keeps its archives is '
+            . 'checked in the “Backup archive location” row below.', 'absent');
+    }
+
+    // 1. A real archive, named. The only probe whose 403 means what an operator
+    //    thinks it means.
+    foreach ($inTree as $rel => $dir) {
+        $found = [];
+        try {
+            $found = glob(rtrim($dir, '/\\') . '/ticketscad-*.{zip,gz}', GLOB_BRACE) ?: [];
+        } catch (Throwable $e) { $found = []; }
+        if (empty($found)) { continue; }
+
+        $seg  = implode('/', array_map('rawurlencode', explode('/', $rel)));
+        $path = $seg . '/' . rawurlencode(basename($found[0]));
+        $url  = $base . '/' . $path;
+        // HEAD, deliberately: the target may be hundreds of megabytes, and the
+        // question is whether the server will serve it, not what is in it.
+        $code = _health_probe_head($url);
+        $state = ($code === null) ? 'unknown'
+               : (($code >= 200 && $code < 300) ? 'exposed' : 'blocked');
+        return $mk($path, 'backups/ (a real database archive, by name)', $url, $code, $state,
+            $state === 'blocked'
+                ? 'Asked for an actual archive, not the directory — a 403 on the directory '
+                    . 'would have proved nothing about the files in it.'
+                : '');
+    }
+
+    // 2. No archive to name. The canary: a few dozen bytes of random hex written
+    //    into the directory and fetched back, counted only when the body is the
+    //    token. Also a file, so also conclusive — and it keeps an archive URL out
+    //    of every proxy, cache and analytics log between here and the browser.
+    foreach ($inTree as $rel => $dir) {
+        $probe = [];
+        try {
+            $probe = health_check_backup_probe($dir, $force);
+        } catch (Throwable $e) { $probe = []; }
+
+        if (!empty($probe['exposed'])) {
+            return $mk($rel . '/', 'backups/ (proved with a self-test file)',
+                (string) ($probe['url'] ?? ($base . '/' . $rel . '/')), 200, 'exposed',
+                'A file written into ' . $dir . ' was served back over HTTP. Any archive '
+                . 'placed there is downloadable.');
+        }
+        if (!empty($probe['checked'])) {
+            return $mk($rel . '/', 'backups/ (proved with a self-test file)', null, null, 'blocked',
+                'No archive present, so a self-test file was written into ' . $dir
+                . ' and requested instead; it was not served. Tried '
+                . implode(', ', (array) ($probe['tried'] ?? [])) . '.');
+        }
+
+        // 3. Could not place the canary either. Say so, and say why.
+        return $mk($rel . '/', 'backups/ (database archives)', null, null, 'untested',
+            'Could not test: no archive present in ' . $dir . ' to request, and the '
+            . 'self-test file could not be used — '
+            . ((string) ($probe['reason'] ?? 'the HTTP self-test could not run')) . '. '
+            . 'A 403 on the directory itself would NOT have answered this: servers with '
+            . 'directory listing off routinely return 403 for the folder and 200 for the '
+            . 'files in it. Check by hand once you have taken a backup — '
+            . 'docs/WEB-SERVER-HARDENING.md.', 'inconclusive');
+    }
+
+    return $mk('backups/', 'backups/ (database archives)', null, null, 'untested',
+        'Could not test the backups directory.', 'inconclusive');
+}
+
+/**
+ * Are any database archives sitting in a directory a web server publishes?
+ *
+ * The half of the exposure story that also works from the CLI. v4.2.3 moved the
+ * default backup directory out of the application tree, but an install that has
+ * been running for a while still has older archives in the old place — nothing
+ * moves them automatically, because the ownership and the free space are the
+ * operator's to judge. This is what tells them the job is outstanding, and how
+ * many files it is about.
+ *
+ * ── WHY THIS CHECKS THE DESTINATION, NOT JUST THE SOURCE (2026-08-02) ──────
+ *
+ * Until now it asked one question — "is this inside OUR tree?" — and answered
+ * OK for everything else. @rjonesbsink found what that misses: on Windows,
+ * v4.2.3's own "above the web root" default resolved to C:\inetpub\wwwroot,
+ * the document root of IIS's Default Web Site on port 80. Archives were moved
+ * OUT of this application's tree and INTO somebody else's published one, and
+ * every check here went green, because a directory belonging to another site
+ * was, quite literally, not this application's problem to look at.
+ *
+ * It is now. Three sources of evidence, in increasing order of authority:
+ *
+ *   1. backup_dir_exposure() — local file layout. Certain about our own tree
+ *      and about %SystemDrive%\inetpub\wwwroot; a graded suspicion about
+ *      anything that looks like a document root; explicit about knowing nothing
+ *      otherwise.
+ *   2. The HTTP canary — writes a small random token into the directory and
+ *      asks this host for it on the default ports. A 200 whose BODY is the
+ *      token is proof: only a server publishing that directory could return it.
+ *   3. Neither, in which case the answer is "no evidence", the blind spot is
+ *      printed in plain words, and nobody is told they are safe.
+ *
+ * CRITICAL when archives are present somewhere published: one of those files is
+ * a complete copy of the database.
  */
 function health_check_backups(): array
 {
@@ -1363,61 +1663,652 @@ function health_check_backups(): array
         } catch (Throwable $e) {
             // No database (fresh install, CLI without config) — fall back to the
             // compiled-in paths so the check still says something useful.
-            $dirs   = array_values(array_unique(array_filter(
-                [BACKUP_DIR, defined('BACKUP_DIR_LEGACY') ? BACKUP_DIR_LEGACY : null]
-            )));
+            $dirs   = array_values(array_unique(array_filter([
+                BACKUP_DIR,
+                defined('BACKUP_DIR_LEGACY_SIBLING') ? BACKUP_DIR_LEGACY_SIBLING : null,
+                defined('BACKUP_DIR_LEGACY') ? BACKUP_DIR_LEGACY : null,
+            ])));
             $active = BACKUP_DIR;
         }
 
-        $entries = [];
-        $exposedArchives = 0;
+        $norm = function (string $p): string {
+            return rtrim(str_replace('\\', '/', $p), '/');
+        };
+
+        $entries         = [];
+        $exposedArchives = 0;   // archives somewhere we KNOW is published
+        $suspectArchives = 0;   // archives somewhere that looks published
+        $notes           = [];
+
         foreach ($dirs as $d) {
             if (!is_dir($d)) { continue; }
             $files = glob(rtrim($d, '/\\') . '/ticketscad-*.{zip,gz}', GLOB_BRACE) ?: [];
-            $web   = backup_dir_is_web_served($d);
-            if ($web) { $exposedArchives += count($files); }
+            $x     = backup_dir_exposure($d);
+            if ($x['served'])                       { $exposedArchives += count($files); }
+            elseif ($x['suspect'])                  { $suspectArchives += count($files); }
             $entries[] = [
                 'dir'        => $d,
-                'active'     => rtrim(str_replace('\\', '/', $d), '/')
-                                === rtrim(str_replace('\\', '/', $active), '/'),
-                'web_served' => $web,
+                'active'     => $norm($d) === $norm($active),
+                'web_served' => $x['served'],
+                'suspect'    => $x['suspect'],
+                'state'      => $x['state'],
+                'why'        => $x['why'],
                 'archives'   => count($files),
             ];
         }
 
-        $activeWeb = backup_dir_is_web_served($active);
-        $severity  = ($exposedArchives > 0 || $activeWeb) ? 'critical' : 'ok';
+        $activeX = backup_dir_exposure($active);
 
-        $summary = 'Backups are written outside the web root (' . $active . ')';
-        if ($activeWeb) {
-            $summary = 'Backups are being written INSIDE the web root (' . $active . ')';
+        // The HTTP canary. Only the ACTIVE directory: it is the one that will
+        // keep filling up, the probe costs outbound requests, and a directory
+        // being retired is already reported on its file layout alone.
+        $probe = health_check_backup_probe($active);
+        if (!empty($probe['exposed'])) {
+            $activeX['served'] = true;
+            $activeX['state']  = 'probe_confirmed';
+            $activeX['why']    = 'proved reachable over HTTP at ' . $probe['url'];
+        }
+
+        // ── Was this install moved into a published directory BY v4.2.3? ──
+        // The specific state @rjonesbsink hit, and the state an operator who
+        // followed v4.2.3's own remediation text is now in. It must be named,
+        // not merely counted, or it reads as "you did something wrong".
+        if (defined('BACKUP_DIR_LEGACY_SIBLING')
+            && $norm(BACKUP_DIR_LEGACY_SIBLING) !== $norm(BACKUP_DIR)
+            && is_dir(BACKUP_DIR_LEGACY_SIBLING)) {
+            $sx = backup_dir_exposure(BACKUP_DIR_LEGACY_SIBLING);
+            if ($sx['served'] || $sx['suspect']) {
+                $notes[] = 'v4.2.3 wrote backups to ' . BACKUP_DIR_LEGACY_SIBLING
+                    . ' and told you to move them there. On this server that '
+                    . 'directory is ' . $sx['why'] . '. Anything still in it should be '
+                    . 'treated as having been downloadable, and moved to ' . BACKUP_DIR . '.';
+            }
+        }
+
+        $severity = 'ok';
+        if ($exposedArchives > 0 || $activeX['served']) {
+            $severity = 'critical';
+        } elseif ($suspectArchives > 0 || $activeX['suspect']) {
+            $severity = 'warn';
+        }
+
+        // Which directory does the operator actually have to empty? The active
+        // one when it is itself published; otherwise the worst offender holding
+        // archives — an install whose new backups go somewhere safe while old
+        // ones sit in a served folder is the common shape, and the instructions
+        // have to be about the served folder.
+        $offender = $active;
+        if (!$activeX['served'] && !$activeX['suspect']) {
+            foreach ([true, false] as $wantServed) {
+                foreach ($entries as $e) {
+                    if ($e['archives'] < 1) { continue; }
+                    if ($wantServed ? $e['web_served'] : $e['suspect']) {
+                        $offender = $e['dir'];
+                        break 2;
+                    }
+                }
+            }
+        }
+
+        if ($activeX['served']) {
+            $summary = 'Backups are being written to a directory that is PUBLISHED over HTTP ('
+                     . $active . ' — ' . $activeX['why'] . ')';
         } elseif ($exposedArchives > 0) {
-            $summary = $exposedArchives . ' older archive' . ($exposedArchives === 1 ? '' : 's')
-                     . ' still in the web-served backups directory';
+            $summary = $exposedArchives . ' archive' . ($exposedArchives === 1 ? '' : 's')
+                     . ' sitting in a directory that is published over HTTP';
+        } elseif ($activeX['suspect']) {
+            $summary = 'Backups may be published over HTTP (' . $active . ' — '
+                     . $activeX['why'] . ')';
+        } elseif ($suspectArchives > 0) {
+            $summary = $suspectArchives . ' archive' . ($suspectArchives === 1 ? '' : 's')
+                     . ' in a directory that looks like it is published over HTTP';
+        } else {
+            $summary = 'Backups are written outside every web root this install can see ('
+                     . $active . ')';
+        }
+
+        // The disclosure. Present whenever the strongest available evidence is
+        // still only "we looked and found nothing", which is not the same thing
+        // as "it is not reachable" — and saying so is the entire lesson of the
+        // regression this check exists to catch.
+        $blind = '';
+        if (empty($probe['checked'])) {
+            $blind = 'Not proved either way: ' . ($probe['reason'] ?? 'the HTTP self-test could not run')
+                   . '. This check only probes the address THIS install answers on — a directory '
+                   . 'published by another site, another port or a reverse proxy would not be '
+                   . 'detected here. Verify by hand: docs/WEB-SERVER-HARDENING.md.';
+        } elseif (empty($probe['exposed'])) {
+            $blind = 'Confirmed unreachable on ' . implode(', ', $probe['tried'] ?? [])
+                   . ' only. Other hostnames, other ports and other web sites on this machine '
+                   . 'are outside what this check can see.';
         }
 
         return [
             'checked'          => true,
             'active_dir'       => $active,
-            'active_web_served'=> $activeWeb,
+            'active_web_served'=> $activeX['served'],
+            'active_suspect'   => $activeX['suspect'],
+            'active_state'     => $activeX['state'],
+            'active_why'       => $activeX['why'],
             'default_dir'      => BACKUP_DIR,
             'legacy_dir'       => defined('BACKUP_DIR_LEGACY') ? BACKUP_DIR_LEGACY : null,
+            'legacy_dirs'      => function_exists('backup_legacy_dirs') ? backup_legacy_dirs() : [],
             'dirs'             => $entries,
             'exposed_archives' => $exposedArchives,
+            'suspect_archives' => $suspectArchives,
+            'probe'            => $probe,
+            'blind_spot'       => $blind,
+            'notes'            => $notes,
             'severity'         => $severity,
             'summary'          => $summary,
-            'remedy'           => $severity === 'ok' ? ''
-                : 'Move the archives above the web root and delete the originals:'
-                    . "\n  mkdir -p " . BACKUP_DIR
-                    . "\n  mv " . (defined('BACKUP_DIR_LEGACY') ? BACKUP_DIR_LEGACY : 'backups') . "/ticketscad-* " . BACKUP_DIR . '/'
-                    . "\n  sudo chown -R \"\$(id -un)\":www-data " . BACKUP_DIR . ' && sudo chmod 2770 ' . BACKUP_DIR
-                    . "\nThen confirm nothing is left: ls " . (defined('BACKUP_DIR_LEGACY') ? BACKUP_DIR_LEGACY : 'backups')
-                    . "\nIf the directory was reachable over HTTP, treat the database as disclosed — "
-                    . 'see docs/security/advisory-2026-07-30-exposed-directories.md.',
+            // The directory the reader has to move files OUT of, which is not
+            // necessarily the active one: the usual case is an active directory
+            // that is fine and older archives left behind somewhere published.
+            // Naming the destination as the source produced
+            // `Move-Item -Path <target>\ticketscad-* -Destination <target>\`,
+            // an instruction that moves a directory onto itself.
+            'offender_dir'     => $offender,
+            'remedy'           => $severity === 'ok' ? '' : health_backup_move_remedy($offender),
         ];
     } catch (Throwable $e) {
         return ['checked' => false, 'severity' => 'ok', 'dirs' => [],
                 'error' => 'backup location check failed'];
+    }
+}
+
+/**
+ * Where are the encryption keys, and is anything publishing that directory?
+ *
+ * GHSA-3jmh-c6f6-64jc, 2026-08-03. FE_KEYS_DIR was `NEWUI_ROOT . '/../keys'`
+ * for the same reason BACKUP_DIR was `dirname(NEWUI_ROOT)`, and it is wrong on
+ * Windows in the same way: an IIS site at C:\inetpub\wwwroot\<app> puts the
+ * keys in C:\inetpub\wwwroot\keys, inside Default Web Site, bound to port 80.
+ * @rjonesbsink fetched a control file out of it over HTTP.
+ *
+ * The asset here is worse than a backup archive in one specific respect: the
+ * private key is not a snapshot of data at a point in time, it is the thing
+ * that decrypts data going forward, and rotating it is not free — a new tfa.key
+ * un-enrols every 2FA user. So this row is CRITICAL when the directory is
+ * certainly published, whether or not a key file is sitting in it yet: if the
+ * directory is served, the next key generated lands there.
+ *
+ * Nothing is moved. A half-completed key move loses 2FA for everyone, so this
+ * reports and instructs; the operator moves.
+ */
+function health_check_keys(): array
+{
+    try {
+        if (!defined('NEWUI_ROOT')) {
+            return ['checked' => false, 'severity' => 'ok'];
+        }
+        require_once __DIR__ . '/field-encrypt.php';
+
+        $norm = function (string $p): string {
+            return rtrim(str_replace('\\', '/', $p), '/');
+        };
+        $active   = FE_KEYS_DIR;
+        $activeX  = served_dir_exposure($active);
+        $present  = [];
+        foreach (['private.pem', 'public.pem', 'tfa.key'] as $f) {
+            if (@is_file(rtrim($active, '/\\') . '/' . $f)) { $present[] = $f; }
+        }
+
+        // The canary. Only the directory actually in use: it is the one that
+        // will hold the keys, and the probe costs outbound requests.
+        $probe = health_check_dir_probe($active, 'keys', 'keys directory');
+        if (!empty($probe['exposed'])) {
+            $activeX['served'] = true;
+            $activeX['state']  = 'probe_confirmed';
+            $activeX['why']    = 'proved reachable over HTTP at ' . $probe['url'];
+        }
+
+        // Key material left behind in a location this install no longer uses.
+        // Not hypothetical: an operator who moves their keys to the safe
+        // directory and leaves copies behind has still left a private key in a
+        // published folder, and the resolver deliberately keeps USING the old
+        // one until it is empty — so this note is how they learn the move is
+        // not finished.
+        $notes  = [];
+        $others = [];
+        foreach ([FE_KEYS_DIR_LEGACY, FE_KEYS_DIR_DEFAULT] as $d) {
+            if ($norm($d) === $norm($active)) { continue; }
+            if (!fe_dir_holds_keys($d))       { continue; }
+            $ox = served_dir_exposure($d);
+            $others[] = ['dir' => $d, 'served' => $ox['served'], 'suspect' => $ox['suspect'],
+                         'state' => $ox['state'], 'why' => $ox['why']];
+            if ($ox['served'] || $ox['suspect']) {
+                $notes[] = 'Key files are also present in ' . $d . ', which is ' . $ox['why']
+                    . '. A private key there is readable by anyone who can reach that site — '
+                    . 'move those files out (or delete them once you have verified the copies '
+                    . 'in ' . $active . ' work).';
+            }
+        }
+
+        $severity = 'ok';
+        if ($activeX['served']) {
+            $severity = 'critical';
+        } elseif ($activeX['suspect']) {
+            $severity = 'warn';
+        }
+        foreach ($others as $o) {
+            if ($o['served'] && $severity !== 'critical') { $severity = 'critical'; }
+            elseif ($o['suspect'] && $severity === 'ok')  { $severity = 'warn'; }
+        }
+
+        if ($activeX['served']) {
+            $summary = 'The encryption keys are in a directory that is PUBLISHED over HTTP ('
+                     . $active . ' — ' . $activeX['why'] . ')';
+        } elseif ($activeX['suspect']) {
+            $summary = 'The encryption keys may be published over HTTP (' . $active . ' — '
+                     . $activeX['why'] . ')';
+        } elseif ($severity !== 'ok') {
+            $summary = 'Key files are left in a directory that looks published';
+        } else {
+            $summary = 'Keys are outside every web root this install can see (' . $active . ')';
+        }
+
+        $blind = '';
+        if (empty($probe['checked'])) {
+            $blind = 'Not proved either way: ' . ($probe['reason'] ?? 'the HTTP self-test could not run')
+                   . '. This check only probes the address THIS install answers on — a directory '
+                   . 'published by another site, another port or a reverse proxy would not be '
+                   . 'detected here. Verify by hand: docs/WEB-SERVER-HARDENING.md.';
+        } elseif (empty($probe['exposed'])) {
+            $blind = 'Confirmed unreachable on ' . implode(', ', $probe['tried'] ?? [])
+                   . ' only. Other hostnames, other ports and other web sites on this machine '
+                   . 'are outside what this check can see.';
+        }
+
+        return [
+            'checked'      => true,
+            'active_dir'   => $active,
+            'default_dir'  => FE_KEYS_DIR_DEFAULT,
+            'legacy_dir'   => FE_KEYS_DIR_LEGACY,
+            'in_legacy'    => $norm($active) === $norm(FE_KEYS_DIR_LEGACY)
+                              && $norm(FE_KEYS_DIR_LEGACY) !== $norm(FE_KEYS_DIR_DEFAULT),
+            'key_files'    => $present,
+            'web_served'   => $activeX['served'],
+            'suspect'      => $activeX['suspect'],
+            'state'        => $activeX['state'],
+            'why'          => $activeX['why'],
+            'other_dirs'   => $others,
+            'probe'        => $probe,
+            'notes'        => $notes,
+            'blind_spot'   => $blind,
+            'severity'     => $severity,
+            'summary'      => $summary,
+            'remedy'       => $severity === 'ok' ? '' : health_keys_move_remedy($active),
+        ];
+    } catch (Throwable $e) {
+        return ['checked' => false, 'severity' => 'ok',
+                'error' => 'key location check failed'];
+    }
+}
+
+/**
+ * "Move your keys somewhere no site serves", in commands for the machine the
+ * reader is sitting at.
+ *
+ * Different in one important way from the backup version: there is no in-app
+ * setting for this. FE_KEYS_DIR is a define() read before any database is
+ * available, so the override lives in config.php — and on Windows the operator
+ * usually needs no override at all, because the destination we name IS the new
+ * default and the resolver picks it up as soon as the old directory no longer
+ * holds keys.
+ *
+ * The order of operations is stated the safe way round — copy, verify, then
+ * delete — because half a key move locks every 2FA user out of the system.
+ */
+function health_keys_move_remedy(string $active, ?bool $windows = null): string
+{
+    if ($windows === null) {
+        $windows = (DIRECTORY_SEPARATOR === '\\');
+    }
+    $n       = function (string $p): string { return rtrim(str_replace('\\', '/', $p), '/'); };
+    $default = fe_default_keys_dir_for(NEWUI_ROOT, $windows);
+
+    // Is the flagged directory the platform default itself? Then moving out of
+    // it cannot be picked up automatically and config.php must name the new
+    // location. Otherwise the default IS the destination, and emptying the old
+    // directory is the whole procedure — the resolver switches on its own.
+    $defaultIsTheProblem = ($n($default) === $n($active));
+    $dest = $defaultIsTheProblem
+        ? ($windows ? 'C:\\TicketsCAD\\keys' : '/var/lib/ticketscad/keys')
+        : $default;
+
+    $lead = "Move the key files to a directory no web site publishes. Do it when nobody is "
+          . "signing in, and keep the originals until you have confirmed a 2FA login still "
+          . "works: tfa.key decrypts every enrolled authenticator, and there is no way back "
+          . "from losing it.\n\n";
+
+    $tail = $defaultIsTheProblem
+        ? "\nThen add this line anywhere in config.php — it is read before the keys are "
+        . "opened, and it overrides the built-in default:\n"
+        . "  define('FE_KEYS_DIR', '"
+        . ($windows ? str_replace('\\', '\\\\', $dest) : $dest) . "');\n"
+        : "\nNo config change is needed: " . $dest . " is this version's default, and "
+        . "TicketsCAD uses it as soon as the old directory no longer holds key files. "
+        . "(To keep them somewhere else instead, add define('FE_KEYS_DIR', '…'); to "
+        . "config.php.)\n";
+
+    $close = "\nIf that directory was reachable over HTTP, treat the private key as disclosed — "
+           . 'see docs/security/advisory-2026-08-03-fe-keys-dir.md.';
+
+    if ($windows) {
+        $w  = function (string $p): string { return str_replace('/', '\\', $p); };
+        $me = health_os_account($windows);
+        return $lead
+            . "PowerShell, as Administrator:\n"
+            . "  New-Item -ItemType Directory -Force -Path '" . $w($dest) . "'\n"
+            . "  icacls '" . $w($dest) . "' /grant '" . $me . ":(OI)(CI)M'\n"
+            . "  Copy-Item -Path '" . $w($active) . "\\*.pem','" . $w($active) . "\\tfa.key' "
+            . "-Destination '" . $w($dest) . "\\' -ErrorAction SilentlyContinue\n"
+            . "  # sign in with 2FA to confirm it still works, THEN:\n"
+            . "  Remove-Item -Path '" . $w($active) . "\\*.pem','" . $w($active) . "\\tfa.key'\n"
+            . $tail
+            . "\nDo NOT use C:\\inetpub\\wwwroot or any directory beneath it — that is the "
+            . "physical path of IIS's Default Web Site and it is bound to port 80, so anything "
+            . "in it is public even though TicketsCAD answers on a different port.\n"
+            . $close;
+    }
+
+    return $lead
+        . "  sudo mkdir -p " . $dest . "\n"
+        . "  sudo cp -p " . $active . "/*.pem " . $active . "/tfa.key " . $dest . "/\n"
+        . "  sudo chown -R www-data:www-data " . $dest . " && sudo chmod 700 " . $dest . "\n"
+        . "  # sign in with 2FA to confirm it still works, THEN:\n"
+        . "  sudo rm -f " . $active . "/*.pem " . $active . "/tfa.key\n"
+        . $tail
+        . $close;
+}
+
+/**
+ * The "move your archives somewhere safe" instructions, in commands the reader
+ * can actually paste on the machine they are sitting at.
+ *
+ * v4.2.3 printed `mkdir -p`, `mv` and `sudo chown … www-data` unconditionally.
+ * On Windows that rendered as `mkdir -p C:\inetpub\wwwroot/backups` — POSIX
+ * verbs, a group that does not exist, and mixed path separators. An IIS
+ * administrator could not run a line of it, and following it by hand is exactly
+ * what moved a database archive into the port-80 site root.
+ *
+ * The first paragraph is deliberately platform-neutral and comes first, because
+ * it is the whole fix: the `backup_dir` setting overrides every default in this
+ * file, and setting it needs no shell at all.
+ *
+ * $windows is a parameter rather than a bare DIRECTORY_SEPARATOR read so that
+ * both branches can be asserted from one machine. A test that can only see the
+ * text its own platform produces is exactly how POSIX-only instructions shipped
+ * to IIS administrators in the first place.
+ */
+function health_backup_move_remedy(string $active, ?bool $windows = null): string
+{
+    if ($windows === null) {
+        $windows = (DIRECTORY_SEPARATOR === '\\');
+    }
+    $target  = backup_default_dir_for(NEWUI_ROOT, $windows);
+    $from    = $active;
+
+    $lead = "Set “Backup folder” in Settings → Backup to a directory outside every web "
+          . "site root. That alone fixes it, on any server, with no shell.\n"
+          . 'Suggested: ' . $target . "\n\n"
+          . "Then move what is already there:\n";
+
+    if ($windows) {
+        // Mixed separators were half the reason the old text was unusable:
+        // BACKUP_DIR_LEGACY is built with '/', so it rendered as
+        // `C:\inetpub\wwwroot\TicketsV4/backups`. Normalise everything shown.
+        $w  = function (string $p): string { return str_replace('/', '\\', $p); };
+        $me = health_os_account($windows);
+        return $lead
+            . "\nPowerShell, as Administrator:\n"
+            . "  New-Item -ItemType Directory -Force -Path '" . $w($target) . "'\n"
+            . "  Move-Item -Path '" . $w($from) . "\\ticketscad-*' -Destination '" . $w($target) . "\\'\n"
+            . "  icacls '" . $w($target) . "' /grant '" . $me . ":(OI)(CI)M'\n"
+            . "  Get-ChildItem '" . $w($from) . "'    # should list no ticketscad-* archives\n"
+            . "\nDo NOT use C:\\inetpub\\wwwroot — that is the physical path of IIS's "
+            . "Default Web Site and it is bound to port 80, so anything in it is public "
+            . "even though TicketsCAD answers on a different port. C:\\inetpub\\backups is "
+            . "safe if you would rather keep it on the same volume as the site.\n"
+            . "\nIf that directory was reachable over HTTP, treat the database as disclosed — "
+            . 'see docs/security/advisory-2026-07-30-exposed-directories.md.';
+    }
+
+    return $lead
+        . "  mkdir -p " . $target . "\n"
+        . "  mv " . $from . "/ticketscad-* " . $target . "/\n"
+        . "  sudo chown -R \"\$(id -un)\":www-data " . $target . ' && sudo chmod 2770 ' . $target . "\n"
+        . "  ls " . $from . "    # should list no ticketscad-* archives\n"
+        . "\nIf that directory was reachable over HTTP, treat the database as disclosed — "
+        . 'see docs/security/advisory-2026-07-30-exposed-directories.md.';
+}
+
+/**
+ * The account this PHP process runs as, for an icacls/chown line the reader can
+ * paste. Best effort — a placeholder is better than a wrong name.
+ */
+function health_os_account(?bool $windows = null): string
+{
+    if ($windows === null) {
+        $windows = (DIRECTORY_SEPARATOR === '\\');
+    }
+    try {
+        if ($windows) {
+            $u = getenv('USERNAME');
+            $d = getenv('USERDOMAIN');
+            if ($u !== false && trim((string) $u) !== '') {
+                return (($d !== false && trim((string) $d) !== '') ? $d . '\\' : '') . $u;
+            }
+            return 'IIS AppPool\\<your application pool>';
+        }
+        if (function_exists('posix_getpwuid') && function_exists('posix_geteuid')) {
+            $pw = @posix_getpwuid(posix_geteuid());
+            if (is_array($pw) && !empty($pw['name'])) { return (string) $pw['name']; }
+        }
+        $u = getenv('USER');
+        return ($u !== false && $u !== '') ? (string) $u : 'www-data';
+    } catch (Throwable $e) {
+        return $windows ? 'IIS AppPool\\<your application pool>' : 'www-data';
+    }
+}
+
+/**
+ * Prove — or fail to prove — that a directory is reachable over HTTP, by
+ * putting a file in it and asking for that file back.
+ *
+ * ── WHY A CANARY AND NOT A CONFIG READ ────────────────────────────────────
+ *
+ * Reading `appcmd list site` would say what IIS is configured to publish. It
+ * needs a shell (this project gates against shelling out), it does not exist on
+ * Apache or nginx, it is not readable by the application pool identity, and it
+ * still would not settle the question — a reverse proxy in front can publish a
+ * path no local config mentions. Asking the server for the file settles it.
+ *
+ * ── WHY THE TOKEN IS CHECKED, AND WHY NOT AN ARCHIVE ──────────────────────
+ *
+ * A bare 200 is not evidence: plenty of sites answer 200 for everything. The
+ * body must contain a token this process generated a moment ago, which only a
+ * server publishing THIS directory can return — so there are no false alarms,
+ * and a positive result is worth acting on.
+ *
+ * The probe never requests a real archive. An archive URL in a proxy log, a
+ * cache or an upstream analytics pipeline is a disclosure in its own right, and
+ * the point here is to test the DIRECTORY, not to fetch anything valuable. The
+ * canary is a few dozen bytes of random hex and is deleted afterwards.
+ *
+ * Cached for 12 hours: the Status page can be refreshed repeatedly and this
+ * costs outbound requests.
+ *
+ * @return array{checked:bool,exposed:bool,url:?string,tried:string[],reason:?string}
+ */
+function health_check_backup_probe(string $dir, bool $force = false): array
+{
+    return health_check_dir_probe($dir, 'backup', 'backup directory', $force);
+}
+
+/**
+ * The canary probe itself, for any directory that is supposed to be private.
+ *
+ * Generalised 2026-08-03: the encryption-key directory (GHSA-3jmh-c6f6-64jc)
+ * needs exactly this question asked of it, and the reporter's own evidence was
+ * this experiment run by hand — a control file placed in the directory and
+ * fetched over HTTP. Writing a second copy of it would be the third time this
+ * assumption was implemented independently.
+ *
+ * @param string $dir    Directory to test.
+ * @param string $slug   Short name, used for the per-directory probe cache file.
+ * @param string $label  How to name the directory in a reason string.
+ */
+function health_check_dir_probe(string $dir, string $slug, string $label, bool $force = false): array
+{
+    $miss = function (string $why): array {
+        return ['checked' => false, 'exposed' => false, 'url' => null,
+                'tried' => [], 'reason' => $why];
+    };
+    $slug = preg_replace('/[^a-z0-9_-]/i', '', $slug);
+    if ($slug === '') { $slug = 'dir'; }
+
+    try {
+        $host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? '';
+        if ($host === '') {
+            return $miss('there is no web request to work out this server\'s address from '
+                       . '(run it from Settings → Status in a browser)');
+        }
+        // Strip the port: the whole point is to try the DEFAULT ports, which is
+        // where another site's document root answers.
+        $hostOnly = preg_replace('/:\d+$/', '', (string) $host);
+        if (!is_string($hostOnly) || $hostOnly === '') {
+            return $miss('could not parse this server\'s host name');
+        }
+        if (!is_dir($dir))      { return $miss('the ' . $label . ' does not exist yet'); }
+        if (!is_writable($dir)) { return $miss('the ' . $label . ' is not writable by the web server, '
+                                             . 'so the self-test file could not be placed in it'); }
+
+        $cacheFile = health_check_root() . '/cache/health-' . $slug . '-probe.json';
+        $key       = $hostOnly . '|' . rtrim(str_replace('\\', '/', $dir), '/');
+        if (!$force && is_file($cacheFile)) {
+            $cached = json_decode((string) @file_get_contents($cacheFile), true);
+            if (is_array($cached) && ($cached['key'] ?? '') === $key
+                && (time() - (int) ($cached['at'] ?? 0)) < 43200) {
+                return $cached['result'];
+            }
+        }
+
+        $token = bin2hex(random_bytes(16));
+        // No leading dot (nginx and IIS commonly deny dotfiles outright, which
+        // would read as "blocked" and hide a real exposure) and no
+        // `ticketscad-` prefix (that is the archive glob).
+        $name  = 'tcad-selftest-' . substr($token, 0, 12) . '.txt';
+        $path  = rtrim($dir, '/\\') . DIRECTORY_SEPARATOR . $name;
+        if (@file_put_contents($path, "TicketsCAD exposure self-test " . $token . "\n") === false) {
+            return $miss('could not write the self-test file into the ' . $label);
+        }
+
+        $result = ['checked' => true, 'exposed' => false, 'url' => null,
+                   'tried' => [], 'reason' => null];
+        try {
+            $seg  = rawurlencode(basename(rtrim(str_replace('\\', '/', $dir), '/')));
+            $urls = [
+                'http://'  . $hostOnly . '/' . $seg . '/' . $name,
+                'https://' . $hostOnly . '/' . $seg . '/' . $name,
+            ];
+            // …and the path this application's OWN site would map the directory
+            // to, when the backup directory is a sibling of the install: the
+            // URL prefix one level up from the app's.
+            $base = _health_self_base_url();
+            if ($base !== null && preg_match('#^(https?://[^/]+)(/.*)?$#', $base, $m) === 1) {
+                $prefix = rtrim((string) ($m[2] ?? ''), '/');
+                $parent = ($prefix === '') ? '' : rtrim(str_replace('\\', '/', dirname($prefix)), '/');
+                if ($parent === '.' || $parent === '/') { $parent = ''; }
+                $urls[] = $m[1] . $parent . '/' . $seg . '/' . $name;
+                // …and the application's own prefix, which is where an IN-TREE
+                // backup directory lives. Without this line the canary could not
+                // answer the case @rjonesbsink reported at all on a subdirectory
+                // install (https://host/newui/backups/…): it asked the host root
+                // and the parent, neither of which is where the file is.
+                if ($prefix !== '') {
+                    $urls[] = $m[1] . $prefix . '/' . $seg . '/' . $name;
+                }
+            }
+            $urls = array_values(array_unique($urls));
+
+            foreach ($urls as $u) {
+                $result['tried'][] = $u;
+                $body = _health_probe_body($u);
+                if ($body !== null && strpos($body, $token) !== false) {
+                    $result['exposed'] = true;
+                    $result['url']     = $u;
+                    break;
+                }
+            }
+        } finally {
+            @unlink($path);
+        }
+
+        try {
+            $cacheDir = dirname($cacheFile);
+            if (is_dir($cacheDir) && is_writable($cacheDir)) {
+                @file_put_contents($cacheFile, json_encode(
+                    ['at' => time(), 'key' => $key, 'result' => $result]
+                ));
+            }
+        } catch (Throwable $e) { /* caching is a nicety, never a requirement */ }
+
+        return $result;
+    } catch (Throwable $e) {
+        return $miss('the HTTP self-test could not be completed');
+    }
+}
+
+/**
+ * GET a URL and return at most the first few KB of the body, or null when the
+ * request could not be made. Bounded because a wrong guess may land on a full
+ * HTML page, and this is only ever looking for a 40-character token.
+ */
+function _health_probe_body(string $url): ?string
+{
+    try {
+        if (function_exists('curl_init')) {
+            $ch = curl_init($url);
+            if ($ch === false) { return null; }
+            $buf = '';
+            curl_setopt_array($ch, [
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_CONNECTTIMEOUT => 3,
+                CURLOPT_TIMEOUT        => 5,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => 0,
+                CURLOPT_USERAGENT      => 'TicketsCAD-health-check',
+                CURLOPT_WRITEFUNCTION  => function ($ch, $chunk) use (&$buf) {
+                    $buf .= $chunk;
+                    if (strlen($buf) > 8192) { return -1; }   // abort the transfer
+                    return strlen($chunk);
+                },
+            ]);
+            curl_exec($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            curl_close($ch);
+            if ($code < 200 || $code >= 300) { return null; }
+            return $buf;
+        }
+
+        $ctx = stream_context_create(['http' => [
+            'method'          => 'GET',
+            'timeout'         => 5,
+            'follow_location' => 0,
+            'ignore_errors'   => true,
+            'header'          => "User-Agent: TicketsCAD-health-check\r\n",
+        ], 'ssl' => ['verify_peer' => false, 'verify_peer_name' => false]]);
+        $body = @file_get_contents($url, false, $ctx, 0, 8192);
+        if ($body === false) { return null; }
+        // $http_response_header is populated by the stream wrapper.
+        $status = 0;
+        foreach (($http_response_header ?? []) as $h) {
+            if (preg_match('#^HTTP/\S+\s+(\d{3})#', $h, $m) === 1) { $status = (int) $m[1]; }
+        }
+        return ($status >= 200 && $status < 300) ? $body : null;
+    } catch (Throwable $e) {
+        return null;
     }
 }
 
@@ -1713,6 +2604,7 @@ function health_check_all(): array
         $schema     = health_check_schema();
         $jobs       = health_check_scheduled_jobs();
         $backups    = health_check_backups();
+        $keys       = health_check_keys();
         $exposure   = health_check_web_exposure();
         $geocoding  = health_check_geocoding();
 
@@ -1755,11 +2647,16 @@ function health_check_all(): array
         } elseif (($jobs['severity'] ?? '') === 'warn') {
             $warn++;
         }
-        foreach ([$backups, $exposure, $geocoding] as $sec) {
+        foreach ([$backups, $keys, $exposure, $geocoding] as $sec) {
             if (($sec['severity'] ?? '') === 'critical') {
                 $critical++;
             } elseif (($sec['severity'] ?? '') === 'warn') {
                 $warn++;
+            } elseif (($sec['severity'] ?? '') === 'unknown') {
+                // Counted, not dropped. A web-exposure check that could not test
+                // the backups path must not sum into "healthy" — that is the
+                // false all-clear this bucket exists for.
+                $unknown++;
             }
         }
 
@@ -1777,6 +2674,7 @@ function health_check_all(): array
             'schema'       => $schema,
             'scheduled_jobs' => $jobs,
             'backups'      => $backups,
+            'keys'         => $keys,
             'web_exposure' => $exposure,
             'geocoding'    => $geocoding,
             'summary'      => ['critical' => $critical, 'warn' => $warn, 'unknown' => $unknown],

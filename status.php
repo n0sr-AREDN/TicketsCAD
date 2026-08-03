@@ -854,12 +854,31 @@ $csrf     = csrf_token();
                 html += '<span class="status-detail-label">Web exposure ' +
                         '<small class="text-body-secondary">(backups/, sql/, tools/ probed over HTTP)</small></span>';
                 html += '<span class="status-detail-value">';
-                if (we.severity === 'warn') {
-                    html += esc(we.summary || '') + ' ' + sevBadge('warn');
-                } else {
-                    html += esc(we.summary || '') + ' ' + sevBadge('ok');
-                }
+                // 'unknown' is its own badge, not a green tick with caveats
+                // underneath. An install whose backups path could not be tested
+                // is untested, and @rjonesbsink's report is what happens when
+                // that renders the same as a pass.
+                html += esc(we.summary || '') + ' ' + sevBadge(
+                    we.severity === 'warn' ? 'warn'
+                    : (we.severity === 'unknown' ? 'unknown' : 'ok'));
                 html += (we.cached ? ' <small class="text-body-secondary">(cached)</small>' : '');
+                // Name every path that was NOT answered, with the reason. A
+                // count alone ("1 of 3 could not be tested") does not tell the
+                // operator which one, and the one that matters is backups/.
+                (we.probes || []).forEach(function (p) {
+                    if (p.state !== 'untested' && p.state !== 'unknown') return;
+                    html += '<br><small class="text-body-secondary">' +
+                            '<i class="bi bi-question-circle me-1"></i><code>' +
+                            esc(p.path) + '</code> — ' +
+                            esc(p.note || 'could not be reached') + '</small>';
+                });
+                // What the probe did NOT look at. Printed even on a clean pass:
+                // an "ok" that silently covers only one address is how a public
+                // database archive came to sit behind a green tick.
+                if (we.blind_spot) {
+                    html += '<br><small class="text-body-secondary" style="white-space:pre-wrap">' +
+                            esc(we.blind_spot) + '</small>';
+                }
                 html += '</span></div>';
             }
         }
@@ -902,13 +921,61 @@ $csrf     = csrf_token();
             html += '<div class="status-detail-row">';
             html += '<span class="status-detail-label">Backup archive location</span>';
             html += '<span class="status-detail-value">';
-            if (bk.severity === 'critical') {
-                html += '<span class="text-danger fw-bold">IN THE WEB ROOT</span> — ' +
-                        esc(bk.summary || '');
+            if (bk.severity === 'critical' || bk.severity === 'warn') {
+                // The label is taken from the summary rather than hard-coded.
+                // It used to read "IN THE WEB ROOT", which was wrong for the
+                // case that mattered most: on Windows the archives were in a
+                // DIFFERENT site's web root, not this one's.
+                html += '<span class="' + (bk.severity === 'critical' ? 'text-danger' : 'text-warning') +
+                        ' fw-bold">' + esc(bk.summary || '') + '</span> ' + sevBadge(bk.severity);
+                (bk.notes || []).forEach(function (nt) {
+                    html += '<br><span class="text-danger" style="white-space:pre-wrap">' +
+                            esc(nt) + '</span>';
+                });
                 html += '<br><span class="text-muted" style="white-space:pre-wrap">' +
                         esc(bk.remedy || '') + '</span>';
             } else {
                 html += '<code>' + esc(bk.active_dir || '') + '</code> ' + sevBadge('ok');
+            }
+            // Always — including on a pass. See the note on web exposure above.
+            if (bk.blind_spot) {
+                html += '<br><small class="text-body-secondary" style="white-space:pre-wrap">' +
+                        esc(bk.blind_spot) + '</small>';
+            }
+            html += '</span></div>';
+        }
+
+        // ── Where the encryption keys are (2026-08-03) ─────────────
+        // GHSA-3jmh-c6f6-64jc: FE_KEYS_DIR was "one level above the install
+        // directory", which is above the web root on Linux and INSIDE
+        // C:\inetpub\wwwroot on a stock IIS box. Nothing is ever moved for the
+        // operator — losing tfa.key un-enrols every 2FA user — so this row is
+        // how they find out, and it names the path.
+        var ky = data.keys || {};
+        if (ky.checked) {
+            html += '<div class="status-detail-row">';
+            html += '<span class="status-detail-label">Encryption key location ' +
+                    '<small class="text-body-secondary">(RSA private key, 2FA key)</small></span>';
+            html += '<span class="status-detail-value">';
+            if (ky.severity === 'critical' || ky.severity === 'warn') {
+                html += '<span class="' + (ky.severity === 'critical' ? 'text-danger' : 'text-warning') +
+                        ' fw-bold">' + esc(ky.summary || '') + '</span> ' + sevBadge(ky.severity);
+                if ((ky.key_files || []).length) {
+                    html += '<br><span class="text-danger">Key files present: ' +
+                            esc((ky.key_files || []).join(', ')) + '</span>';
+                }
+                (ky.notes || []).forEach(function (nt) {
+                    html += '<br><span class="text-danger" style="white-space:pre-wrap">' +
+                            esc(nt) + '</span>';
+                });
+                html += '<br><span class="text-muted" style="white-space:pre-wrap">' +
+                        esc(ky.remedy || '') + '</span>';
+            } else {
+                html += '<code>' + esc(ky.active_dir || '') + '</code> ' + sevBadge('ok');
+            }
+            if (ky.blind_spot) {
+                html += '<br><small class="text-body-secondary" style="white-space:pre-wrap">' +
+                        esc(ky.blind_spot) + '</small>';
             }
             html += '</span></div>';
         }

@@ -2,10 +2,10 @@
     "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
     "bomFormat": "CycloneDX",
     "specVersion": "1.6",
-    "serialNumber": "urn:uuid:8b5296fc-3dd3-53b1-a479-8bdf32c24559",
-    "version": 18,
+    "serialNumber": "urn:uuid:497f920a-5610-5933-ba34-9635b73a18a3",
+    "version": 19,
     "metadata": {
-        "timestamp": "2026-08-02T09:23:37Z",
+        "timestamp": "2026-08-03T03:29:46Z",
         "lifecycles": [
             {
                 "phase": "pre-build"
@@ -29,9 +29,9 @@
         ],
         "component": {
             "type": "application",
-            "bom-ref": "pkg:generic/ticketscad-newui@4.2.3",
+            "bom-ref": "pkg:generic/ticketscad-newui@4.2.4",
             "name": "TicketsCAD NewUI",
-            "version": "4.2.3",
+            "version": "4.2.4",
             "publisher": "OpenISES TicketsCAD Project",
             "description": "Computer-aided dispatch for volunteer emergency services, amateur-radio emergency communications groups, CERT teams and small public-safety agencies.",
             "licenses": [
@@ -41,7 +41,7 @@
                     }
                 }
             ],
-            "purl": "pkg:generic/ticketscad-newui@4.2.3",
+            "purl": "pkg:generic/ticketscad-newui@4.2.4",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -52,7 +52,7 @@
         "properties": [
             {
                 "name": "ticketscad:content-digest",
-                "value": "b2f821ae6ed10e65d7e520a237eb1701f3de4f29986556a1970e0da1590ccf25"
+                "value": "689c8ec4a3706ae47d6a60d334d368c9c90d7bb94858007dff4ecf305216b709"
             },
             {
                 "name": "ticketscad:standard",
@@ -3731,7 +3731,7 @@
     ],
     "dependencies": [
         {
-            "ref": "pkg:generic/ticketscad-newui@4.2.3",
+            "ref": "pkg:generic/ticketscad-newui@4.2.4",
             "dependsOn": [
                 "pkg:github/actions/checkout@v7#build-tooling",
                 "pkg:npm/ajv-cli@5#build-tooling",
