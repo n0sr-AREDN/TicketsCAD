@@ -14756,6 +14756,7 @@
                 max_misses:     parseInt(document.getElementById('parMaxMisses').value, 10),
                 chat_channel:   document.getElementById('parChatChannel').value,
                 standby_behavior: (document.getElementById('parStandbyBehavior') || {}).value || 'recommended',
+                include_unavailable: (document.getElementById('parIncludeUnavailable') || {}).value || '1',
                 mayday_auto:    (document.getElementById('parMaydayAuto') || {}).value || '1',
                 csrf_token: getCsrf()
             };
@@ -14831,6 +14832,8 @@
                 if (document.getElementById('parMaxMisses'))   document.getElementById('parMaxMisses').value   = c.par_max_misses || 2;
                 if (document.getElementById('parChatChannel')) document.getElementById('parChatChannel').value = c.par_escalation_chat_channel || '';
                 if (document.getElementById('parStandbyBehavior')) document.getElementById('parStandbyBehavior').value = c.par_standby_unit_behavior || 'recommended';
+                // Unset means default-on, so only an explicit '0' selects "leave off".
+                if (document.getElementById('parIncludeUnavailable')) document.getElementById('parIncludeUnavailable').value = (String(c.par_include_unavailable_units) === '0') ? '0' : '1';
                 if (document.getElementById('parMaydayAuto'))      document.getElementById('parMaydayAuto').value      = (c.par_mayday_auto_trigger || '1');
             });
     }

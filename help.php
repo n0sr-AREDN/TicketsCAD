@@ -1001,6 +1001,52 @@ two-factor enrollment is permanently unrecoverable.
 '
             ],
             [
+                'slug'  => 'par-roster',
+                'title' => 'PAR checks — who is on the roll call',
+                'body'  => '
+<p>A <strong>PAR</strong> (Personnel Accountability Report) is a roll call against
+one incident: TicketsCAD asks each assigned unit to acknowledge and flags the ones
+that do not answer. Two settings at <strong>Config &gt; App Preferences &gt; PAR
+Checks</strong> decide which assigned units are <em>expected</em> to answer. They
+are separate on purpose, because they describe different situations.</p>
+
+<h6>Standby / staging / available units</h6>
+<p><em>Include units in standby / staging / available status?</em>
+(<code>par_standby_unit_behavior</code>)</p>
+<ul>
+    <li><strong>Recommended (default):</strong> skip units whose status begins with
+        "available", "standby", "staging", "reserve" or "off duty".</li>
+    <li><strong>Always include:</strong> every assigned unit is on the roll call —
+        the "PAR everyone on scene" convention.</li>
+    <li><strong>Never include:</strong> same skipping as Recommended.</li>
+</ul>
+
+<h6>Unavailable / out-of-service units</h6>
+<p><em>Include units in unavailable / out-of-service status?</em>
+(<code>par_include_unavailable_units</code>) — <strong>default: include</strong></p>
+<p>A PAR asks whether every crew <em>committed to the incident</em> is accounted
+for, not whether every crew is working. When an assigned unit goes unavailable that
+can mean two very different things — the apparatus is out of service, or the crew
+has stopped answering — and from the console those look identical.</p>
+<ul>
+    <li><strong>Include (default):</strong> the unit stays on the roll call. If it is
+        simply out of service the cost is one extra acknowledgement; if the crew is in
+        trouble, the roll call is what surfaces it.</li>
+    <li><strong>Leave off the roll call:</strong> choose this only if your agency treats
+        "unavailable" strictly as a vehicle state <em>and</em> clears the assignment
+        whenever a crew leaves the incident. Otherwise a PAR can report itself complete
+        while a crew is unaccounted for.</li>
+</ul>
+
+<h6>Upgrading from 4.2.4 or earlier</h6>
+<p>Unavailable units used to be dropped from every PAR roster on every install,
+because the status name "unavailable" contains the word "available" and the standby
+filter matched on it. That was a bug, not a policy — nobody chose it. From 4.2.5 the
+two statuses are told apart and unavailable units are included by default. To keep
+the old behaviour, set this to <em>Leave off the roll call</em>.</p>
+'
+            ],
+            [
                 'slug'  => 'pwa-limitations',
                 'title' => 'PWA Sound & Critical Alerts (Limitations)',
                 'body'  => '

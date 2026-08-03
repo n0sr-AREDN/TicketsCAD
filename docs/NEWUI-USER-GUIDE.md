@@ -1274,6 +1274,57 @@ A: Yes — use **New: URL** in TicketsCAD, get the `owntracks:///config?inline=�
 **Q: What if a member loses their phone mid-event?**
 A: From any laptop or other phone, log into TicketsCAD admin → Roster → their record → expand OwnTracks Tracking Tokens → click the red **X** on their active row. Their phone is locked out on its next post (within seconds). Their position will stop updating on the dispatcher map.
 
+## PAR Checks — who is on the roll call
+
+Go to **Config > App Preferences > PAR Checks**.
+
+A PAR (Personnel Accountability Report) is a roll call against one
+incident: TicketsCAD asks each assigned unit to acknowledge, and flags the
+ones that do not answer. Two settings decide which assigned units are
+*expected* to answer, and they are deliberately separate because they
+describe different situations.
+
+### Standby / staging / available units
+
+**Setting:** *Include units in standby / staging / available status?*
+(`par_standby_unit_behavior`)
+
+| Choice | Effect |
+|--------|--------|
+| **Recommended (default)** | Skip units whose status begins with "available", "standby", "staging", "reserve" or "off duty". |
+| **Always include** | Every assigned unit is on the roll call. Pick this if your agency's convention is "PAR everyone on scene". |
+| **Never include** | Same skipping as Recommended. |
+
+### Unavailable / out-of-service units
+
+**Setting:** *Include units in unavailable / out-of-service status?*
+(`par_include_unavailable_units`) — **default: include**
+
+This one is genuinely agency-dependent, so it is a choice rather than a
+built-in assumption.
+
+A PAR asks whether every crew *committed to the incident* is accounted
+for — not whether every crew is working. When an assigned unit goes
+unavailable, that can mean two very different things: the apparatus is out
+of service, or the crew has stopped answering. From the dispatch console
+those look identical.
+
+- **Include (default).** The unit stays on the roll call. If it is simply
+  out of service, the cost is one extra acknowledgement. If instead the
+  crew is in trouble, the roll call is what surfaces it.
+- **Leave off the roll call.** Choose this only if your agency treats
+  "unavailable" strictly as a vehicle/equipment state *and* clears the
+  assignment whenever a crew leaves the incident. Otherwise a PAR can
+  report itself complete while a crew is unaccounted for.
+
+> **Upgrading from 4.2.4 or earlier?** Unavailable units used to be
+> dropped from every PAR roster, on every install, because the status name
+> "unavailable" contains the word "available" and the standby filter
+> matched on it. That was a bug, not a policy — nobody chose it. From
+> 4.2.5 the two statuses are distinguished, and the default is to include
+> unavailable units. If your agency prefers the old behaviour, set this to
+> *Leave off the roll call*.
+
 ## Backup Procedures
 
 Go to Config > Installation > Backup / Maintenance.

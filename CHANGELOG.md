@@ -3,6 +3,66 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.5] - 2026-08-03
+
+A correctness release. The most important item closes a bug that could tell a
+dispatcher every unit was clear while a crew was still assigned.
+
+### Fixed
+
+- **On MySQL 8.0, auto-close reported "all units clear" and closed incidents
+  with crews still assigned.** `clear = ''` throws error 1525 on MySQL 8.0 —
+  an empty string is not a valid `DATETIME` — and `inc/auto_close.php` caught
+  the failure and returned `0`, which is the specific value that authorises a
+  close. The audit log then recorded the closure as fact. Nine sites carried
+  the same literal, two of them beyond the seven originally reported: one was
+  written `` `clear` = '' `` with backticks, so a search for the plain spelling
+  missed it and it had no `catch` at all, throwing out of every status change
+  through a conditional edge; another had the same fault on `ticket.deleted_at`
+  where the fallback query dropped *both* the `deleted_at` and the `status`
+  filter, so the incident picker silently listed deleted and closed incidents.
+  The count now returns `-1` and logs when it cannot be taken, auto-close
+  declines, and the sweep skips **without discarding the schedule**. Reported by
+  Ron Jones (@rjonesbsink), who also supplied a fix.
+- **The "Test" button under Voice & Speech could never play audio, and live
+  Zello voice was blocked by the same gap.** The Content-Security-Policy had no
+  `media-src`, which does not fall back to `'self'` for `data:` or `blob:` URIs
+  — both are opaque origins. `api/tts.php` returns a `data:` URI and the Zello
+  widget binds a `MediaSource` object URL, so both were refused. The Test button
+  also announced success *before* calling `play()` and discarded the failure in
+  an empty `catch`, which is why this presented as unexplainable rather than
+  merely broken. Reported by Ron Jones (@rjonesbsink).
+- **Soft-deleted incidents were returned in full by the External API and the
+  dispatcher board.** The read paths in `api/external/v1/incidents.php` and
+  `api/incidents.php` had no `deleted_at` term; only the write guards did.
+  Fixing it surfaced a second defect: the wastebasket's own projection asked
+  `ticket` for columns that do not exist, so the query threw, the guard
+  swallowed it, and deleted incidents were **invisible in the recovery UI** —
+  hidden everywhere *and* unrecoverable. Reported by Ron Jones (@rjonesbsink).
+  Note this release fixes the two reported endpoints; a wider pass over the
+  remaining incident read paths is tracked separately.
+- **Documentation named a menu item that does not exist.** Guidance across the
+  runbooks, install guides and security advisories said "Settings → Status".
+  The menu item is **System Health**; "Settings → Backup" is **Backup /
+  Maintenance**. An operator following a Critical advisory went looking for
+  something that was not there. The published advisories have been corrected in
+  place, and a gate now derives the real labels from the navigation source and
+  fails on any documented path that does not exist.
+
+### Added
+
+- **PAR roll calls can now include units marked unavailable, and do so by
+  default.** Previously an `available`/`unavailable` comparison matched by
+  substring, so a unit marked *unavailable* was dropped from the roster by
+  accident. Matching is now exact. Whether an out-of-service unit belongs in a
+  roll call is an agency decision, so it is a setting
+  (`par_include_unavailable_units`) documented at the control and in the user
+  guide. **The default is to include them**: an assigned unit that goes
+  unavailable may mean the apparatus is out of service, or that the crew has
+  stopped answering, and those look identical from the console. Including costs
+  one extra acknowledgement; excluding lets a roll call report itself complete
+  while a crew is unaccounted for.
+
 ## [4.2.4] - 2026-08-03
 
 **A security release, and if you run TicketsCAD on Windows it is urgent.

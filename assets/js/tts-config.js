@@ -186,10 +186,32 @@
         return payload;
     }
 
+    // Public issue #27. Every playback failure used to be discarded
+    // (`.catch(function () {})`), and runTest() announced success BEFORE
+    // calling play() at all — so the operator saw a green engine status,
+    // a green "Playing sample" toast, and silence, while the browser's
+    // exact explanation was thrown away. That is what made the missing
+    // media-src directive undiagnosable rather than merely broken: every
+    // reasonable next step (reinstall Piper, try another voice, check
+    // the output device) was wrong.
     function playAudio(dataUri) {
         var a = document.getElementById('ttsTestAudio');
+        if (!a) { toast('No audio element on the page to play into', 'danger'); return; }
+        a.onerror = function () {
+            var codes = { 1: 'ABORTED', 2: 'NETWORK', 3: 'DECODE', 4: 'SRC_NOT_SUPPORTED' };
+            var e = a.error || {};
+            toast('Audio element error: ' + (codes[e.code] || e.code || '?')
+                + (e.message ? ' — ' + e.message : ''), 'danger');
+        };
         a.src = dataUri;
-        a.play().catch(function () {});
+        var p = a.play();
+        if (p && typeof p.then === 'function') {
+            p.then(function () {
+                toast('Playback started', 'success');
+            }).catch(function (err) {
+                toast('Playback blocked: ' + err.name + ' — ' + err.message, 'danger');
+            });
+        }
     }
 
     function runTest(engineId, voice) {
@@ -202,7 +224,9 @@
                     toast('Test failed: ' + ((res && res.error) || 'unknown') + extra, 'danger');
                     return;
                 }
-                toast('Playing sample from engine "' + res.engine + '"', 'success');
+                // Informational, not a success claim — playAudio() reports
+                // whether the sample actually started (issue #27).
+                toast('Synthesized by engine "' + res.engine + '" — playing…', 'info');
                 playAudio(res.audio);
             })
             .catch(function () { toast('Network error during test', 'danger'); });

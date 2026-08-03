@@ -291,10 +291,11 @@ include_once NEWUI_ROOT . '/inc/navbar.php';
                                 <th style="width:70px">Status</th>
                                 <th style="width:120px">Created By</th>
                                 <th style="width:140px">Last Updated</th>
+                                <th style="width:60px" class="text-end">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="savedFormsBody">
-                            <tr><td colspan="6" class="text-center text-body-secondary py-3">Loading...</td></tr>
+                            <tr><td colspan="7" class="text-center text-body-secondary py-3">Loading...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -326,6 +327,12 @@ include_once NEWUI_ROOT . '/inc/navbar.php';
                 </button>
                 <button class="btn btn-sm btn-success" id="btnFinalize">
                     <i class="bi bi-check-lg me-1"></i>Finalize
+                </button>
+                <!-- Shown only for a saved form this user may delete; the server
+                     decides (api/ics-forms.php emits can_delete) and re-checks
+                     on the POST. Soft delete — it goes to the wastebasket. -->
+                <button type="button" class="btn btn-sm btn-outline-danger" id="btnDeleteForm" style="display:none">
+                    <i class="bi bi-trash me-1"></i>Delete
                 </button>
             </div>
         </div>

@@ -91,12 +91,26 @@
     overflow-y: auto;
 }
 
-/* The header carries the title, six action buttons, the history count and the
-   refresh control. On a narrow panel it wraps rather than overflowing — the
-   same set of controls the Responders header carries, in less width. */
+/* The header is TWO rows, deliberately.
+   Row 1 — title + waiting badge on the left, history count + refresh hard right.
+   Row 2 — the six action buttons, wrapping among themselves.
+   They used to share one flex line. At the default 30rem that line was wider
+   than a panel which is `overflow:hidden`, so the history-count box was sliced
+   at the border and the refresh control was off-panel entirely until the
+   operator resized — while every other widget in the application keeps refresh
+   in the top-right corner. Splitting the rows makes the corner reliable at any
+   width, which is the only thing that makes it findable without looking. */
 #netCheckinHeader { row-gap: 0.15rem; }
 
-.net-checkin-title { white-space: nowrap; }
+.net-checkin-titlerow { min-width: 0; }
+
+/* The title may ellipsize; the controls beside it must never be squeezed out. */
+.net-checkin-title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
 
 .net-checkin-table {
     margin-bottom: 0;

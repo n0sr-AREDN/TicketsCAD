@@ -49,11 +49,20 @@ if ($method === 'GET') {
         $id = (int) $_GET['id'];
         if ($id <= 0) ext_api_error('invalid_id', 400);
         try {
+            // Public issue #25 — soft-deleted incidents were served in
+            // full from both read paths. `deleted_at` appeared in this
+            // file only in the PATCH/DELETE existence guards below, so
+            // the file applied soft deletion when deciding whether a
+            // write may proceed and not when deciding what to return.
+            // Deleted rows now 404, which is the same answer the
+            // org-scope check below already gives for a row the token
+            // may not see, and matches what the UI shows.
             $row = db_fetch_one(
                 "SELECT t.*, it.type AS in_type_name
                  FROM `{$prefix}ticket` t
                  LEFT JOIN `{$prefix}in_types` it ON it.id = t.in_types_id
-                 WHERE t.id = ?",
+                 WHERE t.id = ?
+                   AND (t.deleted_at IS NULL OR t.deleted_at = '0000-00-00 00:00:00')",
                 [$id]
             );
         } catch (Exception $e) {
@@ -77,7 +86,14 @@ if ($method === 'GET') {
     $status = isset($_GET['status']) ? (int) $_GET['status'] : null;
     $since  = isset($_GET['since']) ? trim((string) $_GET['since']) : null;
 
-    $where = [];
+    // Public issue #25 — same soft-delete term as the detail path above
+    // and as every sibling endpoint in this directory (members.php,
+    // member-status.php, responders.php, facilities.php). Seeded as the
+    // first element so it survives any later rearrangement of the
+    // optional filters. There is deliberately no ?include_deleted
+    // opt-in — see the note on api/wastebasket.php, which is the
+    // permission-gated surface for reading deleted records.
+    $where = ["(t.deleted_at IS NULL OR t.deleted_at = '0000-00-00 00:00:00')"];
     $params = [];
     if ($status !== null) { $where[] = 't.status = ?'; $params[] = $status; }
     if ($since)           { $where[] = 't.updated >= ?'; $params[] = $since; }

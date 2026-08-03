@@ -64,16 +64,42 @@ $__netTitle = t('dash.widget.net_checkins', 'Check-Ins');
      navigated the operator off the dashboard mid-net. -->
 <div class="net-checkin-panel card shadow d-none" id="netCheckinPanel" tabindex="-1"
      role="region" aria-label="Net control check-ins" data-kb-region="net-checkins">
-    <div class="card-header py-1 px-2 d-flex align-items-center justify-content-between gap-1 flex-wrap"
-         id="netCheckinHeader">
-        <span class="small fw-semibold net-checkin-title">
-            <i class="bi bi-broadcast-pin me-1"></i><?php echo e($__netTitle); ?>
-            <span class="badge bg-primary rounded-pill ms-1" id="netCheckinCount">0</span>
-        </span>
+    <div class="card-header py-1 px-2" id="netCheckinHeader">
+        <!-- TITLE ROW. The refresh control must sit in the top-right corner at
+             EVERY panel width, because that is where this application puts it on
+             every other widget and an operator reaches for it without looking.
+             It previously shared one flex line with the six action buttons, and
+             at the default 30rem the line overflowed a panel that is
+             `overflow:hidden` — so the history-count box was sliced off and the
+             refresh control was not on screen at all until the panel was
+             resized. The action bar therefore gets its own row below. -->
+        <div class="net-checkin-titlerow d-flex align-items-center justify-content-between gap-1">
+            <span class="small fw-semibold net-checkin-title">
+                <i class="bi bi-broadcast-pin me-1"></i><?php echo e($__netTitle); ?>
+                <span class="badge bg-primary rounded-pill ms-1" id="netCheckinCount">0</span>
+            </span>
 
-        <span class="d-flex align-items-center gap-1">
-            <!-- Same component as the Responders widget's V/E/D/S/N bar. -->
-            <span class="net-checkin-action-bar d-flex align-items-center gap-1" id="netCheckinActionBar">
+            <span class="d-flex align-items-center gap-1 flex-shrink-0">
+                <!-- How many history rows. Same inline-numeric-in-the-header
+                     shape as the Incidents widget's "keep closed N min". -->
+                <input type="number" class="form-control form-control-sm net-history-count"
+                       id="netHistoryCount" min="0" max="200" value="10"
+                       title="How many historical check-ins to show"
+                       aria-label="Number of historical check-ins to show">
+
+                <!-- The top-right control on every widget in this application. -->
+                <span class="widget-refresh text-body-secondary" id="netCheckinRefresh"
+                      data-widget="net_checkins" style="cursor:pointer" role="button" tabindex="0"
+                      title="Refresh" aria-label="Refresh the check-in list">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </span>
+            </span>
+        </div>
+
+        <!-- ACTION ROW. Same component as the Responders widget's V/E/D/S/N bar;
+             wraps within itself on a narrow panel instead of overflowing. -->
+        <div class="d-flex align-items-center gap-1 flex-wrap mt-1">
+            <span class="net-checkin-action-bar d-flex align-items-center gap-1 flex-wrap" id="netCheckinActionBar">
                 <button class="btn btn-xs btn-outline-primary net-action-btn" type="button"
                         data-net-action="new" title="New incident from the selected check-in">
                     <i class="bi bi-plus-circle me-1"></i><span class="action-label">New</span><kbd>&crarr;</kbd>
@@ -100,21 +126,7 @@ $__netTitle = t('dash.widget.net_checkins', 'Check-Ins');
                     <i class="bi bi-clock-history me-1"></i><span class="action-label">History</span><kbd>H</kbd>
                 </button>
             </span>
-
-            <!-- How many history rows. Same inline-numeric-in-the-header shape
-                 as the Incidents widget's "keep closed N min" control. -->
-            <input type="number" class="form-control form-control-sm net-history-count"
-                   id="netHistoryCount" min="0" max="200" value="10"
-                   title="How many historical check-ins to show"
-                   aria-label="Number of historical check-ins to show">
-
-            <!-- The top-right control on every widget in this application. -->
-            <span class="widget-refresh text-body-secondary" id="netCheckinRefresh"
-                  data-widget="net_checkins" style="cursor:pointer" role="button" tabindex="0"
-                  title="Refresh" aria-label="Refresh the check-in list">
-                <i class="bi bi-arrow-clockwise"></i>
-            </span>
-        </span>
+        </div>
     </div>
 
     <div class="net-checkin-body" id="netCheckinBody"></div>

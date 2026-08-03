@@ -123,6 +123,14 @@ INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VAL
     ('action.manage_sop',      'Manage SOPs',          'action', 'Create/edit standard operating procedures'),
     ('action.upload_files',    'Upload Files',          'action', 'Upload file attachments'),
     ('action.manage_map',      'Manage Map Markups',   'action', 'Create/edit/delete map markups and road conditions'),
+    -- 2026-08-02 (Chris Byrd) — deleting a saved ICS form. ADMINISTRATIVE, not
+    -- operational: a finalized ICS-214 is the operational record of a real
+    -- incident, so removing one is a records-retention decision. It is
+    -- therefore listed in the Dispatcher `NOT IN (...)` exclusion below, and
+    -- reaches only Super Admin (broad SELECT) and Org Admin (broad NOT IN).
+    -- Without it a user may STILL delete a draft they created themselves —
+    -- that path is ownership, not permission (inc/ics-forms-write.php).
+    ('action.delete_ics_form', 'Delete ICS Forms',     'action', 'Delete any saved ICS form to the wastebasket, including finalized forms'),
     -- Phase 131 — net-control check-ins (/net). OPERATIONAL, not administrative:
     -- running a net is a dispatcher's job, so this is deliberately absent from the
     -- Org Admin and Dispatcher `NOT IN (...)` exclusion lists below and is meant to
@@ -168,8 +176,11 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
         'action.bulk_delete_members',  -- bulk roster removal is Super-Admin-only by default (Eric, 2026-07-04)
         'console.design',              -- shared console-view designer is admin-only (Phase 114, roles 1-2)
         'action.intercom_unlock',      -- intercom door actuator is admin-only (Phase 114, roles 1-2)
-        'action.view_reports'          -- org-wide aggregate reports are admin-only (roles 1-2, 2026-07-29);
+        'action.view_reports',         -- org-wide aggregate reports are admin-only (roles 1-2, 2026-07-29);
                                        -- grant per-role via the Roles UI if your dispatchers need them
+        'action.delete_ics_form'       -- deleting an ICS form is records retention, not dispatch
+                                       -- (roles 1-2, 2026-08-02); a dispatcher can still delete
+                                       -- a draft they created themselves
     );
 
 -- Operator gets all screens/widgets/fields + key operational actions (45 permissions)

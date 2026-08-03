@@ -74,6 +74,7 @@ if (!empty($_GET['search'])) {
          LEFT JOIN `{$prefix}in_types` it ON t.in_types_id = it.id
          WHERE (t.street LIKE ? OR t.city LIKE ? OR t.scope LIKE ?
                 OR t.description LIKE ? OR CAST(t.id AS CHAR) LIKE ?)
+               AND (t.deleted_at IS NULL OR t.deleted_at = '0000-00-00 00:00:00')
                {$sFilter}
          GROUP BY t.id
          ORDER BY {$sort} {$dir}
@@ -175,6 +176,23 @@ if ($func === 0) {
 } else {
     $where = "WHERE `t`.`status` IN (2, 3)";
 }
+
+// Public issue #25 (Ron Jones, follow-up comment) — soft-deleted
+// incidents stayed on the dispatch board. Applied here, after the
+// branch chain, because all four func= branches funnel into the one
+// $sql below; putting the term in each branch invites the next branch
+// to be added without it.
+//
+// The open case was the bad one. incident_soft_delete_internal() sets
+// deleted_at and leaves `status` alone, so an incident deleted while
+// open stays status=2 and matches the first clause forever — it was
+// never ageing out, only being noticed. The closed case looked
+// intermittent because a closed incident shows while problemend is
+// inside recent_close_mins, so re-stamping problemend put a
+// long-deleted incident back on the board.
+//
+// Every $where above begins with WHERE, so appending AND is safe.
+$where .= " AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')";
 
 // User group filtering — admins (legacy level 0,1) see all.
 //

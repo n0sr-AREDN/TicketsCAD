@@ -16,14 +16,27 @@
  * api/external/v1/incidents.php.
  */
 
+// SUPPRESS BEFORE THE INCLUDES, NOT AFTER THEM.
+//
+// This used to sit BELOW the five require_once calls, which left a window in
+// which a PHP notice or warning raised while any of those files was being
+// included would be PRINTED — and a shipped config.php enables display_errors
+// (`ini_set('display_errors','1'); // Set to '0' for production`), so on a real
+// install that window is open. The result is a 200 response whose body is
+// plain text followed by the JSON: the incident IS created, but the browser's
+// r.json() throws, so new-incident.js never reaches NetPrefill.markWorked() and
+// the net check-in stays `pending` even though its incident exists — a spotter
+// silently left in the waiting list, which is the exact failure Phase 131 was
+// built to prevent. api/net-checkins.php already suppresses before its
+// includes; this file now matches. See CLAUDE.md, "API error isolation".
+$prevDisplay = ini_get('display_errors');
+ini_set('display_errors', '0');
+
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/audit.php';
 require_once __DIR__ . '/../inc/incident-number.php';
 require_once __DIR__ . '/../inc/incident-write.php';
-
-$prevDisplay = ini_get('display_errors');
-ini_set('display_errors', '0');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     json_error('POST required', 405);

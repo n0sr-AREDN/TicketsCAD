@@ -11,6 +11,7 @@
     // ── State ──
     var currentTemplate = null;   // Current form template (from API)
     var currentFormId   = 0;      // ID of loaded form (0 = new)
+    var currentForm     = null;   // Row of the loaded saved form (for can_delete)
     var csrfToken       = '';     // CSRF token from page
     var incidentData    = null;   // Linked incident data (if any)
 
@@ -92,6 +93,16 @@
         if (xmlBtn) {
             xmlBtn.addEventListener('click', function () {
                 exportXml();
+            });
+        }
+
+        // Delete button (saved forms this user may delete). On success we go
+        // back to the hub — the form we were editing no longer exists there.
+        var delBtn = document.getElementById('btnDeleteForm');
+        if (delBtn) {
+            delBtn.addEventListener('click', function () {
+                if (!currentFormId || !currentForm) return;
+                deleteSavedForm(currentFormId, describeForm(currentForm), showHub);
             });
         }
 
@@ -252,7 +263,7 @@
         if (!tbody) return;
 
         if (forms.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-body-secondary py-3">'
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-body-secondary py-3">'
                 + 'No saved forms yet. Use the cards above to create a new form.</td></tr>';
             return;
         }
@@ -271,6 +282,20 @@
             html += '<td>' + statusBadge + '</td>';
             html += '<td>' + escHtml(f.created_by_name) + '</td>';
             html += '<td>' + formatDate(f.updated_at) + '</td>';
+            // `can_delete` is computed per-row by api/ics-forms.php with the
+            // same function the delete action re-checks with, so the button
+            // appears exactly where it will work. Hiding it is a courtesy,
+            // not the gate.
+            html += '<td class="text-end">';
+            if (f.can_delete) {
+                html += '<button type="button" class="btn btn-sm btn-outline-danger ics-delete-btn"'
+                     + ' data-form-id="' + f.id + '"'
+                     // escAttr, not escHtml: escHtml leaves quotes alone, and
+                     // describeForm() wraps the user-supplied title in them.
+                     + ' data-form-label="' + escAttr(describeForm(f)) + '"'
+                     + ' title="Delete this form"><i class="bi bi-trash"></i></button>';
+            }
+            html += '</td>';
             html += '</tr>';
         });
         tbody.innerHTML = html;
@@ -283,6 +308,61 @@
                 loadSavedForm(fid);
             });
         });
+
+        // Delete — stop the click from also opening the row's editor.
+        var delBtns = tbody.querySelectorAll('.ics-delete-btn');
+        delBtns.forEach(function (btn) {
+            btn.addEventListener('click', function (ev) {
+                ev.stopPropagation();
+                deleteSavedForm(
+                    parseInt(this.getAttribute('data-form-id'), 10),
+                    this.getAttribute('data-form-label')
+                );
+            });
+        });
+    }
+
+    /** "ICS-214 "Bridge collapse"" — what the confirm dialog names. */
+    function describeForm(f) {
+        return 'ICS-' + String(f.form_type || '').toUpperCase()
+            + ' "' + (f.title || '(untitled)') + '"';
+    }
+
+    /**
+     * Delete a saved form. Soft delete — the confirmation says so, because
+     * "delete" on an operational record should not read as destruction when
+     * it isn't. An admin can restore it from Settings -> Wastebasket.
+     */
+    function deleteSavedForm(id, label, onDone) {
+        if (!id) return;
+        if (!confirm('Delete ' + label + '?\n\n'
+            + 'It will be moved to the wastebasket, where an administrator can '
+            + 'restore it. It is not permanently erased.')) {
+            return;
+        }
+
+        fetch('api/ics-forms.php', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'delete',
+                id: id,
+                csrf_token: csrfToken
+            })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (resp) {
+                if (resp.error) {
+                    showAlert('danger', resp.error);
+                    return;
+                }
+                showAlert('success', resp.message || 'Form moved to the wastebasket.');
+                if (onDone) { onDone(); } else { loadFormsList(); }
+            })
+            .catch(function (err) {
+                showAlert('danger', 'Failed to delete form: ' + err.message);
+            });
     }
 
     function loadSavedForm(id) {
@@ -293,6 +373,9 @@
                     showAlert('danger', form.error);
                     return;
                 }
+                // Keep the row so the toolbar can read can_delete. Cleared in
+                // openFormEditor for a brand-new form.
+                currentForm = form;
                 openFormEditor(form.form_type, form.id, form.form_data, form.incident_id, form.title, form.status);
             })
             .catch(function (err) {
@@ -305,6 +388,9 @@
     // ═══════════════════════════════════════════════════════════
     function openFormEditor(formType, formId, savedData, incidentId, savedTitle, savedStatus) {
         currentFormId = formId || 0;
+        // A new form (id 0) carries no saved row — drop any previous one so a
+        // stale can_delete cannot leak a Delete button onto an unsaved form.
+        if (!currentFormId) currentForm = null;
 
         // Fetch template
         fetch('api/ics-forms.php?template=' + encodeURIComponent(formType))
@@ -322,6 +408,15 @@
                 var xmlBtn = document.getElementById('btnExportXml');
                 if (xmlBtn) {
                     xmlBtn.style.display = (formType === '213') ? '' : 'none';
+                }
+
+                // Show/hide Delete. Only for a form that already exists AND
+                // that the server said this user may delete. A brand-new
+                // unsaved form has nothing to delete.
+                var delBtn = document.getElementById('btnDeleteForm');
+                if (delBtn) {
+                    var canDelete = currentFormId > 0 && currentForm && currentForm.can_delete;
+                    delBtn.style.display = canDelete ? '' : 'none';
                 }
 
                 // Set incident link if provided
@@ -612,6 +707,22 @@
             currentFormId = resp.id;
             var statusSel = document.getElementById('formStatus');
             if (statusSel) statusSel.value = status;
+
+            // The save reply says whether this user may delete what they just
+            // saved. Keep the toolbar in step: Delete appears right after the
+            // first save of a new draft, and goes away when a non-privileged
+            // author finalizes it (a finalized form is admin-only).
+            var titleInput = document.getElementById('formTitle');
+            currentForm = {
+                id: resp.id,
+                form_type: currentTemplate ? currentTemplate.form_type : '',
+                title: titleInput ? titleInput.value : '',
+                status: status,
+                can_delete: !!resp.can_delete
+            };
+            var delBtn = document.getElementById('btnDeleteForm');
+            if (delBtn) delBtn.style.display = resp.can_delete ? '' : 'none';
+
             showAlert('success', 'Form saved successfully (ID: ' + resp.id + ').');
         })
         .catch(function (err) {
@@ -773,6 +884,7 @@
         if (editor) editor.style.display = 'none';
         currentTemplate = null;
         currentFormId = 0;
+        currentForm = null;
         incidentData = null;
         loadFormsList();
     }

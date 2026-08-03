@@ -364,7 +364,8 @@ foreach ($personnelSections as $sec) {
             </div>
             <p class="text-body-secondary small mb-3">
                 Deleted records are kept here and can be restored. Items older than the configured retention period
-                can be permanently purged.
+                can be permanently purged &mdash; except ICS forms, which are operational records: they stay
+                restorable and are never permanently deleted.
             </p>
 
             <!-- Toolbar -->
@@ -375,6 +376,7 @@ foreach ($personnelSections as $sec) {
                     <option value="responder">Units</option>
                     <option value="ticket">Incidents</option>
                     <option value="facilities">Facilities</option>
+                    <option value="ics_forms">ICS Forms</option>
                 </select>
                 <button class="btn btn-sm btn-outline-secondary" id="wbRefreshBtn">
                     <i class="bi bi-arrow-clockwise me-1"></i>Refresh
@@ -1941,12 +1943,37 @@ foreach ($personnelSections as $sec) {
                                 <option value="exclude">Never include</option>
                             </select>
                             <div class="form-text small">
-                                Recommended (default) skips units whose current status name
-                                contains "standby", "staging", "available", "offduty",
-                                or "reserve". Agencies that want to PAR everyone on scene
-                                should pick <em>Always include</em>.
+                                Recommended (default) skips units whose current status
+                                begins with "available", "standby", "staging",
+                                "reserve" or "off duty". Agencies that want to PAR
+                                everyone on scene should pick <em>Always include</em>.
+                                This does <strong>not</strong> control unavailable
+                                units — those have their own setting below.
                             </div>
                         </div>
+                        <div class="col-md-6">
+                            <label for="parIncludeUnavailable" class="form-label form-label-sm">
+                                Include units in <em>unavailable</em> / out-of-service status?
+                            </label>
+                            <select class="form-select form-select-sm" id="parIncludeUnavailable">
+                                <option value="1">Include on the roll call (default)</option>
+                                <option value="0">Leave off the roll call</option>
+                            </select>
+                            <div class="form-text small">
+                                A PAR asks whether every crew committed to the incident is
+                                accounted for, not whether every crew is working — and an
+                                assigned unit that has gone unavailable may mean the
+                                apparatus is out of service <em>or</em> that the crew has
+                                stopped answering. Including them (default) costs one extra
+                                ack request; leaving them off can report a roll call as
+                                complete while a crew is unaccounted for. Choose
+                                <em>Leave off</em> only if your agency treats "unavailable"
+                                as a vehicle state and clears the assignment whenever a
+                                crew leaves the incident.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-1">
                         <div class="col-md-6">
                             <label for="parMaydayAuto" class="form-label form-label-sm">
                                 Auto-trigger PAR on Mayday?
@@ -10014,10 +10041,17 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                         + '<td class="small">' + escHtml(item.deleted_by) + '</td>'
                         + '<td class="small">' + formatDate(item.deleted_at) + '</td>'
                         + '<td>'
-                        + '<button class="btn btn-sm btn-outline-success me-1 wb-restore-btn" title="Restore">'
+                        + '<button type="button" class="btn btn-sm btn-outline-success me-1 wb-restore-btn" title="Restore">'
                         + '<i class="bi bi-arrow-counterclockwise"></i></button>'
-                        + '<button class="btn btn-sm btn-outline-danger wb-purge-btn" title="Permanently Delete">'
-                        + '<i class="bi bi-x-lg"></i></button>'
+                        // can_purge comes from api/wastebasket.php (wb_is_purgeable).
+                        // ICS forms are operational records: never permanently
+                        // deleted, so no button. The server refuses the action
+                        // regardless — this only keeps the UI honest.
+                        + (item.can_purge === false
+                            ? '<span class="text-body-secondary small" title="Operational record '
+                              + '— kept permanently, restorable">Kept</span>'
+                            : '<button type="button" class="btn btn-sm btn-outline-danger wb-purge-btn" '
+                              + 'title="Permanently Delete"><i class="bi bi-x-lg"></i></button>')
                         + '</td></tr>';
                 }
                 wbTableBody.innerHTML = html;

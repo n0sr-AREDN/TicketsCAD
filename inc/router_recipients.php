@@ -303,9 +303,17 @@ function _rr_pred_assigned_to_incident(array $p): array
     if (!$tid) return [];
     $prefix = $GLOBALS['db_prefix'] ?? '';
 
-    // An open assignment: clear is NULL, empty, or a zero-date (legacy rows
-    // stamp '0000-00-00 00:00:00' instead of NULL).
-    $open = "(a.clear IS NULL OR a.clear = '' OR a.clear = '0000-00-00 00:00:00')";
+    // An open assignment: clear is NULL or a zero-date (legacy rows stamp
+    // '0000-00-00 00:00:00' instead of NULL).
+    //
+    // GH #24 — a third term, `a.clear = ''`, used to sit in the middle here.
+    // `assigns.clear` is DATETIME and MySQL 8.0 raises 1525 ("Incorrect
+    // DATETIME value: ''") on that comparison, throwing the whole query. The
+    // caller catches, so every recipient predicate that depends on an open
+    // assignment resolved to zero users and reported "recipient predicate
+    // matched zero users" — which reads as a correct empty result rather
+    // than a failure. Push to assigned units had never worked on MySQL 8.0.
+    $open = "(a.clear IS NULL OR a.clear = '0000-00-00 00:00:00')";
 
     $ids = [];
 

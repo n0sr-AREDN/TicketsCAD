@@ -346,7 +346,8 @@ if ($method === 'GET' && $action === 'config') {
             "SELECT value FROM `{$prefix}settings` WHERE name='par_enabled' LIMIT 1") === 1;
         foreach (['par_default_cadence_min','par_first_window_s','par_retry_window_s',
                   'par_max_misses','par_escalation_chat_channel',
-                  'par_mayday_auto_trigger','par_standby_unit_behavior'] as $k) {
+                  'par_mayday_auto_trigger','par_standby_unit_behavior',
+                  'par_include_unavailable_units'] as $k) {
             $cfg[$k] = db_fetch_value(
                 "SELECT value FROM `{$prefix}settings` WHERE name=? LIMIT 1", [$k]);
         }
@@ -432,6 +433,13 @@ if ($method === 'POST' && $action === 'save_config') {
                                           in_array($input['standby_behavior'], ['include','exclude','recommended'], true)
                                           ? $input['standby_behavior'] : null,
         'par_mayday_auto_trigger'     => isset($input['mayday_auto']) ? (((int) $input['mayday_auto']) === 1 ? '1' : '0') : null,
+        // Whether an out-of-service unit stays on the roll call.
+        // Default ON — see par_include_unavailable_units() in inc/par.php
+        // for why. Written to the `settings` table so get_variable()
+        // reads it; the `config` table + get_setting() is a DIFFERENT
+        // store and a value written to one is invisible to the other.
+        'par_include_unavailable_units' => isset($input['include_unavailable'])
+                                          ? (((int) $input['include_unavailable']) === 1 ? '1' : '0') : null,
     ];
     try {
         foreach ($writes as $k => $v) {

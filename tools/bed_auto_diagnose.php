@@ -114,7 +114,7 @@ if ($responderId > 0) {
                FROM `{$prefix}assigns` a
                JOIN `{$prefix}ticket` t ON t.id = a.ticket_id
               WHERE a.responder_id = ?
-                AND (a.clear IS NULL OR a.clear = '' OR a.clear = '0000-00-00 00:00:00')",
+                AND (a.clear IS NULL OR a.clear = '0000-00-00 00:00:00')",
             [$responderId]);
     } catch (Exception $e) { bad("assigns query failed: " . $e->getMessage()); }
 

@@ -184,8 +184,17 @@ function _sw_edge_conditions_pass(array $edge, int $responderId): array
 /**
  * Does the responder have at least one open incident assignment?
  * "Open" matches responder_set_status_internal()'s open-assigns query
- * exactly (inc/responder-write.php): clear IS NULL, '', or the MySQL
+ * exactly (inc/responder-write.php): clear IS NULL, or the MySQL
  * zero-datetime.
+ *
+ * GH #24 — this carried the same `clear = ''` term as the five sites in
+ * the report, written with backticks (`` `clear` = '' ``), which is why a
+ * grep for `clear = ''` did not surface it and it was classified as one
+ * of the safe sites. It is not: `assigns.clear` is DATETIME and MySQL 8.0
+ * raises 1525 on the comparison. There is deliberately no try/catch here
+ * — a status-transition guard that cannot evaluate its condition must not
+ * quietly answer either way — so on MySQL 8.0 this threw out of every
+ * status change through a conditional edge.
  */
 function _sw_has_open_assignment(int $responderId): bool
 {
@@ -194,7 +203,6 @@ function _sw_has_open_assignment(int $responderId): bool
         "SELECT COUNT(*) FROM `{$prefix}assigns`
          WHERE `responder_id` = ?
            AND (`clear` IS NULL
-                OR `clear` = ''
                 OR `clear` = '0000-00-00 00:00:00')",
         [$responderId]
     );

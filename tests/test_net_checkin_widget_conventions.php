@@ -601,8 +601,14 @@ is_true(strpos($markup, 'widget-refresh') !== false && strpos($markup, 'bi-arrow
     'the top-right control is the same refresh control as every other widget');
 is_true(strpos($markup, 'net-checkin-help') === false,
     'the plain-text hotkey legend along the bottom is gone');
-is_true(strpos($markup, 'card-header py-1 px-2 d-flex align-items-center') !== false,
+// The header is the dashboard widget card-header shape. The flex row moved
+// from the card-header itself onto an inner .net-checkin-titlerow so a second
+// row can sit beneath it, so assert the two parts rather than one literal —
+// pinning the exact class string made a layout change look like a regression.
+is_true(strpos($markup, 'card-header py-1 px-2') !== false,
     'the header is the dashboard widget card-header shape');
+is_true(preg_match('/net-checkin-titlerow[^"]*d-flex[^"]*align-items-center/', $markup) === 1,
+    'the title row inside the header is a flex row, aligned centre');
 
 // And the toolbar entry itself, gated by the same permission as the widget.
 $indexPhp = (string) file_get_contents($base . '/index.php');

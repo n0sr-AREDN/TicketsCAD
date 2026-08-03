@@ -545,7 +545,6 @@ function responder_set_status_internal(
              FROM `{$prefix}assigns` a
              WHERE a.responder_id = ?
                AND (a.clear IS NULL
-                    OR a.clear = ''
                     OR a.clear = '0000-00-00 00:00:00')",
             [$responderId]
         );

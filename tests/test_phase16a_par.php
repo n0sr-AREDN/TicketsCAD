@@ -90,38 +90,112 @@ db_query(
     "UPDATE `{$prefix}ticket` SET par_cadence_override_min = 5 WHERE id = ?",
     [$ticketId]
 );
-// Pick any responder; a virgin install ships the responder table EMPTY
-// (demo responders live in the optional sql/seed_demo_data.sql pack), so
-// seed a sentinel responder when none exists — tracked and cleaned below.
-$respIdForDueAt = (int) db_fetch_value(
-    "SELECT id FROM `{$prefix}responder`
-      WHERE (deleted_at IS NULL OR deleted_at = '0000-00-00 00:00:00')
-      ORDER BY id LIMIT 1"
+
+// ── ALWAYS create our own sentinel unit ─────────────────────────────
+// 2026-08-03: this used to borrow "whatever responder sorts first"
+// (ORDER BY id LIMIT 1) — the same shortcut the ticket above was already
+// weaned off, and it made this file fail in the full suite while passing
+// standalone. The chain:
+//
+//   1. tests/test_notify_fanout.php borrows the SAME lowest-id responder,
+//      and leaves it on the `available` status (the close cascade in
+//      incident_clear_stragglers() resets units to Available).
+//   2. This file then assigned that unit and asserted par_due_at()
+//      returns a timestamp.
+//   3. par_due_at() -> par_assigned_units(), which under the default
+//      `par_standby_unit_behavior = recommended` deliberately drops units
+//      whose status reads as standby/staging/AVAILABLE — a unit sitting
+//      Available is not committed to the incident and has nothing to
+//      account for. So the PAR roster was empty and par_due_at()
+//      correctly returned null.
+//   4. tools/test_par_assigned_units.php — the one file that forces that
+//      shared unit back onto a non-standby status — cannot help, because
+//      the runner finishes every tests/*.php before it starts tools/*.php.
+//
+// The assertion below was never wrong; the setup never established the
+// precondition the function documents. So: our own unit, on a status we
+// chose, deleted afterwards. Nothing else in the suite can move it, and
+// this file can no longer be the cause of someone else's flake either.
+$sentinelStatusId = (int) db_fetch_value(
+    "SELECT id FROM `{$prefix}un_status`
+      WHERE LOWER(status_val) NOT LIKE '%standby%'
+        AND LOWER(status_val) NOT LIKE '%staging%'
+        AND LOWER(status_val) NOT LIKE '%avail%'
+        AND LOWER(status_val) NOT LIKE '%offduty%'
+        AND LOWER(status_val) NOT LIKE '%off duty%'
+        AND LOWER(status_val) NOT LIKE '%reserve%'
+        AND (hide IS NULL OR hide <> 'y')
+      ORDER BY sort, id LIMIT 1"
 );
-$sentinelResponderId = 0;
-if ($respIdForDueAt <= 0) {
-    // Verified against sql/base_schema.sql: responder has `name` (text NULL)
-    // and `description` (text NOT NULL, no default — must be included).
-    // There are NO _by/_from/_on audit columns on responder.
+$sentinelStatusCreated = 0;
+if ($sentinelStatusId <= 0) {
+    // No usable status on this install (or they have all been renamed by
+    // an earlier test). Make one; status_val and description are both
+    // NOT NULL without a default.
     db_query(
-        "INSERT INTO `{$prefix}responder` (`name`, `description`)
-         VALUES ('phase16a sentinel unit', 'PAR test sentinel')"
+        "INSERT INTO `{$prefix}un_status` (status_val, description)
+         VALUES ('p16a_committed', 'PAR test sentinel status')"
     );
-    $sentinelResponderId = (int) db_insert_id();
-    $respIdForDueAt = $sentinelResponderId;
+    $sentinelStatusId = (int) db_insert_id();
+    $sentinelStatusCreated = $sentinelStatusId;
 }
-if ($respIdForDueAt > 0) {
-    db_query(
-        "INSERT INTO `{$prefix}assigns` (ticket_id, responder_id, user_id, dispatched)
-         VALUES (?, ?, 1, NOW())",
-        [$ticketId, $respIdForDueAt]
-    );
+
+// Verified against sql/base_schema.sql: responder has `name` (text NULL)
+// and `description` (text NOT NULL, no default — must be included).
+// There are NO _by/_from/_on audit columns on responder.
+db_query(
+    "INSERT INTO `{$prefix}responder` (`name`, `description`, `un_status_id`)
+     VALUES ('phase16a sentinel unit', 'PAR test sentinel', ?)",
+    [$sentinelStatusId]
+);
+$sentinelResponderId = (int) db_insert_id();
+$respIdForDueAt      = $sentinelResponderId;
+
+db_query(
+    "INSERT INTO `{$prefix}assigns` (ticket_id, responder_id, user_id, dispatched)
+     VALUES (?, ?, 1, NOW())",
+    [$ticketId, $respIdForDueAt]
+);
+
+// State the precondition as its own assertion. par_due_at() has four
+// independent null gates, and "the roster came back empty" is the one
+// that took longest to identify from the outside.
+if (count(par_assigned_units($ticketId)) === 1) {
+    ok('sentinel unit is on the PAR roster (precondition for par_due_at)');
+} else {
+    bad('sentinel unit not on PAR roster', 'status_id=' . $sentinelStatusId
+        . ' responder=' . $respIdForDueAt);
 }
 
 // ── par_due_at returns a sensible timestamp ─────────────────────────
 $due = par_due_at($ticketId);
-if (is_int($due) && $due > 0) ok("par_due_at returns timestamp {$due}");
-else                          bad('par_due_at', var_export($due, true));
+if (is_int($due) && $due > 0) {
+    ok("par_due_at returns timestamp {$due}");
+} else {
+    // par_due_at() has FOUR independent null-return gates. A bare
+    // "par_due_at — NULL" names none of them, which is why this
+    // assertion went unexplained for as long as it did. Say which gate.
+    $why = [];
+    $why[] = 'par_enabled=' . var_export(par_enabled(), true);
+    $c = par_resolve_cadence($ticketId);
+    $why[] = 'cadence=' . (int) $c['cadence_minutes'] . ' source=' . $c['source'];
+    $units = par_assigned_units($ticketId);
+    $why[] = 'assigned_units=' . count($units);
+    $rawAssigns = (int) db_fetch_value(
+        "SELECT COUNT(*) FROM `{$prefix}assigns` WHERE ticket_id = ?", [$ticketId]);
+    $why[] = 'raw_assigns_rows=' . $rawAssigns;
+    $st = db_fetch_one(
+        "SELECT r.id, r.un_status_id, s.status_val
+           FROM `{$prefix}assigns` a
+           JOIN `{$prefix}responder` r ON r.id = a.responder_id
+           LEFT JOIN `{$prefix}un_status` s ON s.id = r.un_status_id
+          WHERE a.ticket_id = ? LIMIT 1", [$ticketId]);
+    $why[] = 'assigned_responder=' . var_export($st, true);
+    $why[] = 'standby_behavior=' . var_export(
+        db_fetch_value("SELECT value FROM `{$prefix}settings`
+                         WHERE name='par_standby_unit_behavior' LIMIT 1"), true);
+    bad('par_due_at', var_export($due, true) . ' | ' . implode('; ', $why));
+}
 
 // ── par_initiate_cycle + par_ack_unit ────────────────────────────────
 $result = par_initiate_cycle($ticketId, 'manual', null, 'test');
@@ -166,6 +240,9 @@ try {
     db_query("DELETE FROM `{$prefix}par_cycles` WHERE ticket_id = ?", [$ticketId]);
     if (!empty($sentinelResponderId)) {
         db_query("DELETE FROM `{$prefix}responder` WHERE id = ?", [$sentinelResponderId]);
+    }
+    if (!empty($sentinelStatusCreated)) {
+        db_query("DELETE FROM `{$prefix}un_status` WHERE id = ?", [$sentinelStatusCreated]);
     }
 } catch (Exception $e) {
     echo "  (cleanup warning: " . $e->getMessage() . ")\n";

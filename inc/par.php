@@ -525,14 +525,22 @@ function par_broadcast_overdue(int $ticketId, int $overdueSecs): int {
  * incident's ticket_id where the responder is active.
  *
  * Phase 16e (2026-06-11) standby decision: par_standby_unit_behavior
- * controls whether units in non-active status (status_val like
- * 'Standby', 'Staging', 'Available') are included in the PAR
- * expectation list. Values:
+ * controls whether units in a standby-ish status ('Standby', 'Staging',
+ * 'Available', 'Reserve', off-duty) are included in the PAR expectation
+ * list. Values:
  *   'include'      — count standby units (some agencies want this)
  *   'exclude'      — never count them
- *   'recommended'  — DEFAULT: include if cadence > 0, exclude otherwise.
- *                    Matches the published convention of "PAR everyone
- *                    on scene" while letting agencies opt out.
+ *   'recommended'  — DEFAULT. Currently identical to 'exclude'.
+ *
+ * NB: the original comment here said 'recommended' meant "include if
+ * cadence > 0, exclude otherwise". No code ever consulted the cadence —
+ * 'recommended' has always behaved exactly like 'exclude'. Corrected
+ * rather than implemented, because changing what the shipped default
+ * does to a roll call is not a patch-release decision.
+ *
+ * Unavailable units are governed SEPARATELY, by
+ * par_include_unavailable_units (default ON) — see
+ * par_include_unavailable_units() below.
  */
 function par_assigned_units(int $ticketId): array {
     $prefix = $GLOBALS['db_prefix'] ?? '';
@@ -571,30 +579,117 @@ function par_assigned_units(int $ticketId): array {
         return [];
     }
 
-    if ($behavior === 'include') return $rows;
+    $includeUnavailable = par_include_unavailable_units();
 
-    // For 'exclude' and 'recommended' (default), filter out units whose
-    // current status name suggests standby/staging/available. We do a
-    // best-effort string match because status configurations vary
-    // wildly between installs.
-    $standbyKeywords = ['standby','staging','available','offduty','off duty','reserve'];
     $filtered = [];
     foreach ($rows as $r) {
-        $statusLabel = '';
-        try {
-            $statusLabel = (string) db_fetch_value(
-                "SELECT status_val FROM `{$prefix}un_status` WHERE id = ? LIMIT 1",
-                [(int) ($r['un_status_id'] ?? 0)]);
-        } catch (Exception $e) {}
-        $isStandby = false;
-        $lower = strtolower($statusLabel);
-        foreach ($standbyKeywords as $kw) {
-            if (strpos($lower, $kw) !== false) { $isStandby = true; break; }
-        }
-        if ($isStandby) continue;
+        $class = par_classify_unit_status((int) ($r['un_status_id'] ?? 0));
+        // Unavailable is its own decision, and it is NOT a kind of
+        // standby — see par_include_unavailable_units().
+        if ($class === 'unavailable' && !$includeUnavailable) continue;
+        if ($class === 'standby' && $behavior !== 'include') continue;
         $filtered[] = $r;
     }
     return $filtered;
+}
+
+/**
+ * Should units in an UNAVAILABLE / out-of-service status appear on the
+ * PAR roster?  Setting: `par_include_unavailable_units` ('1' | '0').
+ *
+ * Default: ON (include them).
+ *
+ * Rationale, since this is a life-safety default. A PAR is a roll call:
+ * its question is "is every crew committed to this incident accounted
+ * for?", not "is every crew working?". A unit that is assigned to the
+ * incident and has gone unavailable is the one whose silence is hardest
+ * to interpret from the console — the status may mean the apparatus is
+ * out of service, or it may mean the crew stopped answering. Excluding
+ * them makes the second case invisible in the exact instrument built to
+ * catch it. The cost of including them is an extra ack request for a
+ * crew that is genuinely out of service; the cost of excluding them is
+ * an unaccounted crew that the roll call reports as complete. Those are
+ * not symmetric, so the default takes the recoverable error.
+ *
+ * Agencies that treat "unavailable" as strictly a vehicle/equipment
+ * state, and clear the assignment when a crew leaves, can turn it off
+ * in Settings → PAR Checks → Standby units.
+ *
+ * Note this was never a decision anyone made before now: unavailable
+ * units were dropped by accident (see par_classify_unit_status), so no
+ * install has a deliberate exclusion to preserve.
+ */
+function par_include_unavailable_units(): bool {
+    try {
+        if (function_exists('get_variable')) {
+            $v = get_variable('par_include_unavailable_units');
+            // get_variable() returns false for an absent key, which is
+            // the unconfigured case — fall through to the default.
+            if ($v !== false && $v !== null && $v !== '') {
+                return ((string) $v) === '1';
+            }
+        }
+    } catch (Exception $e) { /* fall through to the default */ }
+    return true;
+}
+
+/**
+ * Classify a unit status into 'unavailable' | 'standby' | 'active'.
+ *
+ * This replaces a `strpos($label, 'available')` test that matched
+ * inside "unavailable" — the exact `LIKE '%avail%'` hazard CLAUDE.md
+ * warns about. The shipped statuses are `available` (group `av`) and
+ * `unavailable` (group `unav`), so every unavailable unit was silently
+ * classified as standby and dropped from the roster by substring
+ * accident, with no setting able to bring it back.
+ *
+ * Matching is by PREFIX, never substring, and `un_status`.`group` is
+ * consulted first because it is the stable machine-readable value
+ * ('av' / 'unav' / 'inserv'); `status_val` is the fallback for installs
+ * whose group column is unset. Prefixes are safe in both directions
+ * here: "unavailable" does not begin with "avail", and "unav" does not
+ * begin with "av".
+ */
+function par_classify_unit_status(int $statusId): string {
+    if ($statusId <= 0) return 'active';
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+
+    $row = null;
+    try {
+        $row = db_fetch_one(
+            "SELECT `status_val`, `group` FROM `{$prefix}un_status` WHERE `id` = ? LIMIT 1",
+            [$statusId]
+        );
+    } catch (Exception $e) { return 'active'; }
+    if (!$row) return 'active';
+
+    $group = strtolower(trim((string) ($row['group'] ?? '')));
+    $label = strtolower(trim((string) ($row['status_val'] ?? '')));
+
+    // Group first — check unavailable before standby in both passes.
+    if ($group !== '') {
+        if (_par_starts_with_any($group, ['unav', 'oos', 'out'])) return 'unavailable';
+        if (_par_starts_with_any($group, ['av', 'stand', 'stag', 'reserve', 'off'])) return 'standby';
+        // A group that classifies as neither falls through to the
+        // label rather than being assumed active — a custom group name
+        // should not silently defeat the label the operator sees.
+    }
+
+    if (_par_starts_with_any($label, ['unavail', 'unav', 'out of service', 'out-of-service', 'out_of_service', 'oos'])) {
+        return 'unavailable';
+    }
+    if (_par_starts_with_any($label, ['avail', 'standby', 'stand by', 'stand-by', 'staging', 'stage', 'reserve', 'offduty', 'off duty', 'off-duty'])) {
+        return 'standby';
+    }
+    return 'active';
+}
+
+/** True when $s begins with any of $prefixes. Prefix, never substring. */
+function _par_starts_with_any(string $s, array $prefixes): bool {
+    foreach ($prefixes as $p) {
+        if ($p !== '' && strncmp($s, $p, strlen($p)) === 0) return true;
+    }
+    return false;
 }
 
 /**

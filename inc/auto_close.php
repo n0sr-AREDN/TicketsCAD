@@ -64,6 +64,26 @@ function auto_close_grace_seconds(): int {
  * Count active (uncleared) assigns for a ticket. Uses the same
  * clear-is-null test as the rest of the codebase — `clear IS NULL`
  * OR clear starts with '0000' (MyISAM null-substitute).
+ *
+ * GH #24 — this used to carry a third term, `clear = ''`. `assigns.clear`
+ * is DATETIME, and MySQL 8.0 rejects the comparison outright:
+ *
+ *     SQLSTATE[HY000]: General error: 1525 Incorrect DATETIME value: ''
+ *
+ * One bad term throws the whole query, and the catch below used to
+ * `return 0` — which on this code path is not a neutral failure value,
+ * it is the one answer that means "no crews left on this incident", i.e.
+ * exactly the condition that authorises an auto-close. So on MySQL 8.0
+ * every call read as a definitive all-clear, with no log line anywhere:
+ * incidents closed with crews still assigned, and the audit trail
+ * recorded "all units clear" as fact. The `''` term was a MyISAM-era
+ * null-substitute that the zero-date term already covers.
+ *
+ * Now returns -1 when the count could NOT be obtained. A count that
+ * could not be taken is not a count of zero. Callers must treat a
+ * negative result as "unknown — do not close".
+ *
+ * @return int >=0 active assigns, or -1 if the count could not be taken.
  */
 function _auto_close_active_assigns(int $ticketId): int {
     $prefix = $GLOBALS['db_prefix'] ?? '';
@@ -71,10 +91,14 @@ function _auto_close_active_assigns(int $ticketId): int {
         return (int) db_fetch_value(
             "SELECT COUNT(*) FROM `{$prefix}assigns`
               WHERE ticket_id = ?
-                AND (clear IS NULL OR clear = '' OR clear = '0000-00-00 00:00:00')",
+                AND (clear IS NULL OR clear = '0000-00-00 00:00:00')",
             [$ticketId]
         );
-    } catch (Exception $e) { return 0; }
+    } catch (Exception $e) {
+        error_log('[auto_close] active-assign count FAILED for ticket ' . $ticketId
+            . ' — failing closed, NOT treating as all-clear: ' . $e->getMessage());
+        return -1;
+    }
 }
 
 /**
@@ -103,7 +127,14 @@ function auto_close_maybe_schedule(int $ticketId, int $userId): array {
             && substr((string) $ticket['auto_close_scheduled_at'], 0, 4) !== '0000') {
             return ['scheduled' => false, 'reason' => 'already_scheduled'];
         }
-        if (_auto_close_active_assigns($ticketId) > 0) {
+        // GH #24 — only an explicit, successfully-taken zero authorises a
+        // schedule. -1 means the count could not be obtained; that is not
+        // an all-clear.
+        $active = _auto_close_active_assigns($ticketId);
+        if ($active < 0) {
+            return ['scheduled' => false, 'reason' => 'active_assigns_unknown'];
+        }
+        if ($active > 0) {
             return ['scheduled' => false, 'reason' => 'active_assigns_remain'];
         }
         $grace = auto_close_grace_seconds();
@@ -191,7 +222,19 @@ function auto_close_sweep(int $limit = 20): array {
     foreach ($due as $row) {
         $tid = (int) $row['id'];
         try {
-            if (_auto_close_active_assigns($tid) > 0) {
+            $active = _auto_close_active_assigns($tid);
+            if ($active < 0) {
+                // GH #24 — the count could not be taken. Leave the
+                // schedule in place (so the next sweep retries) and do
+                // NOT close. The old code shared this branch with the
+                // "units remain" case via a `> 0` test, so a failed
+                // count fell through to the close instead — the safety
+                // net was defeated by the same broken comparison as the
+                // gate it was there to back up.
+                $skipped++;
+                continue;
+            }
+            if ($active > 0) {
                 // Safety net: a re-dispatch that skipped
                 // auto_close_maybe_cancel() should still stop the
                 // close. NULL the scheduled time and continue.

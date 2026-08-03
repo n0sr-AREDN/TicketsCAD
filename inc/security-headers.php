@@ -13,12 +13,21 @@
 require_once __DIR__ . '/https.php';   // is_https(), is_https_verified()
 
 /**
- * Set standard security headers.
- * Safe to call multiple times (headers are overwritten, not duplicated).
+ * Build the Content-Security-Policy header value.
  *
- * @return void
+ * Split out of set_security_headers() so the policy can be asserted on
+ * directly. Under the CLI SAPI header() is a no-op and headers_list()
+ * comes back empty, so a test that only called set_security_headers()
+ * could observe nothing — which is how the missing `media-src` below
+ * survived: the CSP had regression tests, and every one of them grepped
+ * this file's source for a substring rather than reading the policy the
+ * function actually produces. A directive that was never there passes a
+ * grep for the directives that were. (Same lesson as `tile_mode` in
+ * CLAUDE.md — assert on an observable output, not on wiring.)
+ *
+ * @return string  The policy, directives joined with '; '.
  */
-function set_security_headers(): void {
+function build_csp_policy(): string {
     // Geocoder origins the BROWSER is allowed to contact.
     //
     // Under the shipped default (geocoding_mode=server) this is EMPTY, and
@@ -42,19 +51,6 @@ function set_security_headers(): void {
         error_log('[geocode] CSP host resolution failed: ' . $e->getMessage());
     }
     $geocodeCsp = $geocodeHosts ? (' ' . implode(' ', $geocodeHosts)) : '';
-
-    // Prevent MIME type sniffing
-    header('X-Content-Type-Options: nosniff');
-
-    // Prevent clickjacking — only allow framing from same origin
-    header('X-Frame-Options: SAMEORIGIN');
-
-    // Note: X-XSS-Protection is intentionally NOT set. Modern browsers
-    // ignore it; older Chrome/Edge versions implementing it had exploitable
-    // bugs that make `1; mode=block` net-harmful. Use CSP instead.
-
-    // Control referrer information sent with requests
-    header('Referrer-Policy: strict-origin-when-cross-origin');
 
     // Content Security Policy — `default-src 'self'` confines fetches to
     // our own origin. We allow `unsafe-inline` for script and style because
@@ -100,6 +96,26 @@ function set_security_headers(): void {
             . "https://*.rainviewer.com "
             . "https://mapservices.weather.noaa.gov"
             . $geocodeCsp,
+        // media-src: <audio>/<video>/<track> sources. Public issue #27 —
+        // there was no media-src at all, so media fell back to
+        // `default-src 'self'` and every non-http(s) source was refused.
+        // `'self'` does NOT cover the data: or blob: schemes (they are
+        // opaque origins, which is exactly why img-src and script-src
+        // above already have to name them), so both must be listed:
+        //
+        //   data:  api/tts.php returns the Voice & Speech test sample as
+        //          `data:audio/wav;base64,...` and voice-speech.php feeds
+        //          it to <audio id="ttsTestAudio">. Chromium refuses it
+        //          with "Media load rejected by URL safety check", which
+        //          is its wording for a CSP refusal, not a codec problem.
+        //   blob:  zello-widget.js binds a MediaSource to <audio> via
+        //          URL.createObjectURL() for live incoming voice. Same
+        //          refusal, and it was silently broken by the same gap.
+        //
+        // Deliberately no host allowlist and no wildcard: every media
+        // source NewUI has is same-origin (api/dmr-audio.php, the Zello
+        // archive clips) or one of those two schemes.
+        "media-src 'self' data: blob:",
         "style-src 'self' 'unsafe-inline'",
         // Phase 84-followup: blob: needed so the radio widget's
         // AudioWorklet (constructed via URL.createObjectURL(new Blob(...)))
@@ -124,7 +140,31 @@ function set_security_headers(): void {
         "base-uri 'self'",
         "object-src 'none'",
     ];
-    header('Content-Security-Policy: ' . implode('; ', $csp));
+
+    return implode('; ', $csp);
+}
+
+/**
+ * Set standard security headers.
+ * Safe to call multiple times (headers are overwritten, not duplicated).
+ *
+ * @return void
+ */
+function set_security_headers(): void {
+    // Prevent MIME type sniffing
+    header('X-Content-Type-Options: nosniff');
+
+    // Prevent clickjacking — only allow framing from same origin
+    header('X-Frame-Options: SAMEORIGIN');
+
+    // Note: X-XSS-Protection is intentionally NOT set. Modern browsers
+    // ignore it; older Chrome/Edge versions implementing it had exploitable
+    // bugs that make `1; mode=block` net-harmful. Use CSP instead.
+
+    // Control referrer information sent with requests
+    header('Referrer-Policy: strict-origin-when-cross-origin');
+
+    header('Content-Security-Policy: ' . build_csp_policy());
 
     // Prevent browsers from caching sensitive pages
     // (individual pages can override this if they serve public/static content)

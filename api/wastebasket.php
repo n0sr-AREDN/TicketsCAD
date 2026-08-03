@@ -13,6 +13,9 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/audit.php';
+// ics_form_label() — one definition of how an ICS form is named, shared with
+// the delete path so the wastebasket row and the audit entry read alike.
+require_once __DIR__ . '/../inc/ics-forms-write.php';
 
 ini_set('display_errors', '0');
 
@@ -69,14 +72,21 @@ function get_record_label($type, $row) {
             return isset($row['name']) ? $row['name'] : ('Unit #' . $row['id']);
 
         case 'ticket':
-            $nature = isset($row['nature']) ? $row['nature'] : '';
-            $addr = isset($row['address']) ? $row['address'] : '';
+            // Issue #25 — read the columns `ticket` actually has. These
+            // were `nature`/`address`, which do not exist, so this arm
+            // could only ever reach its fallback even if the SELECT had
+            // succeeded.
+            $nature = isset($row['scope']) ? $row['scope'] : '';
+            $addr = isset($row['street']) ? $row['street'] : '';
             // Phase 99p — fallback uses the case number when available.
             $caseNum = !empty($row['incident_number']) ? $row['incident_number'] : ('#' . $row['id']);
             return $nature ? $nature . ($addr ? ' @ ' . $addr : '') : ('Incident ' . $caseNum);
 
         case 'facilities':
             return isset($row['name']) ? $row['name'] : ('Facility #' . $row['id']);
+
+        case 'ics_forms':
+            return ics_form_label($row);
 
         default:
             return '#' . ($row['id'] ?? '?');
@@ -85,6 +95,14 @@ function get_record_label($type, $row) {
 
 // ═══════════════════════════════════════════════════════════════
 //  Table configuration — types we support soft-delete for
+//
+//  `purgeable` (default true) says whether this type may be PERMANENTLY
+//  destroyed — by the per-row purge button or by "Empty wastebasket". It is
+//  false for ICS forms: a finalized ICS-214 is the operational record of a
+//  real incident, so the approved policy (Eric, 2026-08-02) is that they are
+//  recoverable forever and no path hard-deletes one. Both write paths below
+//  honour it, and the GET output carries `can_purge` so the UI does not offer
+//  a button the server will refuse.
 // ═══════════════════════════════════════════════════════════════
 $tableConfig = [
     'member' => [
@@ -103,7 +121,16 @@ $tableConfig = [
         'table'   => $prefix . 'ticket',
         'label'   => 'Incident',
         'icon'    => 'bi-exclamation-triangle',
-        'select'  => 'id, nature, address, city, description, deleted_at, deleted_by',
+        // Public issue #25 — `nature` and `address` are not columns of
+        // `ticket`; the real ones are `scope` and `street`. The SELECT
+        // therefore threw 1054, safe_wb_fetch() swallowed it and
+        // returned [], and soft-deleted incidents were invisible in the
+        // wastebasket — while still being served everywhere else.
+        // Found while fixing the read paths: stopping the leak makes
+        // this the ONLY route back to a mistakenly deleted incident, so
+        // it has to actually work. `incident_number` is selected because
+        // get_record_label() reads it for the fallback label.
+        'select'  => 'id, incident_number, scope, street, city, description, deleted_at, deleted_by',
     ],
     'facilities' => [
         'table'   => $prefix . 'facilities',
@@ -111,7 +138,19 @@ $tableConfig = [
         'icon'    => 'bi-hospital',
         'select'  => 'id, name, description, deleted_at, deleted_by',
     ],
+    'ics_forms' => [
+        'table'     => $prefix . 'ics_forms',
+        'label'     => 'ICS Form',
+        'icon'      => 'bi-file-earmark-text',
+        'select'    => 'id, form_type, title, status, incident_id, deleted_at, deleted_by',
+        'purgeable' => false,
+    ],
 ];
+
+/** Whether a wastebasket type may ever be permanently destroyed. */
+function wb_is_purgeable(array $cfg): bool {
+    return !array_key_exists('purgeable', $cfg) || $cfg['purgeable'] === true;
+}
 
 // ═══════════════════════════════════════════════════════════════
 //  GET — List deleted records
@@ -164,6 +203,9 @@ if ($method === 'GET') {
                 'label'       => get_record_label($type, $row),
                 'deleted_at'  => $row['deleted_at'],
                 'deleted_by'  => $deletedByName,
+                // settings.php reads exactly this key to decide whether to
+                // render the permanent-delete button.
+                'can_purge'   => wb_is_purgeable($cfg),
             ];
         }
     }
@@ -250,6 +292,14 @@ if ($method === 'POST') {
 
         $cfg = $tableConfig[$type];
 
+        // Records-retention types are never destroyed, by anyone. This is the
+        // server-side half of the rule — the button is also hidden, but the
+        // button is not the gate.
+        if (!wb_is_purgeable($cfg)) {
+            json_error($cfg['label'] . 's are operational records and cannot be permanently '
+                . 'deleted. They stay here and can be restored at any time.', 403);
+        }
+
         try {
             // Only purge if already soft-deleted
             $row = db_fetch_one(
@@ -295,6 +345,8 @@ if ($method === 'POST') {
 
         foreach ($tableConfig as $type => $cfg) {
             if (!table_has_soft_delete($cfg['table'])) continue;
+            // Never swept up by a bulk empty — see wb_is_purgeable().
+            if (!wb_is_purgeable($cfg)) continue;
 
             try {
                 // Count what we are about to purge

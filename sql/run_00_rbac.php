@@ -183,6 +183,16 @@ $perms = [
     // The CRUD surface auto-grants to action.create_incident too, so a
     // dispatcher with no ICS-specific role still works.
     ['action.manage_ics_forms','Manage ICS Forms',     'action'],
+    // 2026-08-02 (Chris Byrd) — deleting a saved ICS form. ADMINISTRATIVE:
+    // a finalized ICS-214 is the operational record of a real incident, so
+    // removing one is records retention, not dispatch. Super Admin (broad
+    // SELECT) and Org Admin (broad NOT IN) receive it here; the Dispatcher/
+    // Operator/Read-Only/Field Unit mappings below are allow-lists that name
+    // `action.` codes explicitly, so none of them pick it up — and the
+    // matching exclusion is spelled out in sql/rbac.sql, whose Dispatcher
+    // mapping IS a broad NOT IN. Deleting a draft you created yourself needs
+    // no permission at all (see inc/ics-forms-write.php).
+    ['action.delete_ics_form', 'Delete ICS Forms',     'action'],
     // Phase 131 — net-control check-ins (/net). OPERATIONAL, not administrative,
     // so it is deliberately NOT added to the Org Admin `NOT IN (...)` exclusion
     // list below: Super Admin (broad SELECT) and Org Admin (broad NOT IN) should

@@ -224,7 +224,7 @@ function bed_auto_apply_on_status_change($responderId, $statusId, $statusName, $
              FROM `{$prefix}assigns` a
              JOIN `{$prefix}ticket` t ON t.id = a.ticket_id
              WHERE a.responder_id = ?
-               AND (a.clear IS NULL OR a.clear = '' OR a.clear = '0000-00-00 00:00:00')
+               AND (a.clear IS NULL OR a.clear = '0000-00-00 00:00:00')
                AND COALESCE(NULLIF(a.rec_facility_id, 0), NULLIF(t.rec_facility, 0)) > 0",
             [$responderId]
         );

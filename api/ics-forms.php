@@ -6,6 +6,7 @@
  * GET /api/ics-forms.php?id=X             — Get a specific saved form
  * GET /api/ics-forms.php?template=213     — Get blank template for a form type
  * POST action=save                        — Save form data (create or update)
+ * POST action=delete                      — Soft-delete to the wastebasket
  * POST action=export_xml                  — Export as Winlink-compatible XML (ICS-213)
  * POST action=export_pdf                  — Generate print-optimized HTML
  */
@@ -14,12 +15,20 @@ ini_set('display_errors', '0');
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/access.php';
 require_once __DIR__ . '/../inc/rbac.php';
+require_once __DIR__ . '/../inc/ics-forms-write.php';
 if (file_exists(__DIR__ . '/../inc/security-labels.php')) {
     require_once __DIR__ . '/../inc/security-labels.php';
 }
 
 $method = $_SERVER['REQUEST_METHOD'];
 $prefix = $GLOBALS['db_prefix'] ?? '';
+
+// 2026-08-02 (Chris Byrd) — soft delete. A form in the wastebasket must
+// vanish from every read surface: the hub list, a direct ?id= fetch, and both
+// exports. An install that has not migrated yet has no such column, so the
+// clause is empty there and everything behaves exactly as it did before —
+// the Delete action is what reports the missing schema, not every GET.
+$icsNotDeleted = ics_forms_has_soft_delete() ? ' AND `deleted_at` IS NULL' : '';
 
 // GH #79 — team-wide visibility for standalone (incident-less) ICS forms.
 // Off by default; an admin turns it on only when the install is a single
@@ -95,18 +104,26 @@ if ($method === 'GET') {
     if (isset($_GET['id'])) {
         $id = (int) $_GET['id'];
         $row = db_fetch_one(
-            "SELECT * FROM `{$prefix}ics_forms` WHERE `id` = ?",
+            "SELECT * FROM `{$prefix}ics_forms` WHERE `id` = ?{$icsNotDeleted}",
             [$id]
         );
         if (!$row) json_error('Form not found', 404);
         if (!ics_form_accessible($row, $icsShareStandalone)) json_error('Form not found', 404);
         $row['form_data'] = json_decode($row['form_data_json'], true);
         unset($row['form_data_json']);
+        // Same key the hub list emits — the editor toolbar's Delete button
+        // reads it to decide whether to show itself.
+        $row['can_delete'] = ics_forms_has_soft_delete()
+            && ics_form_delete_decision(
+                   $row,
+                   (int) ($_SESSION['user_id'] ?? 0),
+                   is_admin() || rbac_can('action.delete_ics_form')
+               )['allowed'];
         json_response($row);
     }
 
     // List forms — optionally filtered by incident_id or form_type
-    $where = '1=1';
+    $where = '1=1' . $icsNotDeleted;
     $params = [];
 
     if (isset($_GET['incident_id'])) {
@@ -147,6 +164,19 @@ if ($method === 'GET') {
         $params
     );
 
+    // 2026-08-02 (Chris Byrd) — tell the hub which rows this user may delete,
+    // so it can render the button only where it will work. The server decides;
+    // api/ics-forms.php?action=delete re-checks with the SAME function, so a
+    // hand-crafted POST gains nothing from a hidden button. `can_delete` is
+    // emitted here because assets/js/ics-forms.js reads exactly that key —
+    // see tools/api_contract_audit.php on why JS may not invent key names.
+    $icsPrivileged = is_admin() || rbac_can('action.delete_ics_form');
+    $icsUserId     = (int) ($_SESSION['user_id'] ?? 0);
+    foreach ($rows as $i => $r) {
+        $rows[$i]['can_delete'] = ics_forms_has_soft_delete()
+            && ics_form_delete_decision($r, $icsUserId, $icsPrivileged)['allowed'];
+    }
+
     json_response(['forms' => $rows, 'total' => $total]);
 }
 
@@ -184,9 +214,16 @@ if ($method === 'POST') {
     // own or that are bound to incidents they can access (GET is not
     // gated here — the per-row ics_form_accessible() check from
     // Phase 73q does that more granularly).
+    //
+    // action.delete_ics_form is admitted here too (2026-08-02): an install
+    // that grants ONLY the delete permission to a records role must be able to
+    // reach the delete action, or the permission would be a setting wired to
+    // nothing. It does not widen anything else — every action below re-checks
+    // what it needs, and the delete decision is made per-form.
     if (!is_admin()
         && !rbac_can('action.create_incident')
-        && !rbac_can('action.manage_ics_forms')) {
+        && !rbac_can('action.manage_ics_forms')
+        && !rbac_can('action.delete_ics_form')) {
         json_error('Forbidden — requires Incident Create or ICS Forms Management role', 403);
     }
 
@@ -218,9 +255,15 @@ if ($method === 'POST') {
             // Phase 73q — IDOR fix on UPDATE. Without this, any logged-in
             // user could overwrite any other agency's saved ICS-213 by
             // passing its id back to ?action=save.
+            // 2026-08-02 — {$icsNotDeleted} matters here as much as on the
+            // reads: without it a user could edit, un-finalize or overwrite a
+            // form sitting in the wastebasket by POSTing its id back, and
+            // effectively resurrect a deleted operational record without the
+            // admin restore that is supposed to be the only way back.
+            // Restore it first; then it is editable again.
             $existing = db_fetch_one(
                 "SELECT `id`, `incident_id`, `created_by`
-                   FROM `{$prefix}ics_forms` WHERE `id` = ?",
+                   FROM `{$prefix}ics_forms` WHERE `id` = ?{$icsNotDeleted}",
                 [$formId]
             );
             if (!$existing) json_error('Form not found', 404);
@@ -245,7 +288,68 @@ if ($method === 'POST') {
             $formId = (int) db_insert_id();
         }
 
-        json_response(['ok' => true, 'id' => $formId]);
+        // Whether the user may now delete what they just saved — so the editor
+        // toolbar's Delete button appears immediately after the first save of a
+        // new form, and disappears the moment a non-privileged author
+        // finalizes one. Re-read the row rather than assume: `status` may have
+        // been coerced above, and created_by belongs to whoever made it.
+        $saved = db_fetch_one(
+            "SELECT `status`, `created_by` FROM `{$prefix}ics_forms` WHERE `id` = ?",
+            [$formId]
+        );
+        $canDelete = $saved
+            && ics_forms_has_soft_delete()
+            && ics_form_delete_decision(
+                   $saved,
+                   (int) ($_SESSION['user_id'] ?? 0),
+                   is_admin() || rbac_can('action.delete_ics_form')
+               )['allowed'];
+
+        json_response(['ok' => true, 'id' => $formId, 'can_delete' => $canDelete]);
+    }
+
+    // ── Delete form (soft, to the wastebasket) ──
+    //
+    // Chris Byrd, 2026-07-29: "there is no way to delete it… I can switch a
+    // finalized form back to draft but no way to delete it."
+    //
+    // A draft's creator may delete it; a finalized form is admin-only; the
+    // delete is soft and restorable from Settings → Wastebasket; nothing here
+    // hard-deletes. The policy lives in inc/ics-forms-write.php so the
+    // regression test drives the same code this endpoint does.
+    if ($action === 'delete') {
+        $formId = (int) ($input['id'] ?? 0);
+        if (!$formId) json_error('id is required');
+
+        // Read-access gate first (Phase 73q IDOR rules), so a form the caller
+        // cannot see is a 404 rather than a 403 that confirms it exists.
+        $row = db_fetch_one(
+            "SELECT `id`, `incident_id`, `created_by`, `status`
+               FROM `{$prefix}ics_forms` WHERE `id` = ?{$icsNotDeleted}",
+            [$formId]
+        );
+        if (!$row) json_error('Form not found', 404);
+        if (!ics_form_accessible($row, $icsShareStandalone)) json_error('Form not found', 404);
+
+        $result = ics_form_soft_delete(
+            $formId,
+            (int) ($_SESSION['user_id'] ?? 0),
+            is_admin() || rbac_can('action.delete_ics_form')
+        );
+
+        if (!$result['deleted']) {
+            $reason = $result['reason'] ?? '';
+            $code = ($reason === 'not_found') ? 404
+                  : (in_array($reason, ['finalized', 'not_creator'], true) ? 403 : 400);
+            json_error(ics_form_delete_message($reason), $code);
+        }
+
+        json_response([
+            'ok'      => true,
+            'id'      => $formId,
+            'message' => 'Form moved to the wastebasket. An administrator can restore it '
+                       . 'from Settings → Wastebasket.',
+        ]);
     }
 
     // ── Export XML (ICS-213 Winlink) ──
@@ -254,7 +358,7 @@ if ($method === 'POST') {
         if (!$formId) json_error('id is required');
 
         $row = db_fetch_one(
-            "SELECT * FROM `{$prefix}ics_forms` WHERE `id` = ?",
+            "SELECT * FROM `{$prefix}ics_forms` WHERE `id` = ?{$icsNotDeleted}",
             [$formId]
         );
         if (!$row) json_error('Form not found', 404);
@@ -276,7 +380,7 @@ if ($method === 'POST') {
         if (!$formId) json_error('id is required');
 
         $row = db_fetch_one(
-            "SELECT * FROM `{$prefix}ics_forms` WHERE `id` = ?",
+            "SELECT * FROM `{$prefix}ics_forms` WHERE `id` = ?{$icsNotDeleted}",
             [$formId]
         );
         if (!$row) json_error('Form not found', 404);

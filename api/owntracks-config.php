@@ -419,7 +419,7 @@ function _ot_member_has_active_incident(int $memberId): bool {
                JOIN `{$prefix}assigns` a ON a.responder_id = upa.responder_id
               WHERE upa.member_id = ?
                 AND (upa.status IS NULL OR upa.status != 'released')
-                AND (a.clear IS NULL OR a.clear = '' OR a.clear = '0000-00-00 00:00:00')
+                AND (a.clear IS NULL OR a.clear = '0000-00-00 00:00:00')
               LIMIT 1",
             [$memberId]
         );
@@ -901,7 +901,7 @@ if ($action === 'get_member_diagnostics' && $method === 'GET') {
                LEFT JOIN `{$prefix}responder` r ON r.id = a.responder_id
               WHERE upa.member_id = ?
                 AND (upa.status IS NULL OR upa.status != 'released')
-                AND (a.clear IS NULL OR a.clear = '' OR a.clear = '0000-00-00 00:00:00')",
+                AND (a.clear IS NULL OR a.clear = '0000-00-00 00:00:00')",
             [$mid]
         );
     } catch (Exception $e) { /* tables may be absent */ }

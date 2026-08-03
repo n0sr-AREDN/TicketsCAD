@@ -171,9 +171,17 @@ if ($method === 'GET' && $action === 'incidents') {
     $out = [];
     try {
         // status 1=open/active, 2=pending; exclude closed (>=4) + deleted.
+        //
+        // GH #24 — `ticket.deleted_at` is DATETIME, and the old
+        // `deleted_at = ''` term makes MySQL 8.0 raise 1525 ("Incorrect
+        // DATETIME value: ''") and throw the whole query. The catch below
+        // falls back to a query with NO deleted_at or status filter at
+        // all, so on MySQL 8.0 this picker listed soft-deleted and closed
+        // incidents — and looked like it was working. The zero-date is the
+        // legacy null-substitute the '' term was standing in for.
         $rows = db_fetch_all(
             "SELECT id, scope, status FROM `{$prefix}ticket`
-              WHERE (deleted_at IS NULL OR deleted_at = '')
+              WHERE (deleted_at IS NULL OR deleted_at = '0000-00-00 00:00:00')
                 AND (status IS NULL OR status < 4)
               ORDER BY id DESC LIMIT 200");
         foreach ($rows as $r) {
