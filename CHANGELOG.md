@@ -98,7 +98,7 @@ to run does not prove what it said it proved.
 ### If you checked before, check again
 
 The old check was wrong, so a clean result from it means nothing. Ask for **an
-actual archive by name** — get a filename from Settings → Backup — and ask every
+actual archive by name** — get a filename from Settings → Backup / Maintenance — and ask every
 site and port your server publishes, not only the one TicketsCAD runs on:
 
 ```bash
@@ -116,7 +116,7 @@ being served. A `403` on the folder proves nothing either way.
   were correct. **Nothing is moved for you** — an interrupted key move is worse
   than the exposure it would fix, and an install whose keys are already in the
   old location keeps using them, so upgrading cannot break field encryption or
-  lock every 2FA user out. Settings → Status gains rows that grade both
+  lock every 2FA user out. Settings → System Health gains rows that grade both
   directories, prove reachability with a short-lived random-token canary, print
   platform-correct move instructions, and say plainly what they could not see.
 - **The exposure check can no longer answer "safe" from a directory request.**
@@ -193,7 +193,7 @@ curl -s -o /dev/null -w 'tools   %{http_code}\n' https://your-site/tools/
 `403` or `404` is good. **`200` means you are affected** — see the advisory.
 `301`/`302` is inconclusive; re-run against the address you land on. From this
 release onward TicketsCAD runs these same checks against itself and reports the
-answer on **Settings → Status**, in the *Web exposure* row.
+answer on **Settings → System Health**, in the *Web exposure* row.
 
 ### Security
 
@@ -330,10 +330,11 @@ that had been quietly counting empty files as passes.
 
 After upgrading, check three things:
 
-1. **Settings → Users & Roles** — confirm every account has the role you expect.
-   The one-time migration that assigns roles to accounts carried over from v3
-   had never actually worked, so some accounts may have had no role at all.
-2. **Settings → Status → System Health** — a new *Scheduled jobs* row reports
+1. **Settings → User Accounts** and **Settings → Roles & Permissions** —
+   confirm every account has the role you expect. The one-time migration that
+   assigns roles to accounts carried over from v3 had never actually worked,
+   so some accounts may have had no role at all.
+2. **Settings → System Health** — a new *Scheduled jobs* row reports
    whether the background jobs this install needs have ever run.
 3. **Your scheduler.** If you use Personnel Accountability Reports, delayed
    message release, or automatic backups, confirm something on the server is
@@ -434,7 +435,7 @@ After upgrading, check three things:
 
 ### Added
 - `action.view_reports` permission (Super Admin and Organisation Admin).
-- A **Scheduled jobs** row on Settings → Status → System Health, fed by a
+- A **Scheduled jobs** row on Settings → System Health, fed by a
   heartbeat the background jobs write themselves — so it cannot report a run that
   did not happen. It goes red only for jobs this install actually needs.
 - `sched_stale_cutoff_min` setting: how far past due background work may be
@@ -858,7 +859,7 @@ safely decide rather than guessing.
 ### Added
 - Call-sign lookup: a new **OpenCallbook** provider ([opencallbook.com](https://opencallbook.com))
   that resolves both amateur radio **and GMRS** call signs in a single query, and
-  is now the default provider. Configurable under Settings → FCC Lookup, alongside
+  is now the default provider. Configurable under Settings → Lookup Services, alongside
   the existing local-database, callook.info (amateur-only), and self-hosted
   FCC-ULS-API options.
 - A configurable **lookup identity (User-Agent)** for internet call-sign lookups:
