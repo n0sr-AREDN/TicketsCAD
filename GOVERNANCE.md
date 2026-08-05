@@ -39,7 +39,7 @@ easiest thing for a governance document to obscure. See
 
 | Name or GitHub handle | Role | Area |
 |---|---|---|
-| _to be completed_ | Lead maintainer | Overall direction, releases, security |
+| Eric Osterberg ([@ejosterberg](https://github.com/ejosterberg)) | Lead maintainer | Overall direction, releases, security |
 
 **Being listed here means** commit access, the ability to review and accept a
 contribution, and a say in direction. It does not create an obligation to

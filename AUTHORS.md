@@ -28,7 +28,8 @@ with no operational responsibility and no obligation of any kind.
 
 ## Current maintainer
 
-See the Maintainers table in [`GOVERNANCE.md`](GOVERNANCE.md).
+**Eric Osterberg** ([@ejosterberg](https://github.com/ejosterberg)) — see the
+Maintainers table in [`GOVERNANCE.md`](GOVERNANCE.md) for role and area.
 
 ---
 
