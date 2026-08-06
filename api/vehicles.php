@@ -210,8 +210,19 @@ function handleGet() {
         ) > 0;
     } catch (Exception $e) { $hasDeletedAt = false; }
     $memberNotDeleted = $hasDeletedAt ? ' WHERE `deleted_at` IS NULL' : '';
+    // COALESCE to the legacy field1/field2/field4 columns for upgrade
+    // installs where the modern columns weren't backfilled -- same latent
+    // bug found and fixed in api/equipment.php's identical query 2026-08-06
+    // (Chris Byrd, Google Group -- "it shows the nulls" on Equipment's
+    // owner dropdown). This query has the same shape and was never
+    // exercised against an upgrade install this session, so fixing it here
+    // too rather than waiting for a matching report.
     $members = safe_fetch_all_v(
-        "SELECT id, first_name, last_name, callsign FROM " . db_table('member')
+        "SELECT id,
+                COALESCE(NULLIF(last_name, ''),  field1) AS last_name,
+                COALESCE(NULLIF(first_name, ''), field2) AS first_name,
+                COALESCE(NULLIF(callsign, ''),   field4) AS callsign
+         FROM " . db_table('member')
         . "{$memberNotDeleted} ORDER BY last_name, first_name"
     );
 

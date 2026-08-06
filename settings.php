@@ -88,7 +88,7 @@ $csrf     = csrf_token();
 
 <!-- Personnel sub-nav (shown when accessed from personnel section) -->
 <?php
-$personnelSections = ['certifications', 'ics-positions', 'training', 'member-types', 'member-statuses', 'organizations', 'teams'];
+$personnelSections = ['certifications', 'ics-positions', 'training', 'member-types', 'member-statuses', 'organizations', 'teams', 'team-types'];
 $hash = isset($_SERVER['HTTP_REFERER']) ? parse_url($_SERVER['HTTP_REFERER'], PHP_URL_FRAGMENT) : '';
 // Always show it — the JS will handle hiding if not relevant
 $personnel_active = '';
@@ -104,7 +104,7 @@ foreach ($personnelSections as $sec) {
 </div>
 <script>
 (function() {
-    var personnelHashes = ['certifications','ics-positions','training','member-types','member-statuses','organizations','teams'];
+    var personnelHashes = ['certifications','ics-positions','training','member-types','member-statuses','organizations','teams','team-types'];
     var nav = document.getElementById('personnelSubNav');
     if (!nav) return;
     function checkHash() {
@@ -5958,6 +5958,56 @@ foreach ($personnelSections as $sec) {
                 <a href="teams.php" class="btn btn-sm btn-primary">
                     <i class="bi bi-box-arrow-up-right me-1"></i>Open Teams Manager
                 </a>
+            </div>
+        </div>
+
+        <!-- ═══ TEAM TYPES ═══ -->
+        <div class="config-panel" id="panel-team-types">
+            <div class="config-panel-title">
+                <i class="bi bi-diagram-3 text-primary"></i> Team Types
+            </div>
+            <p class="text-body-secondary small mb-3">
+                Define categories for teams (e.g., Fire, EMS / Medical, Communications).
+                Used in the Type field when creating or editing a team.
+            </p>
+
+            <!-- Add/Edit Form -->
+            <div class="card border-0 bg-body-tertiary mb-3">
+                <div class="card-body py-2">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-3">
+                            <label class="form-label form-label-sm mb-0">Type Name</label>
+                            <input type="text" class="form-control form-control-sm" id="ttName" placeholder="e.g. Search & Rescue">
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label form-label-sm mb-0">Description</label>
+                            <input type="text" class="form-control form-control-sm" id="ttComment" placeholder="Short description">
+                        </div>
+                        <div class="col-md-auto">
+                            <button type="button" class="btn btn-sm btn-primary" id="btnAddTeamType">
+                                <i class="bi bi-plus-lg me-1"></i>Add
+                            </button>
+                        </div>
+                    </div>
+                    <input type="hidden" id="ttEditId" value="0">
+                </div>
+            </div>
+
+            <!-- Types Table -->
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0 align-middle">
+                    <thead class="sticky-top" style="background: var(--bs-body-bg);">
+                        <tr>
+                            <th class="ps-3">Type Name</th>
+                            <th>Description</th>
+                            <th class="text-center">Teams</th>
+                            <th class="text-center" style="width: 80px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="teamTypeBody">
+                        <tr><td colspan="4" class="text-center text-body-secondary py-3">Loading...</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 

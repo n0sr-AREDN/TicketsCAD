@@ -21,6 +21,7 @@ $personnel_config_links = [
     ['href' => 'settings.php#training',         'icon' => 'mortarboard',  'label' => 'Training',        'key' => 'training'],
     ['href' => 'settings.php#member-types',     'icon' => 'tags',         'label' => 'Member Types',    'key' => 'member-types'],
     ['href' => 'settings.php#member-statuses',  'icon' => 'toggle-on',   'label' => 'Member Statuses', 'key' => 'member-statuses'],
+    ['href' => 'settings.php#team-types',       'icon' => 'diagram-3',   'label' => 'Team Types',      'key' => 'team-types'],
 ];
 ?>
 <nav class="d-flex align-items-center gap-1 mb-3 pb-2 border-bottom flex-wrap" aria-label="Personnel navigation">

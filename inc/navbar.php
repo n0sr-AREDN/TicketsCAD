@@ -1106,12 +1106,22 @@ if (!preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', $__pttC
 </div>
 <script src="assets/js/command-bar.js?v=<?php echo newui_version(); ?>"></script>
 
+<!-- CSRF token for JS-driven POSTs. Unconditional and page-order-independent
+     (calls csrf_token() rather than reading $_SESSION directly) -- this used
+     to be set only inside the i18n block below, so every JS file that reads
+     window.CSRF_TOKEN (equipment.js, teams.js, scheduling.js, and 7 others)
+     silently sent an empty token on any install with fewer than 2 configured
+     languages, which is the default. GH: Chris Byrd, Google Group 2026-08-06
+     ("Invalid CSRF token" on Equipment save, HTTP 403 on Team save). -->
+<script>
+window.CSRF_TOKEN = <?php echo json_encode(csrf_token()); ?>;
+</script>
+
 <!-- Language Switcher bootstrap data + module (Phase 8 i18n) -->
 <?php if (count($_navbar_langs) >= 2): ?>
 <script>
 window.AVAILABLE_LANGS    = <?php echo json_encode($_navbar_langs); ?>;
 window.CURRENT_LANG       = <?php echo json_encode($_navbar_curr); ?>;
-window.CSRF_TOKEN         = window.CSRF_TOKEN || <?php echo json_encode($_SESSION['csrf_token'] ?? ''); ?>;
 // Phase 8b: full registry so the switcher can use admin-customized
 // display + native names instead of the JS LANG_NAMES fallback map.
 window.LANGUAGE_REGISTRY  = <?php echo json_encode(i18n_language_registry(), JSON_UNESCAPED_UNICODE); ?>;

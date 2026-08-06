@@ -1022,6 +1022,13 @@
             "role",
             "team_id"
         ],
+        "team_types": [
+            "by",
+            "comment",
+            "from",
+            "on",
+            "type"
+        ],
         "teams": [
             "by",
             "created_at",
@@ -1496,8 +1503,8 @@
     "_meta": {
         "generated_by": "tools/gen_schema_manifest.php",
         "purpose": "columns this code writes to + tables it references; checked by inc/schema-verify.php",
-        "tables": 135,
-        "columns": 1046,
+        "tables": 136,
+        "columns": 1051,
         "required_tables": 174
     }
 }

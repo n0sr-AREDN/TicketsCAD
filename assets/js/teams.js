@@ -283,9 +283,15 @@
         teamTypes.forEach(function (tt) {
             var opt = document.createElement('option');
             opt.value = tt.id;
-            // contract audit 2026-07-07: `team_type` was a dead first
-            // fallback (never emitted); `name` is the real key.
-            opt.textContent = tt.name || 'Unknown';
+            // The 2026-07-07 contract audit (cc99432) changed this from
+            // `team_type` to `name`, but api/teams.php's team_types query is
+            // a bare `SELECT * FROM team_types` -- that table's real column
+            // is `type` (see sql/base_schema.sql), and always was. Neither
+            // key the audit considered was correct, which is why the
+            // dropdown silently rendered "Unknown" for every real type.
+            // Found 2026-08-06 alongside the table's own missing seed data
+            // (GH: Chris Byrd, Google Group -- "Type pull down is blank").
+            opt.textContent = tt.type || 'Unknown';
             sel.appendChild(opt);
         });
     }
@@ -559,15 +565,21 @@
     }
 
     // ── API helpers ──
+    // Both helpers parse the JSON body BEFORE checking r.ok. A non-2xx
+    // response (e.g. a CSRF or RBAC failure) still carries a real
+    // {"error": "..."} payload from json_error() -- throwing on the status
+    // first discarded it and left only a bare "HTTP 403", which is why the
+    // CSRF-token bug below surfaced as an unexplained 403 on Team save
+    // while the identical bug on Equipment showed its real message (GH:
+    // Chris Byrd, Google Group 2026-08-06).
     function apiGet(url) {
         return fetch(url, { credentials: 'same-origin' })
             .then(function (r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(function (data) {
-                if (data.error) throw new Error(data.error);
-                return data;
+                return r.json().catch(function () { return {}; }).then(function (data) {
+                    if (data.error) throw new Error(data.error);
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return data;
+                });
             });
     }
 
@@ -587,12 +599,11 @@
             body: JSON.stringify(body)
         })
         .then(function (r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-        })
-        .then(function (data) {
-            if (data.error) throw new Error(data.error);
-            return data;
+            return r.json().catch(function () { return {}; }).then(function (data) {
+                if (data.error) throw new Error(data.error);
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return data;
+            });
         });
     }
 

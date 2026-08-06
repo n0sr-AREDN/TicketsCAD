@@ -356,6 +356,7 @@
         else if (tab === 'member-types')     loadMemberTypes();
         else if (tab === 'member-statuses')  loadMemberStatuses();
         else if (tab === 'teams')            loadTeamsConfig();
+        else if (tab === 'team-types')       loadTeamTypes();
         else if (tab === 'members')          loadMembersSummary();
         else if (tab === 'audit-log')        { loadAuditLog(); loadAuditRetentionStatus(); }
         else if (tab === 'lookup-services')  loadLookupConfig();
@@ -9051,6 +9052,105 @@
                 addBtn.innerHTML = '<i class="bi bi-plus-lg me-1"></i>Add';
                 loadedPanels['member-types'] = false;
                 loadMemberTypes();
+            }).catch(function (err) {
+                showAlert('Save failed: ' + err.message, 'danger');
+            });
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  TEAM TYPES CONFIG
+    // ═══════════════════════════════════════════════════════════════
+
+    function loadTeamTypes() {
+        fetchJSON('api/personnel-config.php?table=team_types').then(function (data) {
+            var types = data.types || [];
+            var tbody = document.getElementById('teamTypeBody');
+            if (!tbody) return;
+
+            if (types.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-body-secondary py-3">No team types defined. Add one above.</td></tr>';
+                bindTeamTypeForm();
+                return;
+            }
+
+            var teamTypesById = {};
+            var html = '';
+            for (var i = 0; i < types.length; i++) {
+                var t = types[i];
+                teamTypesById[t.id] = t;
+                html += '<tr>' +
+                    '<td class="ps-3 fw-semibold">' + esc(t.type) + '</td>' +
+                    '<td class="text-body-secondary">' + esc(t.comment || '') + '</td>' +
+                    '<td class="text-center"><span class="badge bg-secondary">' + (t.team_count || 0) + '</span></td>' +
+                    '<td class="text-center">' +
+                        '<button class="btn btn-sm btn-link p-0 me-1 tt-edit-btn" data-id="' + t.id + '" title="Edit"><i class="bi bi-pencil text-primary"></i></button>' +
+                        '<button class="btn btn-sm btn-link p-0 tt-del-btn" data-id="' + t.id + '" data-name="' + esc(t.type) + '" title="Delete"><i class="bi bi-trash text-danger"></i></button>' +
+                    '</td></tr>';
+            }
+            tbody.innerHTML = html;
+
+            var editBtns = tbody.querySelectorAll('.tt-edit-btn');
+            for (var e = 0; e < editBtns.length; e++) {
+                (function (btn) {
+                    btn.addEventListener('click', function () {
+                        var row = teamTypesById[btn.getAttribute('data-id')];
+                        if (!row) return;
+                        document.getElementById('ttEditId').value = row.id;
+                        document.getElementById('ttName').value = row.type || '';
+                        document.getElementById('ttComment').value = row.comment || '';
+                        document.getElementById('btnAddTeamType').innerHTML = '<i class="bi bi-check-lg me-1"></i>Update';
+                    });
+                })(editBtns[e]);
+            }
+
+            var delBtns = tbody.querySelectorAll('.tt-del-btn');
+            for (var d = 0; d < delBtns.length; d++) {
+                (function (btn) {
+                    btn.addEventListener('click', function () {
+                        if (!confirm('Delete team type "' + btn.getAttribute('data-name') + '"?')) return;
+                        apiPostDirect('personnel-config', { action: 'delete_team_type', id: parseInt(btn.getAttribute('data-id'), 10) })
+                        .then(function () {
+                            loadedPanels['team-types'] = false;
+                            loadTeamTypes();
+                        }).catch(function (err) {
+                            showAlert('Delete failed: ' + err.message, 'danger');
+                        });
+                    });
+                })(delBtns[d]);
+            }
+
+            bindTeamTypeForm();
+        }).catch(function (err) {
+            var tbody = document.getElementById('teamTypeBody');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-danger py-3">Failed to load: ' + esc(err.message) + '</td></tr>';
+        });
+    }
+
+    function bindTeamTypeForm() {
+        var addBtn = document.getElementById('btnAddTeamType');
+        if (!addBtn || addBtn.hasAttribute('data-bound')) return;
+        addBtn.setAttribute('data-bound', '1');
+
+        addBtn.addEventListener('click', function () {
+            var type = (document.getElementById('ttName').value || '').trim();
+            if (!type) { showAlert('Type name is required.', 'warning'); return; }
+
+            var payload = {
+                action: 'save_team_type',
+                id: parseInt(document.getElementById('ttEditId').value, 10) || 0,
+                type: type,
+                comment: (document.getElementById('ttComment').value || '').trim()
+            };
+
+            apiPostDirect('personnel-config', payload).then(function (data) {
+                if (data.error) { showAlert(data.error, 'danger'); return; }
+                document.getElementById('ttEditId').value = '0';
+                document.getElementById('ttName').value = '';
+                document.getElementById('ttComment').value = '';
+                addBtn.innerHTML = '<i class="bi bi-plus-lg me-1"></i>Add';
+                loadedPanels['team-types'] = false;
+                loadTeamTypes();
             }).catch(function (err) {
                 showAlert('Save failed: ' + err.message, 'danger');
             });

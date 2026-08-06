@@ -6,11 +6,14 @@
  *   - certifications (certification types)
  *   - member_types
  *   - member_status
+ *   - team_types (categorizes teams — unlike the others, had NO admin CRUD
+ *     until 2026-08-06; see the GH: Chris Byrd note on getTeamTypes() below)
  *   - teams (read-only summary for config; full CRUD in teams.php)
  *
  * GET  ?table=certifications        — List all certification types
  * GET  ?table=member_types          — List all member types
  * GET  ?table=member_statuses       — List all member statuses
+ * GET  ?table=team_types            — List all team types
  * GET  ?table=teams_summary         — List teams with member counts
  * GET  ?table=members_summary       — Summary stats for members panel
  *
@@ -20,6 +23,8 @@
  * POST action=delete_member_type    — Delete member type
  * POST action=save_member_status    — Add or update member status
  * POST action=delete_member_status  — Delete member status
+ * POST action=save_team_type        — Add or update team type
+ * POST action=delete_team_type      — Delete team type
  *
  * Admin-only (level <= 1).
  */
@@ -60,6 +65,9 @@ function handlePersonnelGet() {
     }
     if ($table === 'member_statuses') {
         return getMemberStatuses();
+    }
+    if ($table === 'team_types') {
+        return getTeamTypes();
     }
     if ($table === 'teams_summary') {
         return getTeamsSummary();
@@ -129,6 +137,24 @@ function getMemberStatuses() {
         json_response(['statuses' => $statuses]);
     } catch (Exception $e) {
         json_error('Failed to load member statuses: ' . $e->getMessage());
+    }
+}
+
+function getTeamTypes() {
+    // GH: Chris Byrd, Google Group 2026-08-06 -- team_types has never had a
+    // seed row anywhere in this project's history and, unlike member_types,
+    // had no admin screen to add one either. Phase 136 seeded 9 defaults;
+    // this endpoint is the management screen that was always missing.
+    try {
+        $types = db_fetch_all(
+            "SELECT tt.id, tt.type, tt.comment,
+                    (SELECT COUNT(*) FROM " . db_table('teams') . " t WHERE t.ttypes_id = tt.id) AS team_count
+             FROM " . db_table('team_types') . " tt
+             ORDER BY tt.type"
+        );
+        json_response(['types' => $types]);
+    } catch (Exception $e) {
+        json_error('Failed to load team types: ' . $e->getMessage());
     }
 }
 
@@ -244,6 +270,8 @@ function handlePersonnelPost() {
         case 'delete_member_type':    return deleteMemberType($input);
         case 'save_member_status':    return saveMemberStatus($input);
         case 'delete_member_status':  return deleteMemberStatus($input);
+        case 'save_team_type':        return saveTeamType($input, $current_user_id);
+        case 'delete_team_type':      return deleteTeamType($input);
         default: json_error('Unknown action: ' . $action);
     }
 }
@@ -427,6 +455,60 @@ function deleteMemberStatus($input) {
         $status = db_fetch_one("SELECT status_val FROM " . db_table('member_status') . " WHERE id = ?", [$id]);
         db_query("DELETE FROM " . db_table('member_status') . " WHERE id = ?", [$id]);
         audit_log('config', 'delete', 'member_status', $id, "Deleted member status '" . ($status['status_val'] ?? $id) . "'");
+        json_response(['success' => true]);
+    } catch (Exception $e) {
+        json_error('Delete failed: ' . $e->getMessage());
+    }
+}
+
+function saveTeamType($input, $userId) {
+    $id      = intval($input['id'] ?? 0);
+    $type    = trim($input['type'] ?? '');
+    $comment = trim($input['comment'] ?? '');
+
+    if (!$type) json_error('Type name is required');
+
+    try {
+        if ($id > 0) {
+            db_query(
+                "UPDATE " . db_table('team_types') . " SET `type` = ?, `comment` = ? WHERE id = ?",
+                [$type, $comment, $id]
+            );
+            audit_log('config', 'update', 'team_type', $id, "Updated team type '{$type}'");
+        } else {
+            // `by`/`from`/`on` are legacy v3.44 NOT NULL columns without
+            // defaults (user index / IP addr / created timestamp) -- same
+            // fill convention as sql/run_teams_seed.php's starter rows.
+            db_query(
+                "INSERT INTO " . db_table('team_types') . " (`type`, `comment`, `by`, `from`, `on`)
+                 VALUES (?, ?, ?, ?, NOW())",
+                [$type, $comment, $userId, $_SERVER['REMOTE_ADDR'] ?? 'unknown']
+            );
+            $id = db_insert_id();
+            audit_log('config', 'create', 'team_type', $id, "Created team type '{$type}'");
+        }
+
+        json_response(['success' => true, 'id' => $id]);
+    } catch (Exception $e) {
+        json_error('Save failed: ' . $e->getMessage());
+    }
+}
+
+function deleteTeamType($input) {
+    $id = intval($input['id'] ?? 0);
+    if (!$id) json_error('Missing team type ID');
+
+    try {
+        $count = db_fetch_value(
+            "SELECT COUNT(*) FROM " . db_table('teams') . " WHERE ttypes_id = ?", [$id]
+        );
+        if ($count > 0) {
+            json_error('Cannot delete — ' . $count . ' team(s) use this type. Reassign them first.');
+        }
+
+        $type = db_fetch_one("SELECT `type` FROM " . db_table('team_types') . " WHERE id = ?", [$id]);
+        db_query("DELETE FROM " . db_table('team_types') . " WHERE id = ?", [$id]);
+        audit_log('config', 'delete', 'team_type', $id, "Deleted team type '" . ($type['type'] ?? $id) . "'");
         json_response(['success' => true]);
     } catch (Exception $e) {
         json_error('Delete failed: ' . $e->getMessage());

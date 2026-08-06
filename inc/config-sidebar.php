@@ -187,6 +187,7 @@ $canCfg   = (!function_exists('rbac_can') || rbac_can('action.manage_config'));
         <?php _cfg_tab('members',                  t('sidebar.tab.members',         'Members / Personnel'), 'personnel members roster people responders'); ?>
         <?php _cfg_tab('organizations',            t('sidebar.tab.organizations',   'Organizations'), 'org organizations agencies groups departments'); ?>
         <?php _cfg_tab('teams',                    t('sidebar.tab.teams',           'Teams'), 'teams crews groups strike-teams'); ?>
+        <?php _cfg_tab('team-types',                t('sidebar.tab.team_types',      'Team Types'), 'team types categories roles'); ?>
         <?php _cfg_sub(t('sidebar.sub.roles_quals', 'Roles & Qualifications')); ?>
         <?php _cfg_tab('certifications',           t('sidebar.tab.certifications',  'Certifications'), 'certs certifications qualifications credentials'); ?>
         <?php _cfg_tab('ics-positions',            t('sidebar.tab.ics_positions',   'ICS Positions'), 'ics positions nims incident command'); ?>

@@ -255,9 +255,19 @@ function handleGet() {
     // Phase 99j-5 — org-scope the members picker (equipment-assignment dropdown).
     require_once __DIR__ . '/../inc/org-scope.php';
     [$memOrgFrag, $memOrgVars] = org_member_query_filter('m.id');
+    // COALESCE to the legacy field1/field2/field4 columns for upgrade
+    // installs where the modern columns weren't backfilled -- same pattern
+    // as api/teams.php's get_member_display_list(). Without it, an upgrade
+    // install's member dropdown renders "null, null" for every member whose
+    // name still lives in the legacy fields. GH: Chris Byrd, Google Group
+    // 2026-08-06 ("Also under ownership>Personal>Owner it shows the nulls").
     $members = safe_fetch_all_eq(
-        "SELECT m.id, m.first_name, m.last_name, m.callsign FROM " . db_table('member') . " m
-         WHERE 1=1 {$memOrgFrag} ORDER BY m.last_name, m.first_name",
+        "SELECT m.id,
+                COALESCE(NULLIF(m.last_name, ''),  m.field1) AS last_name,
+                COALESCE(NULLIF(m.first_name, ''), m.field2) AS first_name,
+                COALESCE(NULLIF(m.callsign, ''),   m.field4) AS callsign
+         FROM " . db_table('member') . " m
+         WHERE 1=1 {$memOrgFrag} ORDER BY last_name, first_name",
         $memOrgVars
     );
     $teams = safe_fetch_all_eq(

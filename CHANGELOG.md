@@ -3,6 +3,59 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.8] — 2026-08-06
+
+### Fixed
+
+- **A CSRF token was only ever generated for a page if it happened to have 2
+  or more configured languages.** `window.CSRF_TOKEN` — the value 10 different
+  JS files (Equipment, Teams, Scheduling, the command bar, and others) send
+  on every write — was assigned only inside the language-switcher's
+  conditional block, which does not render at all on the default,
+  single-language install. Every affected feature silently sent an empty
+  token on such installs, surfacing as "Invalid CSRF token" on Equipment
+  saves and a bare, unexplained "HTTP 403" on Team saves (the two errors
+  look different only because Team's own error-handling separately
+  discarded the server's real error message — also fixed below). The token
+  is now generated once, unconditionally, on every page. Reported by Chris
+  Byrd, Google Group.
+
+- **An upgrade install's Equipment "assigned member" dropdown showed
+  "null, null" for most members.** The member-picker query read only the
+  modern `first_name`/`last_name` columns with no fallback to the legacy
+  `field1`/`field2` columns many upgrade installs still carry their member
+  names in — the same pattern already fixed for Teams' member dropdowns in
+  4.1.x. `api/vehicles.php` had the identical un-COALESCEd query; fixed
+  alongside rather than waiting for a matching report. Reported by Chris
+  Byrd, Google Group.
+
+- **The Team "Type" dropdown has been unconditionally blank since the
+  feature was first built.** `team_types` has never had a seed row in this
+  project's history — confirmed against the legacy v3.44 database dump —
+  and had no admin screen to add one either. A default set of 9 types
+  (Command, Fire, EMS/Medical, Search & Rescue, Law Enforcement,
+  Communications, CERT, Logistics, General) is now seeded on
+  install/upgrade. Separately, the dropdown's label read a `name` field the
+  underlying query never emits — the real column is `type` — so even a
+  manually-added type would have rendered as "Unknown". Reported by Chris
+  Byrd, Google Group.
+
+- **Team save failures showed a bare "HTTP 403" with no explanation.**
+  `assets/js/teams.js`'s request helpers threw on any non-2xx response
+  before parsing the JSON body, discarding the server's real
+  `{"error": "..."}` message — the same failure Equipment's save correctly
+  surfaced, because its helper happened to parse the body first. Both
+  helpers now read the real error message when one is sent.
+
+### Added
+
+- **A management screen for Team Types** (Settings → Team Types), the gap
+  behind the previous fix's default seed. `member_types` has had an admin
+  CRUD screen since early on; `team_types` never did — the only way to add
+  one was hand-editing the database. Mirrors the existing Member Types
+  panel: add, rename, and delete a type, with delete blocked while any team
+  still uses it.
+
 ## [4.2.7] — 2026-08-06
 
 ### Security
