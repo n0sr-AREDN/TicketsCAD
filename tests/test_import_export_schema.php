@@ -108,6 +108,23 @@ foreach ($targets as $target => $label) {
 
     $phantom = [];
     foreach ($cfg['columns'] as $key => $def) {
+        // Phase 132 Step 5 (GH #16) — a `sql`-defined column (e.g.
+        // incident.disposition_code) resolves to a JOINed table, not
+        // $cfg['table'], so it must be checked against ITS OWN declared
+        // table/column rather than against $live (which is always
+        // $cfg['table']'s columns). This is still "ask the database",
+        // just a different table.
+        if (isset($def['sql'])) {
+            $joinedTable  = $def['joined_table']  ?? '';
+            $joinedColumn = $def['joined_column'] ?? '';
+            $joinedLive = $joinedTable !== '' ? live_columns($joinedTable) : null;
+            if ($joinedLive === null) {
+                echo "[SKIP] $target.$key: joined table {$joinedTable} not present on this install\n";
+            } elseif (!isset($joinedLive[$joinedColumn])) {
+                $phantom[] = "$key (-> {$joinedTable}.{$joinedColumn})";
+            }
+            continue;
+        }
         // export_csv():      SELECT `legacy` AS `key`, else SELECT `key`
         // execute_import():  INSERT INTO … (`legacy`|`key`)
         $actual = $def['legacy'] ?? $key;

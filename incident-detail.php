@@ -113,6 +113,22 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
                         <i class="bi bi-arrow-repeat me-1"></i><?php echo e(t('incdetail.btn.update', 'Update')); ?>
                     </button>
                 </div>
+                <!-- Phase 132 Step 4 (GH #16) — close-flow disposition picker.
+                     Shown whenever Closed is selected above (regardless of
+                     whether disposition_required_on_close is on); pre-filled
+                     with the incident's current value if it already has one.
+                     Sent inline in update_status's body, same conditional-add
+                     pattern booked_date already uses (assets/js/incident-detail.js
+                     changeStatus()). Options come from the SAME picker endpoint
+                     as #dispositionSelect below (api/dispositions-picker.php). -->
+                <div class="input-group input-group-sm mt-1 d-none" id="closeDispositionRow">
+                    <label class="input-group-text py-1" for="closeDispositionSelect">
+                        <i class="bi bi-clipboard-check me-1"></i><?php echo e(t('incdetail.label.disposition', 'Disposition')); ?>
+                    </label>
+                    <select class="form-select form-select-sm" id="closeDispositionSelect">
+                        <option value=""><?php echo e(t('incdetail.disposition.none', '— None —')); ?></option>
+                    </select>
+                </div>
             </div>
             <a href="#" class="btn btn-sm btn-outline-success d-none" id="btnNavigate" target="_blank" title="Open directions in Google Maps" aria-label="Navigate to incident location">
                 <i class="bi bi-signpost-2 me-1"></i><?php echo e(t('incdetail.btn.navigate', 'Navigate')); ?>
@@ -822,6 +838,23 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
                              renders newest-first, so form-on-top keeps
                              the new entry adjacent to the input. -->
                         <div class="border-bottom px-2 py-2" id="addNoteForm">
+                            <!-- Phase 132 Step 4 (GH #16) — disposition picker,
+                                 beside the comments/note box. Settable ANY TIME
+                                 (spec §Resolved Q2), independent of the
+                                 close-action dropdown above — writes immediately
+                                 via api/incident-update.php's set_disposition
+                                 action on change. Options filtered to the
+                                 incident's type discipline server-side
+                                 (api/dispositions-picker.php); HARD INVARIANT:
+                                 never truncated to empty (plan.md §1). -->
+                            <div class="input-group input-group-sm mb-2" id="dispositionRow">
+                                <label class="input-group-text py-1" for="dispositionSelect">
+                                    <i class="bi bi-clipboard-check me-1"></i><?php echo e(t('incdetail.label.disposition', 'Disposition')); ?>
+                                </label>
+                                <select class="form-select form-select-sm" id="dispositionSelect">
+                                    <option value=""><?php echo e(t('incdetail.disposition.none', '— None —')); ?></option>
+                                </select>
+                            </div>
                             <div class="input-group input-group-sm">
                                 <textarea class="form-control form-control-sm" id="noteText"
                                           rows="1" placeholder="Add a note... (Enter to send)"
@@ -867,6 +900,19 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
 // Phase 99o (Eric beta 2026-06-29) — admin-configurable label
 // for the rendered case number ("Incident" / "Case" / "Call" / ...)
 window.INCIDENT_NUMBER_LABEL = <?php echo json_encode($incNumLabel); ?>;
+// Phase 132 Step 4 (GH #16) — disposition_required_on_close, read
+// server-side via get_variable() (CLAUDE.md "TWO settings stores" —
+// NEVER get_setting(), GH #79) so the close-flow JS knows whether to
+// block a close with no disposition BEFORE round-tripping to the API.
+// The API's own refusal (inc/incident-write.php) is still the real
+// enforcement; this is a courtesy client-side check only.
+window.DISPOSITION_REQUIRED_ON_CLOSE = <?php echo json_encode(get_variable('disposition_required_on_close') === '1'); ?>;
+window.DISPOSITION_REQUIRED_MESSAGE = <?php echo json_encode(t('incdetail.disposition.required_error', 'A disposition is required before closing this incident.')); ?>;
+// applyDispositionOptions() rebuilds both <select> option lists from
+// scratch (so re-opening after a change stays correct), which would
+// otherwise lose the server-rendered translated "None" option text —
+// thread it through the same way INCIDENT_NUMBER_LABEL is threaded above.
+window.INCDETAIL_DISPOSITION_NONE = <?php echo json_encode(t('incdetail.disposition.none', '— None —')); ?>;
 </script>
 <script src="assets/js/incident-detail.js?v=<?php echo asset_v('assets/js/incident-detail.js'); ?>"></script>
 <?php /* Phase 131 — prefills the activity-log box when the operator arrived

@@ -26,11 +26,14 @@ if (!$is_admin && !empty($user_groups)) {
     $group_filter = " AND 1=0";
 }
 
+// Soft-delete sweep (issue #25 follow-up) — a soft-deleted scheduled
+// incident must not count toward the dashboard's scheduled-count widget.
 $sql = "SELECT COUNT(DISTINCT `t`.`id`) AS `cnt`
 FROM `{$prefix}ticket` `t`
 LEFT JOIN `{$prefix}allocates` `a` ON `t`.`id` = `a`.`resource_id` AND `a`.`type` = 1
 WHERE `t`.`status` = 3
   AND `t`.`booked_date` >= DATE_ADD(NOW(), INTERVAL ? HOUR)
+  AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')
   {$group_filter}";
 
 $count = (int) db_fetch_value($sql, $params);

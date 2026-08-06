@@ -247,3 +247,188 @@ function mi_attach_message_to_active_event(array $message, string $sourceChannel
         error_log('[message-incident] attach failed (swallowed): ' . $e->getMessage());
     }
 }
+
+/**
+ * Phase 134 (Model 3, GH #23) — member -> responder -> open-assignment ->
+ * ticket resolution.
+ *
+ * Given a member id, returns the deduplicated set of OPEN incident ticket
+ * ids that member's unit(s) are currently assigned to. This is the FORWARD
+ * direction of inc/comm_resolve.php's comm_resolve_responder_member_id()
+ * (which goes responder -> member); the same two link shapes are reused
+ * here, reversed:
+ *
+ *   1. unit_personnel_assignments — an ACTIVE, non-released row
+ *      (status = 'active' AND released_at IS NULL) links a member to a
+ *      responder (the "many people, one unit" model).
+ *   2. responder.personal_for_member_id — the personal-unit model
+ *      (inc/personnel-units.php) ties exactly one responder to exactly
+ *      one member.
+ *
+ * `responder` has NO `member_id` column — plan.md §4's original SQL sketch
+ * guessed one; it does not exist on this schema (confirmed via
+ * `SHOW COLUMNS`) and must not be reintroduced.
+ *
+ * An assignment is OPEN when `assigns.clear IS NULL` (per spec.md's
+ * definition). A ticket must ALSO not be soft-deleted — nothing cascades a
+ * soft-delete onto its `assigns` rows (see incident_soft_delete_internal()'s
+ * docblock), so a ticket can be soft-deleted while an open assign row still
+ * points at it. Relying on `assigns.clear IS NULL` alone would resolve a
+ * message onto a deleted incident — the "stranded assigns" class of bug
+ * this project's CLAUDE.md documents extensively — so `ticket.deleted_at`
+ * is filtered explicitly here rather than trusted to the assigns state.
+ *
+ * NEVER throws. Returns [] for $memberId <= 0 or on any DB error.
+ *
+ * @param int $memberId
+ * @return int[] Deduplicated open ticket ids the member is assigned to.
+ */
+function mi_assigned_incident_ticket_ids(int $memberId): array {
+    if ($memberId <= 0) return [];
+
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+    try {
+        $rows = db_fetch_all(
+            "SELECT DISTINCT a.ticket_id
+               FROM `{$prefix}assigns` a
+               JOIN `{$prefix}responder` r ON r.id = a.responder_id
+               JOIN `{$prefix}ticket` t ON t.id = a.ticket_id
+              WHERE a.clear IS NULL
+                AND (t.deleted_at IS NULL OR t.deleted_at = '0000-00-00 00:00:00')
+                AND (
+                     r.personal_for_member_id = ?
+                  OR r.id IN (
+                       SELECT responder_id FROM `{$prefix}unit_personnel_assignments`
+                        WHERE member_id = ? AND status = 'active' AND released_at IS NULL
+                     )
+                )",
+            [$memberId, $memberId]
+        );
+    } catch (Throwable $e) {
+        error_log('[message-incident] mi_assigned_incident_ticket_ids failed (swallowed): ' . $e->getMessage());
+        return [];
+    }
+
+    $ids = [];
+    foreach ($rows as $r) {
+        $tid = (int) ($r['ticket_id'] ?? 0);
+        if ($tid > 0) {
+            $ids[$tid] = $tid; // dedupe by key
+        }
+    }
+    return array_values($ids);
+}
+
+/**
+ * Phase 134 (Model 3, GH #23) — sibling to
+ * mi_attach_message_to_active_event(), same body shape and same absolute
+ * never-throws guarantee, but resolves the sender's OWN open assignment(s)
+ * (mi_assigned_incident_ticket_ids()) instead of one designated active
+ * event, and can attach to more than one incident.
+ *
+ * This function is ONLY the resolve-and-attach step. It deliberately does
+ * NOT implement the Model-1 "general dispatch chat" fallback described in
+ * spec.md ("Fallback, never silent drop") — an unresolved sender, or a
+ * resolved sender with zero open assignments, is a silent no-op here by
+ * design. The fallback broadcast lives one level up in the router wiring
+ * (plan.md §6), a LATER phase step this function has no dependency on.
+ *
+ * Per spec.md's explicit v1 decision, a sender assigned (open) to two
+ * different incidents gets a note attached to BOTH — this is intentional,
+ * not a bug to guard against; no "primary unit" gate is required to ship
+ * this v1.
+ *
+ * Each per-ticket write is wrapped in ITS OWN try/catch (not one catch
+ * around the whole loop, per plan.md §4) so one ticket's write failure can
+ * never block the notes for the sender's other open incidents.
+ *
+ * NEVER throws. Every DB / resolve / format / write step is wrapped; a
+ * failure is logged (error_log) and swallowed.
+ *
+ * @param array  $message        Broker message array (body + sender fields,
+ *                               and optionally _source_message_id set by the
+ *                               router forward, or source_message_id).
+ * @param string $sourceChannel  Channel code the message arrived on
+ *                               (e.g. 'telegram', 'slack').
+ * @return void
+ */
+function mi_attach_message_to_assigned_incidents(array $message, string $sourceChannel): void {
+    try {
+        $sender = _mi_message_sender($message);
+        if ($sender === '') {
+            return; // Nothing to resolve.
+        }
+
+        // Resolve the sender to a member. Best-effort, same shape as
+        // mi_attach_message_to_active_event()'s Link 1 resolution.
+        $authorMemberId = null;
+        if (function_exists('comm_resolve_member_by_address')) {
+            try {
+                $authorMemberId = comm_resolve_member_by_address($sourceChannel, $sender);
+            } catch (Exception $e) {
+                $authorMemberId = null; // resolution is best-effort
+            }
+        }
+        if (empty($authorMemberId)) {
+            // Unresolved sender — the expected common case for most inbound
+            // chatter, not an error. The caller falls through to Model 1
+            // general chat; this function implements no fallback itself.
+            return;
+        }
+
+        $ticketIds = mi_assigned_incident_ticket_ids((int) $authorMemberId);
+        if (empty($ticketIds)) {
+            // Resolved, but nothing open to attach to right now — same
+            // "let the caller fall through" contract as the unresolved case.
+            return;
+        }
+
+        $body = trim((string) ($message['body'] ?? ''));
+        if ($body === '') {
+            return; // Nothing to log (e.g. a voice PTT with no transcript).
+        }
+
+        $note = _mi_build_note($message, $sourceChannel);
+        if ($note === '') {
+            return;
+        }
+
+        if (!function_exists('incident_add_note_internal')) {
+            require_once __DIR__ . '/incident-write.php';
+        }
+
+        // Source message id: prefer the router-forward metadata, then a
+        // plain key, else null. Same precedence as the active-event sibling.
+        $srcMsgId = null;
+        foreach (['_source_message_id', 'source_message_id', 'message_id', 'id'] as $k) {
+            if (isset($message[$k]) && $message[$k] !== null && (int) $message[$k] > 0) {
+                $srcMsgId = (int) $message[$k];
+                break;
+            }
+        }
+
+        $meta = [
+            'source_channel'    => strtolower(trim($sourceChannel)),
+            'source_message_id' => $srcMsgId,
+            'author_member_id'  => (int) $authorMemberId,
+        ];
+
+        foreach ($ticketIds as $ticketId) {
+            try {
+                $result = incident_add_note_internal((int) $ticketId, $note, 0, $meta);
+                if (!empty($result['errors'])) {
+                    error_log('[message-incident] assigned-incident add_note returned errors for ticket '
+                        . $ticketId . ': ' . implode('; ', $result['errors']));
+                }
+            } catch (Throwable $e) {
+                // Per-iteration catch (plan.md §4) — one ticket's failure
+                // must not block the notes for the sender's other incidents.
+                error_log('[message-incident] assigned-incident attach failed for ticket '
+                    . $ticketId . ' (swallowed): ' . $e->getMessage());
+            }
+        }
+    } catch (Throwable $e) {
+        // ABSOLUTE guarantee: never propagate into the caller.
+        error_log('[message-incident] attach-to-assigned-incidents failed (swallowed): ' . $e->getMessage());
+    }
+}

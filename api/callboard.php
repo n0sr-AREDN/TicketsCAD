@@ -52,7 +52,12 @@ try {
         `t`.`status` = 2
         OR `t`.`status` = 3
         OR (`t`.`status` = 1 AND `t`.`problemend` >= DATE_SUB(NOW(), INTERVAL ? MINUTE))
-    )";
+    )
+    AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')";
+    // Soft-delete sweep (issue #25 follow-up) — same class of bug as the
+    // dispatch board (api/incidents.php func=0, fixed in 1502157): an
+    // incident deleted while OPEN stays status=2 and would match the
+    // first clause above forever.
 
     // Phase 99j-4 — org-scope filter. See specs/phase-99j-org-scoping.
     require_once __DIR__ . '/../inc/org-scope.php';

@@ -13,5 +13,9 @@
         "psr-4": {
             "NewUI\\Proxy\\": "proxy/"
         }
+    },
+    "scripts": {
+        "post-install-cmd": ["php tools/patch_vendor_webpush.php"],
+        "post-update-cmd": ["php tools/patch_vendor_webpush.php"]
     }
 }

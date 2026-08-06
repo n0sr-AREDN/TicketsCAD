@@ -955,7 +955,17 @@ TicketsCAD maintains a detailed audit log of all significant actions.
 2. Filter by user, action type, date range, IP address, or severity.
 3. Review entries. Each entry shows the timestamp, user, action, details, and IP address.
 
-Audit logs are append-only --- they cannot be deleted through the application. The log API is at `api/audit-log.php` with the helper module at `inc/audit.php`.
+Audit logs are append-only through every normal path --- no endpoint updates or deletes an entry. The one exception is deliberate: an administrator with the Manage Audit Log Retention permission (Super Admin by default) can turn on automatic retention, in the same Audit Log panel under **Retention & Purge**.
+
+**Retention & Purge (Super Admin only):**
+- Off by default --- entries are kept forever until an administrator turns retention on.
+- When enabled, set the number of days to keep. Anything older is **archived to a file on the server first** (compressed, never sent anywhere), then removed from the live log --- so the live table shrinks but nothing is lost outright.
+- The panel shows how many entries are old enough to be purged at your chosen setting before you save it, and a below-365-day value is flagged with a warning (CJIS Security Policy's minimum) but is not blocked --- your agency's own retention rules are your call.
+- A **Purge now** button runs the same process on demand.
+- A daily background job runs automatically once retention is turned on; its status is visible on **Config > System > System Health > Scheduled Jobs**.
+- If the purge cannot run (for example, an administrator has locked down the database so the application cannot delete rows, for extra tamper-resistance), the panel and the Scheduled Jobs page both show a clear failure --- it never fails silently.
+
+The log API is at `api/audit-log.php` with the helper module at `inc/audit.php`; retention/purge logic is in `inc/audit-retention.php` and `api/audit-retention.php`. See [AUDIT-LOG-REFERENCE.md § Retention](AUDIT-LOG-REFERENCE.md#retention) for the technical detail.
 
 ---
 

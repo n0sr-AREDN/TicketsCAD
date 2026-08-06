@@ -738,17 +738,39 @@ if ($section === 'signal_codes') {
 if ($section === 'facilities') {
 
     if ($method === 'GET') {
+        // This panel manages `hide` directly (it's one of the editable
+        // fields below), so a hidden facility belongs in this list — an
+        // admin needs to see it to un-hide it. `deleted_at` is a different
+        // thing: the same soft-delete gap as GH#52 (api/facilities.php),
+        // just in a second, separate read path. facility_soft_delete_internal()
+        // sets deleted_at (or falls back to hide=1 on a legacy install with
+        // no deleted_at column at all), but this query never excluded it, so
+        // a facility deleted from the main Facilities screen kept showing
+        // here — reported by Chris Byrd 2026-08-06 as "Settings > Facilities
+        // shows duplicates" after he'd already deleted them from the main
+        // list. Detect the column defensively; older installs may lack it.
+        $hasDeletedAt = false;
+        try {
+            $hasDeletedAt = (int) db_fetch_value(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS
+                  WHERE TABLE_SCHEMA = DATABASE()
+                    AND TABLE_NAME = ? AND COLUMN_NAME = 'deleted_at'",
+                [$prefix . 'facilities']
+            ) > 0;
+        } catch (Exception $e) { $hasDeletedAt = false; }
+        $notDeleted = $hasDeletedAt ? ' WHERE `deleted_at` IS NULL' : '';
+
         try {
             $rows = db_fetch_all(
                 "SELECT `id`, `name`, `type`, `description`, `lat`, `lng`, `contact`, `hide`
-                 FROM `{$prefix}facilities`
+                 FROM `{$prefix}facilities`{$notDeleted}
                  ORDER BY `name`"
             );
         } catch (Exception $e) {
             // Fallback without contact/hide if columns don't exist
             $rows = db_fetch_all(
                 "SELECT `id`, `name`, `type`, `description`, `lat`, `lng`
-                 FROM `{$prefix}facilities`
+                 FROM `{$prefix}facilities`{$notDeleted}
                  ORDER BY `name`"
             );
         }

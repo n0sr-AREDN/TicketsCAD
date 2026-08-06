@@ -194,6 +194,9 @@ class ZelloProxyApp implements MessageComponentInterface
     /** @var bool Whether the zello location provider is enabled, cached with the id */
     private $zelloProviderEnabled = false;
 
+    /** @var bool Issue #26 — log the disabled-provider skip once per process, not once per location update */
+    private $zelloProviderDisabledLogged = false;
+
     /** @var bool|null Cached probe for the unit_location_bindings.source column */
     private $bindingHasSourceCol = null;
 
@@ -731,6 +734,35 @@ class ZelloProxyApp implements MessageComponentInterface
         if (!$this->upstream || !$this->upstream->isConnected()) {
             $this->connectUpstream();
         }
+    }
+
+    /**
+     * Connect upstream as soon as the daemon starts, rather than waiting for
+     * the first authenticated browser client (issue #114, Eric 2026-08-03:
+     * "we should have a proper archive of communications so a dispatcher can
+     * login and see the historical transmissions, and ... broadcast weather
+     * alerts as soon as we're aware of them").
+     *
+     * Before this, `onOpen()`/`handleAuth()` only triggered connectUpstream()
+     * once a browser opened the console — so anything that happened before
+     * the first login of the day (or during a gap with nobody logged in) was
+     * never received at all, not archived-and-hidden. handleUpstreamEvent()
+     * already logs every incoming text/voice/location message to the DB and
+     * broadcasts to whatever's in $this->clients (an empty set is a no-op,
+     * not an error), so that half of "proper archive" was already correct —
+     * the only gap was the connection never being open to receive anything
+     * in the first place. Same story for outbound: pollZelloOutbox() already
+     * drains queued sends on a 2s timer regardless of client count, it just
+     * had nothing to send through while upstream was disconnected.
+     *
+     * Called once from zello-proxy.php right before $loop->run(). No-ops
+     * silently (via connectUpstream()'s own credential guard) if Zello isn't
+     * configured yet — same behaviour as today's "not connected until
+     * someone logs in", just without needing a login to trigger the attempt.
+     */
+    public function connectOnStartup(): void
+    {
+        $this->connectUpstream();
     }
 
     /**
@@ -2811,6 +2843,18 @@ class ZelloProxyApp implements MessageComponentInterface
             }
             if (!$this->zelloProviderEnabled) {
                 // Provider present but turned off in Settings — respect it.
+                // Issue #26: this flag is cached once per process (see
+                // above), so an admin enabling Zello Location while the
+                // proxy is already running gets nothing until it restarts.
+                // The missing-row case above already logs something
+                // actionable; disabled returned silently, and disabled is
+                // the shipped default — the branch people actually hit.
+                // One log line turns "location sharing doesn't work" into
+                // a one-line answer without changing the cache lifetime.
+                if (!$this->zelloProviderDisabledLogged) {
+                    \plog("[Proxy] 'zello' location provider is disabled in Settings — skipping map updates for this process. If you just enabled it, restart the proxy to pick up the change.");
+                    $this->zelloProviderDisabledLogged = true;
+                }
                 return;
             }
 

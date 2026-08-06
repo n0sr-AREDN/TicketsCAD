@@ -97,7 +97,16 @@ function _mt_active_event(): array {
     if ($tid <= 0) return ['id' => 0, 'label' => ''];
     $prefix = $GLOBALS['db_prefix'] ?? '';
     $scope = '';
-    try { $scope = (string) db_fetch_value("SELECT scope FROM `{$prefix}ticket` WHERE id = ?", [$tid]); } catch (Throwable $e) {}
+    // Soft-delete sweep (issue #25 follow-up) — the active event can be
+    // deleted out from under the tray without being cleared; don't keep
+    // labeling it as live.
+    try {
+        $scope = (string) db_fetch_value(
+            "SELECT scope FROM `{$prefix}ticket`
+              WHERE id = ? AND (deleted_at IS NULL OR deleted_at = '0000-00-00 00:00:00')",
+            [$tid]
+        );
+    } catch (Throwable $e) {}
     return ['id' => $tid, 'label' => ($scope !== '' ? $scope : ('#' . $tid))];
 }
 

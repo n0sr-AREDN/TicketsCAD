@@ -55,9 +55,14 @@ if ($ticket_id <= 0) {
 
 // Verify ticket exists. The helpers each re-verify, but a friendly
 // 404 here keeps the dispatcher UI's error toast accurate.
+//
+// Soft-delete sweep (issue #25 follow-up) — a soft-deleted incident must
+// not accept new unit assignments.
 try {
     $ticket = db_fetch_one(
-        "SELECT `id`, `status`, `scope` FROM `{$prefix}ticket` WHERE `id` = ?",
+        "SELECT `id`, `status`, `scope` FROM `{$prefix}ticket`
+          WHERE `id` = ?
+            AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')",
         [$ticket_id]
     );
 } catch (Exception $e) {

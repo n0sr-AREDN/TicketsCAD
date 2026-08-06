@@ -54,6 +54,8 @@ function _zcov_fetch_one(string $sql, array $params = []) {
 $currentUserId = (int) ($_SESSION['user_id'] ?? 0);
 
 // ── Which events have zones? (for the auto-pick + optional picker) ──
+// Soft-delete sweep (issue #25 follow-up) — a soft-deleted event must not
+// appear in the picker or be auto-selected.
 $eventsWithZones = _zcov_fetch_all(
     "SELECT t.`id`,
             t.`scope`,
@@ -63,6 +65,7 @@ $eventsWithZones = _zcov_fetch_all(
      FROM `{$prefix}event_zones` z
      JOIN `{$prefix}ticket` t ON t.`id` = z.`ticket_id`
      WHERE (z.`hide` = 0 OR z.`hide` IS NULL)
+       AND (t.`deleted_at` IS NULL OR t.`deleted_at` = '0000-00-00 00:00:00')
      GROUP BY t.`id`, t.`scope`, t.`incident_number`, t.`status`
      ORDER BY (t.`status` = 2) DESC, t.`id` DESC"
 );
@@ -100,7 +103,9 @@ if ($ticketId <= 0) {
 }
 
 $event = _zcov_fetch_one(
-    "SELECT `id`, `scope`, `incident_number` FROM `{$prefix}ticket` WHERE `id` = ?",
+    "SELECT `id`, `scope`, `incident_number` FROM `{$prefix}ticket`
+      WHERE `id` = ?
+        AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')",
     [$ticketId]
 );
 if (!$event) {

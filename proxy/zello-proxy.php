@@ -184,6 +184,16 @@ $loop->addPeriodicTimer(2.0, function () use ($proxyApp) {
     }
 });
 
+// Issue #114 (Eric 2026-08-03): connect upstream now, not on the first
+// dispatcher login — so historical transmissions land in the archive and
+// queued sends (e.g. weather alerts) go out immediately instead of waiting
+// for someone to open the console. futureTick() so this runs once the loop
+// is actually spinning, same as any other loop-scheduled work here.
+$loop->futureTick(function () use ($proxyApp) {
+    plog('[Init] Connecting upstream at startup (issue #114)...');
+    $proxyApp->connectOnStartup();
+});
+
 echo "\n";
 echo "════════════════════════════════════════════════\n";
 echo "  Listening on ws://0.0.0.0:{$port}\n";

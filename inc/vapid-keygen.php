@@ -67,21 +67,55 @@ declare(strict_types=1);
  * OPENSSL_CONF wins: if an admin has already followed the Windows/IIS guide,
  * honour their choice rather than second-guessing it.
  *
+ * PHP_BINARY IS THE WRONG DIRECTORY UNDER A REAL WEB SERVER. It is the
+ * calling SAPI's own executable — found empirically 2026-08-06 by actually
+ * clicking "Generate New Keypair" in a browser against Apache, not just
+ * running the CLI test suite: under apache2handler on this XAMPP install,
+ * PHP_BINARY is `C:\xampp\8.2.4\apache\bin\httpd.exe`, so dirname(PHP_BINARY)
+ * pointed at Apache's OWN bin directory and none of the candidates below it
+ * ever existed. Every test that had verified this fallback ran under CLI
+ * PHP, where PHP_BINARY happens to genuinely be inside PHP's own directory —
+ * so the fallback this function exists to provide had never actually worked
+ * through a real request, on either this function or field-encrypt.php's
+ * copy of it, since GH#8 shipped.
+ *
+ * php_ini_loaded_file() does not have this problem: every SAPI loads A
+ * php.ini from somewhere inside PHP's own directory, CLI included, so
+ * dirname() of it is reliable regardless of which web server is asking.
+ * The PHP_BINARY-derived paths stay as a fallback rather than being
+ * removed, for a setup where php.ini genuinely cannot be located.
+ *
  * @return array<int, string>
  */
 function vapid_openssl_conf_candidates(): array
 {
-    $phpDir = dirname(PHP_BINARY);
     $out = [];
-    foreach ([
+
+    $iniFile = php_ini_loaded_file();
+    $phpDirs = [];
+    if (is_string($iniFile) && $iniFile !== '') {
+        $phpDirs[] = dirname($iniFile);
+    }
+    $phpDirs[] = dirname(PHP_BINARY);
+
+    $env = [
         getenv('OPENSSL_CONF') ?: null,
         getenv('SSLEAY_CONF') ?: null,
-        $phpDir . '/extras/ssl/openssl.cnf',
-        $phpDir . '/../apache/conf/openssl.cnf',
-        $phpDir . '/extras/openssl.cnf',
-    ] as $p) {
+    ];
+    foreach ($env as $p) {
         if (is_string($p) && $p !== '') {
             $out[] = $p;
+        }
+    }
+    foreach ($phpDirs as $phpDir) {
+        foreach ([
+            $phpDir . '/extras/ssl/openssl.cnf',
+            $phpDir . '/../apache/conf/openssl.cnf',
+            $phpDir . '/extras/openssl.cnf',
+        ] as $p) {
+            if (!in_array($p, $out, true)) {
+                $out[] = $p;
+            }
         }
     }
     return $out;
@@ -278,6 +312,81 @@ function vapid_keygen_advice(?string $libraryError, string $fallbackError): stri
     } else {
         $msg .= "\n\nOpenSSL on this host CAN generate an EC key, so its configuration is not "
               . 'the problem. The direct attempt reported: ' . $fallbackError;
+    }
+
+    return $msg;
+}
+
+/**
+ * GH#31: does this host actually resolve the PER-MESSAGE encryption key,
+ * not just the one-time VAPID keypair?
+ *
+ * vapid_generate_keypair() succeeding proves nothing about whether an actual
+ * push send will work — that showed up in production as "Keypair configured"
+ * followed by every send failing, because the library generates a fresh EC
+ * key for every message via a call this file's fallback never touched.
+ * tools/patch_vendor_webpush.php fixes that call site directly; this
+ * function proves the fix is actually in effect by invoking the REAL
+ * vendored method — not a parallel reimplementation of what we assume it
+ * does, which could silently drift from the patched code over time.
+ *
+ * Requires the vendor autoloader to already be loaded; returns a clear
+ * failure rather than fatal if it is not.
+ *
+ * @return array{ok:bool, error:?string}
+ */
+function vapid_encryption_selftest(): array
+{
+    if (!class_exists('\\Minishlink\\WebPush\\Encryption')) {
+        return ['ok' => false, 'error' => 'minishlink/web-push is not installed'];
+    }
+
+    try {
+        $method = new ReflectionMethod('\\Minishlink\\WebPush\\Encryption', 'createLocalKeyObject');
+        $method->setAccessible(true);
+        $method->invoke(null);
+        return ['ok' => true, 'error' => null];
+    } catch (Throwable $e) {
+        return ['ok' => false, 'error' => $e->getMessage()];
+    }
+}
+
+/**
+ * Turn a failed vapid_encryption_selftest() into something an administrator
+ * can act on — the same principle as vapid_keygen_advice(), applied to a
+ * different symptom: here the keypair itself is fine, so the message must
+ * say plainly that KEYPAIR SUCCESS DOES NOT MEAN SENDS WILL WORK, or an
+ * admin who already saw "Keypair configured" has no reason to read further.
+ */
+function vapid_send_capability_advice(string $selftestError): string
+{
+    $msg = "Your VAPID keypair is valid, but a live test of the per-message "
+         . "encryption step failed, which means push notifications will NOT "
+         . "actually send on this host. This is a different problem from "
+         . "keypair generation, and generating a new keypair will not fix it.";
+
+    if (vapid_openssl_conf_is_missing()) {
+        $found = vapid_find_openssl_conf();
+        if ($found !== null) {
+            $msg .= "\n\nThe automatic fix (GH#31) looks for openssl.cnf at: " . $found
+                  . "\nand should be using it. If sends are still failing, the vendor "
+                  . "library may not have been patched — run:\n"
+                  . "    php tools/patch_vendor_webpush.php\n"
+                  . "and confirm it reports 'applied', not an error. If it errors, "
+                  . "minishlink/web-push has likely changed and needs a look — see "
+                  . "that script's own comments.";
+        } else {
+            $msg .= "\n\nNo openssl.cnf could be found anywhere this host was told to "
+                  . "look: " . implode(', ', vapid_openssl_conf_candidates()) . "\n"
+                  . "Set OPENSSL_CONF — and on IIS, set it in BOTH the machine "
+                  . "environment and IIS FastCGI's own environmentVariables "
+                  . "collection, which replaces rather than merges the inherited "
+                  . "environment. Full walkthrough: docs/INSTALL-WINDOWS-IIS.md";
+        }
+    } else {
+        $msg .= "\n\nThis host's OpenSSL can otherwise generate an EC key, so its "
+              . "configuration is not the general problem. The self-test reported: "
+              . $selftestError;
     }
 
     return $msg;

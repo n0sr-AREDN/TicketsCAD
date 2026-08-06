@@ -225,6 +225,16 @@ function handlePersonnelPost() {
     $input = json_decode(file_get_contents('php://input'), true);
     if (!$input) json_error('Invalid JSON body');
 
+    // Issue #20 (public repo, security): this endpoint performed 4 INSERTs
+    // and 3 DELETEs with no CSRF verification at all — a browser-default
+    // (SameSite=Lax cookies) was the only thing standing between it and a
+    // cross-site POST. Every client call site already carries csrf_token
+    // via apiPostDirect() (assets/js/config.js) as of this fix.
+    $token = $input['csrf_token'] ?? $_GET['csrf_token'] ?? '';
+    if (!csrf_verify($token)) {
+        json_error('Invalid CSRF token', 403);
+    }
+
     $action = $input['action'] ?? '';
 
     switch ($action) {

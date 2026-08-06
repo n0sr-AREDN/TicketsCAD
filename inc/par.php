@@ -401,9 +401,14 @@ function par_broadcast_overdue(int $ticketId, int $overdueSecs): int {
     $prefix = $GLOBALS['db_prefix'] ?? '';
 
     try {
+        // Soft-delete sweep (issue #25 follow-up) — never broadcast an
+        // urgent alert naming a soft-deleted incident.
         $tk = db_fetch_one(
             "SELECT id, scope, in_types_id
-               FROM `{$prefix}ticket` WHERE id = ? LIMIT 1",
+               FROM `{$prefix}ticket`
+              WHERE id = ?
+                AND (deleted_at IS NULL OR deleted_at = '0000-00-00 00:00:00')
+              LIMIT 1",
             [$ticketId]
         );
         if (!$tk) return 0;

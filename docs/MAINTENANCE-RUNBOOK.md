@@ -113,6 +113,50 @@ The pending-message sweep is identical with the name and ExecStart changed —
 `/usr/bin/php /var/www/newui/tools/pending_messages_tick.php`, and
 `ticketscad-pending-msg.timer` pointing `Unit=` at it.
 
+The audit-log retention purge (Phase 133, 2026-08-03) is the same shape again
+— `ticketscad-audit-purge.service` running
+`/usr/bin/php /var/www/newui/tools/audit_log_purge_tick.php`, and
+`ticketscad-audit-purge.timer` pointing `Unit=` at it — but **daily**, not
+every minute:
+
+```ini
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=1d
+AccuracySec=1h
+Persistent=true
+Unit=ticketscad-audit-purge.service
+```
+
+This job is a genuine no-op (`Settings → Audit Log → Retention & Purge` is
+disabled by default) unless an administrator has turned on
+`audit_log_retention_days` — nothing runs it into deleting anything until
+that setting is nonzero, so installing this timer on an install where
+retention is off is safe and harmless. See
+[AUDIT-LOG-REFERENCE.md § Retention](AUDIT-LOG-REFERENCE.md#retention) for
+what the job does and how it archives before it deletes.
+
+The inbound channel poll (Phase 134, 2026-08 — GH #23 Model 3) is the same
+shape again — `ticketscad-channel-receive-tick.service` running
+`/usr/bin/php /var/www/newui/tools/channel_receive_tick.php`, and
+`ticketscad-channel-receive-tick.timer` pointing `Unit=` at it — **every
+minute**, same interval as `par-tick`:
+
+```ini
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=15s
+Persistent=true
+Unit=ticketscad-channel-receive-tick.service
+```
+
+Like the audit-log purge, this job is a genuine no-op — 0 channels polled —
+unless an administrator has opted a channel in via Settings → Telegram /
+Settings → Slack ("Poll for inbound messages", off by default on both).
+Installing this timer unconditionally is safe and harmless; nothing is
+polled until an operator turns a specific channel's inbound polling on.
+
 #### If you use Web Push, SMS, e-mail, Slack or webhooks: run that one every 15 seconds
 
 Since 2026-07-31 the pending-message sweep also **sends the outbound
@@ -149,7 +193,10 @@ Install and prove them:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now ticketscad-par-tick.timer ticketscad-pending-msg.timer
+sudo systemctl enable --now ticketscad-par-tick.timer ticketscad-pending-msg.timer \
+  ticketscad-channel-receive-tick.timer
+# Only if you have turned on audit-log retention (Settings → Audit Log → Retention & Purge):
+sudo systemctl enable --now ticketscad-audit-purge.timer
 sudo systemctl list-timers --all | grep ticketscad
 sudo journalctl -u ticketscad-par-tick.service -n 20 --no-pager
 
@@ -188,18 +235,26 @@ fresh `scheduled_send_at`. Expiry is reversible by design.
 | `tools/expire_grants.php` | hourly | Removes time-bound role grants past `expires_at` | Users keep elevated access past intended window |
 | `tools/par_tick.php` | every minute | Fires PAR cycles for active incidents per cadence; marks missed acks; posts escalation chat | PAR doesn't fire; manual PAR still works. **Flagged on the Status page** |
 | `tools/pending_messages_tick.php` | every minute | Delivers routed messages held for their security-label kill window | Held messages never leave the queue; after `sched_stale_cutoff_min` they expire undelivered. **Flagged on the Status page** |
-| audit-log trim *(planned)* | daily 03:00 | Will drop `audit_log` rows past retention — no script yet; run as SQL: `DELETE FROM audit_log WHERE created_at < NOW() - INTERVAL 365 DAY;` | DB bloat over time |
+| `tools/audit_log_purge_tick.php` | daily | Archives (gzip NDJSON, written first) then removes `newui_audit_log` rows older than `audit_log_retention_days`, if that setting is nonzero. Off by default. | Nothing — the job is only *required* once retention is turned on, at which point a missed run is **flagged on the Status page** exactly like the two above. Disabled installs are never nagged about it. |
+| `tools/channel_receive_tick.php` | every minute | Polls opted-in broker channels (Telegram, Slack) for inbound messages; routes them via `broker_receive()` (dedup + logging + whatever routes exist). Off per-channel by default (`telegram_poll_inbound` / `slack_poll_inbound`). | Nothing — required only once at least one channel's inbound polling is turned on (Settings → Telegram / Slack), at which point a missed run is **flagged on the Status page**. Disabled/unconfigured installs are never nagged about it. |
 | location-reports trim *(planned)* | daily 03:30 | Same idea for `location_reports`; same workaround | DB bloat; map slowness |
 | backup *(planned)* | daily 02:00 | No all-in-one script yet — use `mysqldump` via cron per [BACKUP-RECOVERY-RUNBOOK.md](BACKUP-RECOVERY-RUNBOOK.md) | No fresh backup if a disaster hits |
 | `certbot renew` | twice daily (auto) | Renews Let's Encrypt cert | TLS cert expires; site breaks |
 
-**Verify the audit-trim is doing its job:**
+**Verify the audit-log purge is doing its job** (only meaningful once
+`audit_log_retention_days` is nonzero):
 
 ```sql
-SELECT MIN(created_at), MAX(created_at), COUNT(*) FROM audit_log;
+SELECT MIN(event_time), MAX(event_time), COUNT(*) FROM newui_audit_log;
+SELECT ran_at, cutoff_date, rows_purged, status, detail FROM audit_log_purges ORDER BY id DESC LIMIT 5;
 ```
 
-The MIN should be roughly `today - retention_days`. If MIN is older, the trim job isn't running.
+The MIN should be roughly `today - retention_days`. If MIN is older, check
+the latest `audit_log_purges` row: a `status='failed'` row usually means the
+application's DB user has had its DELETE grant revoked (see
+[AUDIT-LOG-REFERENCE.md § Tamper-resistance](AUDIT-LOG-REFERENCE.md#tamper-resistance))
+— that is the expected, loudly-reported result of following this project's
+own tamper-resistance advice, not a bug.
 
 ---
 

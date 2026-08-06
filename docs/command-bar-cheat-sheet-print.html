@@ -1,0 +1,270 @@
+<!--
+  Print source for docs/COMMAND-BAR-CHEAT-SHEET.pdf. Content is hand-kept in
+  sync with the COMMANDS registry in assets/js/command-bar.js (issue #30) —
+  if a command changes there, update this file and docs/COMMAND-BAR-CHEAT-SHEET.md
+  together, then regenerate:
+
+    "C:\Program Files\Google\Chrome\Application\chrome.exe" --headless --disable-gpu ^
+      --no-pdf-header-footer --print-to-pdf-no-header ^
+      --print-to-pdf="docs\COMMAND-BAR-CHEAT-SHEET.pdf" ^
+      "file:///<repo>/docs/command-bar-cheat-sheet-print.html"
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TicketsCAD Command Bar — Cheat Sheet</title>
+<style>
+  @page { size: letter; margin: 0.45in 0.5in; }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    color: #171b21;
+    font-size: 9.3pt;
+    line-height: 1.32;
+    margin: 0;
+  }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 2.5pt solid #171b21;
+    padding-bottom: 5pt;
+    margin-bottom: 9pt;
+  }
+  h1 {
+    font-size: 15pt;
+    font-weight: 800;
+    letter-spacing: -.01em;
+    margin: 0;
+  }
+  .press-slash {
+    font-size: 8.6pt;
+    color: #4a5364;
+    max-width: 3.4in;
+    text-align: right;
+    line-height: 1.3;
+  }
+  .press-slash kbd {
+    font-family: "Cascadia Mono", Consolas, monospace;
+    background: #171b21;
+    color: #fff;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 8.4pt;
+  }
+
+  .cols {
+    columns: 2;
+    column-gap: 0.32in;
+    column-rule: 0.75pt solid #d5dae2;
+  }
+
+  section {
+    break-inside: avoid;
+    margin-bottom: 9pt;
+  }
+
+  h2 {
+    font-size: 8.6pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: #7a4a10;
+    background: #fbf1de;
+    padding: 2.5pt 6pt;
+    margin: 0 0 5pt;
+    border-radius: 2px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 3pt;
+  }
+  td, th {
+    padding: 1.6pt 3pt;
+    vertical-align: top;
+    text-align: left;
+  }
+  td.cmd, th.cmd {
+    font-family: "Cascadia Mono", Consolas, monospace;
+    font-weight: 700;
+    white-space: nowrap;
+    width: 1%;
+  }
+  td.alias {
+    font-family: "Cascadia Mono", Consolas, monospace;
+    font-size: 8.3pt;
+    color: #5b6675;
+    white-space: nowrap;
+    width: 1%;
+  }
+  td.what { color: #2b323d; }
+  tr + tr td { border-top: 0.5pt solid #eceff3; }
+
+  .syntax {
+    font-family: "Cascadia Mono", Consolas, monospace;
+    background: #f1f3f6;
+    border: 0.5pt solid #d5dae2;
+    border-radius: 3px;
+    padding: 3.5pt 6pt;
+    margin: 0 0 5pt;
+    font-size: 8.6pt;
+    white-space: pre-wrap;
+  }
+  .ex { margin: 0 0 5pt; }
+  .ex .row { display: flex; gap: 6pt; margin-bottom: 1.6pt; }
+  .ex .in {
+    font-family: "Cascadia Mono", Consolas, monospace;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .ex .out { color: #4a5364; }
+  .arrow { color: #a5620a; }
+
+  p.note {
+    color: #4a5364;
+    margin: 4pt 0 0;
+    font-size: 8.4pt;
+  }
+
+  .status-grid table td.status-name { font-weight: 600; width: 30%; }
+
+  footer {
+    margin-top: 8pt;
+    padding-top: 5pt;
+    border-top: 0.75pt solid #d5dae2;
+    font-size: 7.6pt;
+    color: #7f8b9b;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  kbd {
+    font-family: "Cascadia Mono", Consolas, monospace;
+    background: #eceff3;
+    border: 0.5pt solid #c7ced8;
+    border-radius: 3px;
+    padding: 0.5pt 4pt;
+    font-size: 8.2pt;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>TicketsCAD — Command Bar Cheat Sheet</h1>
+  <div class="press-slash">
+    Press <kbd>/</kbd> anywhere to open it (not while typing in a field) &middot;
+    type a name or short prefix, <kbd>Enter</kbd> to run
+  </div>
+</header>
+
+<div class="cols">
+
+  <section>
+    <h2>Dispatch &amp; workflow</h2>
+    <table>
+      <tr><td class="cmd">/new</td><td class="alias">&mdash;</td><td class="what">Create a new incident</td></tr>
+      <tr><td class="cmd">/incidents</td><td class="alias">/inc</td><td class="what">Focus Active Incidents widget</td></tr>
+      <tr><td class="cmd">/responders</td><td class="alias">/res /resp</td><td class="what">Focus Responders widget</td></tr>
+      <tr><td class="cmd">/units</td><td class="alias">/uni</td><td class="what">Focus Responders (units view)</td></tr>
+      <tr><td class="cmd">/facilities</td><td class="alias">/fac</td><td class="what">Focus Facilities widget</td></tr>
+      <tr><td class="cmd">/log</td><td class="alias">/logs</td><td class="what">Focus Activity Log widget</td></tr>
+      <tr><td class="cmd">/detail</td><td class="alias">&mdash;</td><td class="what">Detail page, selected incident</td></tr>
+      <tr><td class="cmd">/zello</td><td class="alias">/zel</td><td class="what">Toggle the Zello radio panel</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Navigation — jump to a page</h2>
+    <table>
+      <tr><td class="cmd">/dashboard</td><td class="alias">/dash /sit /situ /situation</td><td class="what">Dashboard (main view)</td></tr>
+      <tr><td class="cmd">/bigscreen</td><td class="alias">/wall /eoc /fullscreen</td><td class="what">Full-screen display (big monitor)</td></tr>
+      <tr><td class="cmd">/search</td><td class="alias">&mdash;</td><td class="what">Search</td></tr>
+      <tr><td class="cmd">/reports</td><td class="alias">&mdash;</td><td class="what">Reports</td></tr>
+      <tr><td class="cmd">/settings</td><td class="alias">&mdash;</td><td class="what">Settings / config</td></tr>
+      <tr><td class="cmd">/sop</td><td class="alias">&mdash;</td><td class="what">SOP viewer</td></tr>
+      <tr><td class="cmd">/help</td><td class="alias">&mdash;</td><td class="what">Help page</td></tr>
+      <tr><td class="cmd">/roster</td><td class="alias">&mdash;</td><td class="what">Personnel roster</td></tr>
+      <tr><td class="cmd">/teams</td><td class="alias">/team</td><td class="what">Teams</td></tr>
+      <tr><td class="cmd">/schedule</td><td class="alias">&mdash;</td><td class="what">Scheduling</td></tr>
+      <tr><td class="cmd">/vehicles</td><td class="alias">&mdash;</td><td class="what">Vehicles</td></tr>
+      <tr><td class="cmd">/equipment</td><td class="alias">&mdash;</td><td class="what">Equipment</td></tr>
+      <tr><td class="cmd">/roles</td><td class="alias">&mdash;</td><td class="what">Roles &amp; permissions</td></tr>
+      <tr><td class="cmd">/profile</td><td class="alias">&mdash;</td><td class="what">Your profile</td></tr>
+      <tr><td class="cmd">/contacts</td><td class="alias">/constituents</td><td class="what">Contacts</td></tr>
+      <tr><td class="cmd">/messages</td><td class="alias">/messaging</td><td class="what">Internal messaging</td></tr>
+      <tr><td class="cmd">/links</td><td class="alias">&mdash;</td><td class="what">External links</td></tr>
+      <tr><td class="cmd">/ics</td><td class="alias">/forms</td><td class="what">ICS forms</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Unit status — no modal needed</h2>
+    <div class="syntax">/s &lt;handle&gt; &lt;status&gt;   (also /status, /st)</div>
+    <div class="ex">
+      <div class="row"><span class="in">/s M21 av</span><span class="arrow">→</span><span class="out">Medic 21 &rarr; Available</span></div>
+      <div class="row"><span class="in">/status E2 disp</span><span class="arrow">→</span><span class="out">Engine 2 &rarr; Dispatched</span></div>
+      <div class="row"><span class="in">/s Engine 2 dispatched</span><span class="arrow">→</span><span class="out">multi-word names work</span></div>
+    </div>
+    <div class="status-grid">
+      <table>
+        <tr><td class="status-name">Available</td><td class="alias">av avail available</td></tr>
+        <tr><td class="status-name">Busy</td><td class="alias">busy</td></tr>
+        <tr><td class="status-name">Unavailable</td><td class="alias">unav unavail unavailable</td></tr>
+        <tr><td class="status-name">Dispatched</td><td class="alias">disp dispatched dp</td></tr>
+        <tr><td class="status-name">Enroute</td><td class="alias">en enr enroute</td></tr>
+        <tr><td class="status-name">Responding</td><td class="alias">resp responding</td></tr>
+        <tr><td class="status-name">On Scene</td><td class="alias">os onscene on scene</td></tr>
+        <tr><td class="status-name">Transporting</td><td class="alias">tx transp transport</td></tr>
+        <tr><td class="status-name">At Facility</td><td class="alias">af atfacility at facility</td></tr>
+        <tr><td class="status-name">In Quarters</td><td class="alias">iq inquarters in quarters</td></tr>
+        <tr><td class="status-name">Out of Service</td><td class="alias">oos out of service</td></tr>
+      </table>
+    </div>
+    <p class="note">Status word is read from the END of what you type. Statuses needing extra info (destination, reason) route you to the unit's <kbd>S</kbd> key modal instead.</p>
+  </section>
+
+  <section>
+    <h2>Net-Control zone move</h2>
+    <div class="syntax">/z &lt;team&gt; &lt;zone&gt;</div>
+    <div class="ex">
+      <div class="row"><span class="in">/z alpha 3</span><span class="arrow">→</span><span class="out">Alpha &rarr; zone "3"</span></div>
+      <div class="row"><span class="in">/z echo clear</span><span class="arrow">→</span><span class="out">clears Echo's zone</span></div>
+    </div>
+    <p class="note">Requires an active event selected on the Net Control board first. <kbd>clear</kbd> / <kbd>none</kbd> / <kbd>off</kbd> all clear a zone.</p>
+  </section>
+
+  <section>
+    <h2>Net check-ins — capture a round in one line</h2>
+    <div class="syntax">/net &lt;id&gt; &lt;note&gt; / &lt;id&gt; &lt;note&gt; / ...</div>
+    <div class="ex">
+      <div class="row"><span class="in">/net 1234 tornado / 3344 hail</span></div>
+    </div>
+    <p class="note">First word of each entry is the identifier, the rest is the note. Separate entries with <kbd>/</kbd>. Opens the situational screen with the check-ins loaded.</p>
+  </section>
+
+  <section>
+    <h2>While the bar is open</h2>
+    <table>
+      <tr><td class="cmd"><kbd>Enter</kbd></td><td class="what">Run the command</td></tr>
+      <tr><td class="cmd"><kbd>Tab</kbd></td><td class="what">Complete to highlighted suggestion</td></tr>
+      <tr><td class="cmd"><kbd>↑ / ↓</kbd></td><td class="what">Move the highlight</td></tr>
+      <tr><td class="cmd"><kbd>Esc</kbd></td><td class="what">Close, do nothing</td></tr>
+    </table>
+  </section>
+
+</div>
+
+<footer>
+  <span>TicketsCAD — free, open-source Computer-Aided Dispatch &middot; github.com/openises/TicketsCAD</span>
+  <span>Generated from assets/js/command-bar.js — the code is the source of truth</span>
+</footer>
+
+</body>
+</html>

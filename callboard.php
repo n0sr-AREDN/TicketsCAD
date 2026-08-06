@@ -66,7 +66,10 @@ try {
         OR `t`.`status` = 3
         OR (`t`.`status` = 1 AND `t`.`problemend` >= DATE_SUB(NOW(), INTERVAL ? MINUTE))
     )
+    AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')
     ORDER BY `t`.`severity` DESC, `t`.`updated` DESC";
+    // Soft-delete sweep (issue #25 follow-up) — this is the no-JS SSR
+    // fallback for api/callboard.php's same query; both needed the fix.
     $initial_incidents = db_fetch_all($sql, [$recent_mins]);
 } catch (Exception $e) {
     $initial_incidents = [];

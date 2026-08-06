@@ -129,6 +129,7 @@ $canCfg   = (!function_exists('rbac_can') || rbac_can('action.manage_config'));
     <ul class="config-tab-list" data-section="app-dispatch">
         <?php _cfg_tab('constituents',          t('sidebar.tab.constituents',         'Constituents'), 'contacts address book people constituents'); ?>
         <?php _cfg_tab('signals',               t('sidebar.tab.field_help',           'Field Help Text'), 'field help hint tooltip signals'); ?>
+        <?php _cfg_tab('incident-dispositions', t('sidebar.tab.incident_dispositions','Incident Dispositions'), 'disposition outcome resolution closed handled unfounded cancelled'); ?>
         <?php _cfg_tab('incident-lifecycle',    t('sidebar.tab.incident_lifecycle',   'Incident Lifecycle'), 'auto close lifecycle status timeout'); ?>
         <?php _cfg_tab('incident-numbers',      t('sidebar.tab.incident_numbers',     'Incident Numbers'), 'case number format template numbering'); ?>
         <?php _cfg_tab('incident-types',        t('sidebar.tab.incident_types',       'Incident Types'), 'call types nature protocol incident'); ?>

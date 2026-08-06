@@ -100,10 +100,16 @@ if ($method === 'GET' && $action === 'overdue') {
     $out = [];
     $broadcasted = 0;
     try {
+        // Soft-delete sweep (issue #25 follow-up) — without this, an
+        // incident deleted while OPEN would keep matching status IN (2,3)
+        // forever (incident_soft_delete_internal() leaves status alone),
+        // and this endpoint would go on broadcasting urgent "PAR OVERDUE"
+        // alerts naming a deleted incident.
         $rows = db_fetch_all(
             "SELECT id, scope, in_types_id, par_last_overdue_broadcast_at
                FROM `{$prefix}ticket`
               WHERE status IN (2, 3)
+                AND (deleted_at IS NULL OR deleted_at = '0000-00-00 00:00:00')
               ORDER BY id DESC
               LIMIT 200"
         );

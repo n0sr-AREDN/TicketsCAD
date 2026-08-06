@@ -48,7 +48,12 @@ $sev_colors = [
 $status_labels = [1 => 'Closed', 2 => 'Open', 3 => 'Scheduled'];
 
 // Build WHERE clauses
-$where = [];
+//
+// Soft-delete sweep (issue #25 follow-up) — seeded first, same pattern as
+// api/external/v1/incidents.php's list endpoint. Eric's own closing
+// comment on the issue named "the incident list and search pages"
+// explicitly.
+$where = ["(`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')"];
 $params = [];
 
 // Phase 99j-4 — org-scope filter via the standard helper (see

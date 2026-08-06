@@ -76,8 +76,12 @@ if ($ticketId <= 0) {
 }
 
 // ── Event header ──
+// Soft-delete sweep (issue #25 follow-up) — a soft-deleted event must
+// 404 here rather than keep serving the net-control board.
 $event = db_fetch_one(
-    "SELECT `id`, `scope` FROM `{$prefix}ticket` WHERE `id` = ?",
+    "SELECT `id`, `scope` FROM `{$prefix}ticket`
+      WHERE `id` = ?
+        AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')",
     [$ticketId]
 );
 if (!$event) {

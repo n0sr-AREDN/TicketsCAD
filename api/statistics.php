@@ -90,26 +90,37 @@ ensure_org_id_column('responder');
 [$respOrgFrag,   $respOrgVars]   = org_query_filter('r.org_id');
 
 // ── Core dashboard stats (always returned) ────────────────────────────────────
+//
+// Soft-delete sweep (issue #25 follow-up) — every ticket-scoped stat below
+// excludes soft-deleted incidents, so a deleted incident can't inflate the
+// dashboard's open/closed/unassigned counts or skew the average-time
+// figures further down this file.
 
 // Open/active ticket count
 $sql = "SELECT COUNT(DISTINCT `t`.`id`) AS `cnt`
 FROM `{$prefix}ticket` `t`
 LEFT JOIN `{$prefix}allocates` `a` ON `t`.`id` = `a`.`resource_id` AND `a`.`type` = 1
-WHERE (`t`.`status` = 2 OR `t`.`status` = 3) {$group_filter} {$ticketOrgFrag}";
+WHERE (`t`.`status` = 2 OR `t`.`status` = 3)
+  AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')
+  {$group_filter} {$ticketOrgFrag}";
 $open_tickets = (int) safe_fetch_value_stat($sql, array_merge($group_params, $ticketOrgVars));
 
 // Closed today
 $sql = "SELECT COUNT(DISTINCT `t`.`id`) AS `cnt`
 FROM `{$prefix}ticket` `t`
 LEFT JOIN `{$prefix}allocates` `a` ON `t`.`id` = `a`.`resource_id` AND `a`.`type` = 1
-WHERE `t`.`status` = 1 AND DATE(`t`.`problemend`) = CURDATE() {$group_filter} {$ticketOrgFrag}";
+WHERE `t`.`status` = 1 AND DATE(`t`.`problemend`) = CURDATE()
+  AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')
+  {$group_filter} {$ticketOrgFrag}";
 $closed_today = (int) safe_fetch_value_stat($sql, array_merge($group_params, $ticketOrgVars));
 
 // Unassigned (open tickets with 0 active assignments)
 $sql = "SELECT COUNT(DISTINCT `t`.`id`) AS `cnt`
 FROM `{$prefix}ticket` `t`
 LEFT JOIN `{$prefix}allocates` `a` ON `t`.`id` = `a`.`resource_id` AND `a`.`type` = 1
-WHERE (`t`.`status` = 2 OR `t`.`status` = 3) {$group_filter} {$ticketOrgFrag}
+WHERE (`t`.`status` = 2 OR `t`.`status` = 3)
+  AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')
+  {$group_filter} {$ticketOrgFrag}
   AND (SELECT COUNT(*) FROM `{$prefix}assigns`
        WHERE `ticket_id` = `t`.`id`
          AND (`clear` IS NULL OR DATE_FORMAT(`clear`,'%y') = '00')) = 0";
@@ -139,7 +150,8 @@ $sql = "SELECT
              AND (`clear` IS NULL OR DATE_FORMAT(`clear`,'%y') = '00') THEN 1 ELSE 0 END) AS `on_scene`
 FROM `{$prefix}assigns` `asg`
 INNER JOIN `{$prefix}ticket` `t` ON `asg`.`ticket_id` = `t`.`id`
-WHERE `t`.`status` = 2";
+WHERE `t`.`status` = 2
+  AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')";
 
 $counts = safe_fetch_one_stat($sql) ?? [];
 
@@ -152,7 +164,8 @@ $sql = "SELECT
 FROM `{$prefix}ticket` `t`
 LEFT JOIN `{$prefix}assigns` `asg` ON `t`.`id` = `asg`.`ticket_id`
 WHERE `t`.`status` = 1 AND DATE(`t`.`problemend`) = CURDATE()
-  AND `asg`.`dispatched` IS NOT NULL";
+  AND `asg`.`dispatched` IS NOT NULL
+  AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')";
 
 $avgs = safe_fetch_one_stat($sql) ?? [];
 
@@ -224,15 +237,19 @@ if ($mode === 'reports') {
     $ds = $start_date . ' 00:00:00';
     $de = $end_date . ' 23:59:59';
 
+    // Soft-delete sweep (issue #25 follow-up) — every ticket-scoped stat in
+    // this reports-mode block excludes soft-deleted incidents too.
     $closed_in_period = (int) safe_fetch_value_stat(
         "SELECT COUNT(*) FROM `{$prefix}ticket`
-         WHERE `status` = 1 AND `problemend` BETWEEN ? AND ?",
+         WHERE `status` = 1 AND `problemend` BETWEEN ? AND ?
+           AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')",
         [$ds, $de]
     );
 
     $total_in_period = (int) safe_fetch_value_stat(
         "SELECT COUNT(*) FROM `{$prefix}ticket`
-         WHERE `date` BETWEEN ? AND ?",
+         WHERE `date` BETWEEN ? AND ?
+           AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')",
         [$ds, $de]
     );
 
@@ -263,7 +280,8 @@ if ($mode === 'reports') {
          WHERE `status` = 1
            AND `problemstart` IS NOT NULL
            AND `problemend` IS NOT NULL
-           AND `problemend` BETWEEN ? AND ?",
+           AND `problemend` BETWEEN ? AND ?
+           AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')",
         [$ds, $de]
     );
 
@@ -288,6 +306,7 @@ if ($mode === 'reports') {
          FROM `{$prefix}ticket` `t`
          LEFT JOIN `{$prefix}in_types` `it` ON `t`.`in_types_id` = `it`.`id`
          WHERE `t`.`date` BETWEEN ? AND ?
+           AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')
          GROUP BY `it`.`type`
          ORDER BY `count` DESC
          LIMIT 10",
@@ -299,6 +318,7 @@ if ($mode === 'reports') {
         "SELECT COALESCE(NULLIF(`city`,''), 'Unknown') AS `city_name`, COUNT(*) AS `count`
          FROM `{$prefix}ticket`
          WHERE `date` BETWEEN ? AND ?
+           AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')
          GROUP BY `city`
          ORDER BY `count` DESC
          LIMIT 10",

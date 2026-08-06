@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS `newui_vehicle_types` (
 CREATE TABLE IF NOT EXISTS `newui_vehicles` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `member_id` int(11) DEFAULT NULL COMMENT 'Owner member ID',
+  `owner_org_id` int(11) DEFAULT NULL COMMENT 'organizations.id -- the agency that owns this vehicle, if any (distinct from org_id, the visibility scope)',
   `vehicle_type_id` int(11) DEFAULT NULL,
   `callsign` varchar(24) DEFAULT NULL COMMENT 'Vehicle unit number/callsign',
   `year` smallint DEFAULT NULL,
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS `newui_vehicles` (
   `updated_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `member_id` (`member_id`),
+  KEY `idx_vehicle_owner_org` (`owner_org_id`),
   KEY `vehicle_type_id` (`vehicle_type_id`),
   KEY `callsign` (`callsign`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

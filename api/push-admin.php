@@ -239,21 +239,39 @@ if ($method === 'POST') {
             _push_save_setting('push_vapid_public_key',  $keys['publicKey']);
             _push_save_setting('push_vapid_private_key', $keys['privateKey']);
 
+            // GH#31: a valid keypair does not mean sends will work — the
+            // library generates a SEPARATE key for every message, through a
+            // call the GH#8 fallback never touched. Test that directly rather
+            // than reporting success on half the picture, the same way this
+            // endpoint already prefers a round-trip check over trusting byte
+            // lengths.
+            $selftest = vapid_encryption_selftest();
+
             $response = [
                 'ok'                    => true,
                 'push_vapid_public_key' => $keys['publicKey'],
+                'send_capable'          => $selftest['ok'],
                 'note'                  => 'Existing browser subscriptions remain valid; new registrations after this rotation use the new public key. Force-clear all subscriptions to require re-consent.'
             ];
             if (($keys['via'] ?? '') === 'openssl-direct') {
-                // Say when the fallback did the work. It succeeded, so this is
-                // not a warning — but an admin who later runs the CLI tool or
-                // upgrades PHP should know their host needs OPENSSL_CONF.
-                $response['note'] .= ' Note: this host\'s OpenSSL could not find its own'
+                $response['note'] .= ' This host\'s OpenSSL could not find its own'
                     . ' configuration file, so the key was generated using '
-                    . ($keys['config'] ?? 'a located openssl.cnf')
-                    . '. The key is valid and nothing further is required, but see'
-                    . ' docs/INSTALL-WINDOWS-IIS.md — other OpenSSL-dependent features'
-                    . ' on this host may hit the same thing.';
+                    . ($keys['config'] ?? 'a located openssl.cnf') . '.';
+            }
+            if ($selftest['ok']) {
+                $response['note'] .= ' Verified: a live test of the per-message'
+                    . ' encryption step also succeeded, so push sends should work'
+                    . ' on this host, not just key generation.';
+            } else {
+                // Do not let "Keypair configured" stand as the headline result
+                // when we have direct evidence sends will fail. This is the
+                // exact gap GH#31 reported: generation succeeding read as the
+                // whole answer, and the send failure surfaced later, from
+                // vendored code, phrased differently, with nothing tying the
+                // two together.
+                $response['ok'] = false;
+                $response['warning'] = 'Keypair generated successfully, but push notifications will NOT send on this host.';
+                $response['error'] = vapid_send_capability_advice($selftest['error'] ?? 'unknown error');
             }
             echo json_encode($response);
         } catch (Throwable $e) {

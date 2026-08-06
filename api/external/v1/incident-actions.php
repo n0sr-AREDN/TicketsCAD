@@ -52,10 +52,17 @@ if ($ticketId <= 0) {
 
 // Verify ticket exists — cheap pre-check so we can return 404 cleanly
 // instead of a DB-error from a downstream FK or stale-id INSERT.
+//
+// Soft-delete sweep (issue #25 follow-up) — this endpoint's write guard
+// was missed by the original fix (which covered the GET list/detail
+// paths and the PATCH/DELETE guards in api/external/v1/incidents.php);
+// without it, a note could still be added to a soft-deleted incident.
 $prefix = $GLOBALS['db_prefix'] ?? '';
 try {
     $ticket = db_fetch_one(
-        "SELECT `id` FROM `{$prefix}ticket` WHERE `id` = ?",
+        "SELECT `id` FROM `{$prefix}ticket`
+          WHERE `id` = ?
+            AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')",
         [$ticketId]
     );
 } catch (Exception $e) {

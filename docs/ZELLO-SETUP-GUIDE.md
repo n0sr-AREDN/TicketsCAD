@@ -122,12 +122,30 @@ channel.
 
 3. **Channel options to decide now** — these change how the bridge behaves:
 
-   - **Password / private vs. public.** A private or passworded channel only
-     admits users who have been approved or have the password. **Important:**
-     you do **not** type a channel password into TicketsCAD. Instead, the
-     console's Zello account (`dispatch-console`) must itself have **joined and
-     been admitted** to the channel. If the console account isn't an admitted
-     member, the proxy will log in to Zello fine but see an empty channel.
+   - **Password.** ⚠ **On Zello Consumer, a channel WITH a password cannot be
+     used by TicketsCAD at all** — set one and the Channels API refuses the
+     channel outright, even for the channel's own owner/administrator. There is
+     nowhere in TicketsCAD to type a channel password (the Channels API's
+     `logon` command has no such field), so there is no way to satisfy it from
+     this end. **The fix is to remove the channel's password**, not to check
+     membership — being an admitted member, or even the owner, does not help.
+     The identifying signature is `error: "invalid password"` on the very
+     first `on_channel_status` you receive (see
+     [Troubleshooting](#8-troubleshooting)). This is a real trade-off, not a
+     formality: removing the password also removes the access control it
+     provided, so anyone who finds the channel name can join and listen.
+     Confirmed on Consumer ([issue #21](https://github.com/openises/TicketsCAD/issues/21));
+     Work uses a different auth path and has not been verified either way — if
+     you're on Work and a passworded channel works for you, please say so on
+     that issue.
+
+   - **Private vs. public, and "approved members only."** These are a
+     *separate* setting from a channel password, and they work fine with
+     TicketsCAD: the console's Zello account (`dispatch-console`) must have
+     **joined and been admitted** to the channel. If the console account isn't
+     an admitted member, the proxy logs in to Zello fine but sees an empty
+     channel — a different symptom (`users_online: 0`, no `error` field) from
+     the password case above.
 
    - **"Only approved users can talk" (moderation / talk vs. listen).** Many
      dispatch channels are set so only approved users may transmit; everyone
@@ -171,20 +189,36 @@ This is the step that bites everyone. Read it carefully.
 > misleading — the Consumer path is still the `developers.zello.com` console.)
 
 TicketsCAD authenticates to Zello using a **Channels API key**: an **Issuer**
-(a short string) plus a **Private Key** (a block of text). On Zello **Consumer**,
-that key pair is generated **inside one specific channel's admin settings**, and
-**it authorizes only that one channel.**
+(a short string) plus a **Private Key** (a block of text). This key belongs to
+your **account** (`developers.zello.com/keys`, Add Key — no channel picker
+appears anywhere in that flow), not to any one channel — the Channels API's own
+`logon` command has a `password`/`auth_token` field for the *account*, and a
+separate `channels` list of what to join once logged in; there is no per-channel
+credential in the protocol.
 
-Consequences you must internalize:
+> **Corrected 2026-08 (issue #21):** earlier versions of this guide said the
+> key was "generated inside one specific channel's admin settings" and
+> "authorizes only that one channel." That was never accurate — the steps
+> below it (fixed for [issue #6](https://github.com/openises/TicketsCAD/issues/6))
+> already showed the real, channel-less Add Key flow, but the paragraph
+> introducing them was never updated to match, so the two contradicted each
+> other on the same page. If you generated a key and pointed *Dispatch Channel*
+> at some other channel and it didn't work, the cause was **channel
+> admission or a channel password** (see step 3 and
+> [Troubleshooting](#8-troubleshooting)) — not a key/channel mismatch.
 
-- The Issuer + Private Key are **per channel**. You generate them from the admin
-  area of the channel you want to dispatch on.
-- You **must administer that channel** to generate its key. A public channel you
-  merely *joined* (but don't own) will **not** let you create an API key, and
-  you cannot transmit to it via the API.
-- One Consumer channel = one API key. You can't reuse one Issuer + Private Key
-  across two different Consumer channels. (Zello **Work** is different — a Work
-  network token can span the network's channels.)
+Consequences you must internalize instead:
+
+- **What actually gates access to a channel is membership/admission and
+  role**, covered in [step 3](#3-create-the-dispatch-channel) — not which key
+  you used to log in.
+- **A channel with a password can't be used at all**, regardless of key or
+  membership — see step 3 above.
+- The **dispatch-console Zello account itself** (the one whose Issuer/Private
+  Key you're pasting into TicketsCAD) still needs to be the one you're signing
+  into — one account, one key pair. (Zello **Work** uses a different auth
+  path entirely — a network token rather than a per-account Consumer key —
+  and has not been separately verified for this guide.)
 
 ### Steps (Zello Consumer)
 
@@ -223,13 +257,16 @@ Consequences you must internalize:
 
 4. While you're here, write down (you'll need these in step 5):
    - The **console account username** (`dispatch-console`) and its **password**.
-   - The **channel name**, exactly as spelled (`dispatch`). The name you type in
-     TicketsCAD must match the channel the key was generated for.
+   - The **channel name**, exactly as spelled (`dispatch`) — the console
+     account needs to be admitted to it (step 3), and it must have no
+     password.
 
-> **The one-line rule:** the Issuer/Private Key you paste into TicketsCAD must
-> be the key generated **inside the same channel** you put in the *Dispatch
-> Channel* field. A mismatch authenticates fine but then reports the channel
-> offline (see [Troubleshooting](#8-troubleshooting)).
+> **The one-line rule:** TicketsCAD authenticates fine as long as the
+> Issuer/Private Key belong to the `dispatch-console` account. If the channel
+> then shows **offline**, the key isn't the cause — check (in this order)
+> whether the channel has a **password** (step 3 — the channel can't be used
+> at all until it's removed) and whether `dispatch-console` is **admitted** to
+> it (also step 3). See [Troubleshooting](#8-troubleshooting).
 
 > **[Screenshot: developers.zello.com/keys — the Keys table (Key ID, Created,
 > trash icon) with the Add Key button]**
@@ -500,17 +537,37 @@ audio.
 
 **Symptom:** TicketsCAD authenticates to Zello (you see a logged-in/authenticated
 status), but the channel shows **offline** and nothing you send goes anywhere.
+Check the proxy log or the widget's connection-log trail for the exact reason
+Zello gave — as of the fix for
+[issue #21](https://github.com/openises/TicketsCAD/issues/21) it's shown
+there, not silently dropped.
 
-**Cause:** the **Issuer / Private Key don't authorize that channel.** On Zello
-Consumer the API key is **per channel** and only works for the channel it was
-generated in. If you generated the key in channel A but pointed *Dispatch
-Channel* at channel B — or if you used a key from a channel you only *joined*
-rather than *administer* — Zello accepts the login but the channel won't come
-online.
+**Cause #1 — the channel has a password.** ⚠ This is the most common cause and
+the one to rule out first. On Zello Consumer, a password-protected channel is
+refused by the Channels API outright — even for the channel's own
+owner/administrator. **Identifying signature:** the proxy log/connection trail
+reads `... — invalid password (configuration)`. Being an admitted member does
+not help; there is no field anywhere in TicketsCAD to supply a channel
+password. See [step 3](#3-create-the-dispatch-channel).
 
-**Fix:** use a channel **you administer**, generate the Issuer + Private Key
-**from inside that channel's** Channels API (step 4), and make sure the
-*Dispatch Channel* name in TicketsCAD **exactly matches** that channel.
+**Fix:** remove the password from the channel (Zello app → channel settings).
+There is no other workaround on Consumer.
+
+**Cause #2 — `dispatch-console` isn't admitted to the channel.** The channel is
+private/moderated and the console's Zello account hasn't joined and been
+approved. **Identifying signature:** the log reads plainly `... is offline`
+with **no** `error` suffix, and `users_online` stays 0 even though people are
+actually on the channel.
+
+**Fix:** join the channel with the `dispatch-console` account (in the Zello
+app) and get it admitted/approved, same as any other member.
+
+**Not the cause (common misdiagnosis):** a mismatched Issuer/Private Key.
+TicketsCAD's Channels API key authenticates the `dispatch-console`
+**account**, not a specific channel — see the corrected note in
+[step 4](#4-get-the-channels-api-credentials-the-key-gotcha). If the key is
+wrong you'll see an **authentication failure**, not a channel that logs in
+fine and then shows offline.
 
 ### "Signed in on another device" / the console keeps dropping
 
@@ -623,8 +680,8 @@ only transmitting voice needs the secure origin.
 | Dispatch account | <https://zello.com/personal/> | The console logs in as this |
 | Field account | Zello app on your phone | A **different** account, joined to the channel |
 | Developer console | <https://developers.zello.com/> | Sign in as the dispatch account |
-| Channel | Created in the Zello app | Own it (admin) so you can mint the API key |
-| Issuer + Private Key | Channel admin → **Channels API** | **Per channel**; only authorizes that channel |
+| Channel | Created in the Zello app | Must have **no password**; console account must be **admitted** |
+| Issuer + Private Key | `developers.zello.com/keys` → **Add Key** | Authenticates the **account**, not a channel |
 
 **Inside TicketsCAD:**
 
@@ -633,8 +690,8 @@ only transmitting voice needs the secure origin.
 | Service Type | Consumer or Work |
 | WebSocket URL | `wss://zello.io/ws` (Consumer) |
 | Username / Password | The **dispatch** account |
-| Issuer / Private Key | From the dispatch channel's Channels API |
-| Dispatch Channel | Exact channel name the key was minted for |
+| Issuer / Private Key | From `developers.zello.com/keys` for the `dispatch-console` account |
+| Dispatch Channel | Exact channel name — no password, console account admitted |
 | Connection Mode | Server Proxy (recommended) |
 
 **Proxy:**
@@ -660,7 +717,7 @@ only transmitting voice needs the secure origin.
 
 ---
 
-*If you get stuck, the most common single cause is the **per-channel API key**:
-the Issuer/Private Key must be generated inside the same channel you put in
-the Dispatch Channel field, on a channel you administer. Re-check
-[step 4](#4-get-the-channels-api-credentials-the-key-gotcha) first.*
+*If you get stuck and the channel shows offline, the most common single cause
+is a **channel password** — Consumer channels with a password can't be used by
+TicketsCAD at all, for anyone, and there's no field to type one into. Re-check
+[step 3](#3-create-the-dispatch-channel) first.*

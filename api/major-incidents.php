@@ -53,6 +53,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $links = db_fetch_all(
                 // Phase 99p — surface the case number in the linked-
                 // incident list so the major-incident UI can render it.
+                // Soft-delete sweep (issue #25 follow-up) — a soft-deleted
+                // child incident must not keep showing under the major
+                // incident.
                 "SELECT l.`id` AS link_id, l.`ticket_id`, l.`linked_by`, l.`linked_at`,
                         t.`incident_number`, t.`scope`, t.`street`, t.`city`, t.`status`, t.`severity`,
                         t.`date`, t.`in_types_id`,
@@ -61,6 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                    JOIN `{$prefix}ticket` t ON t.`id` = l.`ticket_id`
                    LEFT JOIN `{$prefix}user` u ON u.`id` = l.`linked_by`
                   WHERE l.`major_id` = ?
+                    AND (t.`deleted_at` IS NULL OR t.`deleted_at` = '0000-00-00 00:00:00')
                   ORDER BY l.`linked_at` ASC",
                 [$id]
             );
@@ -189,9 +193,14 @@ elseif ($action === 'link') {
     }
 
     // Verify ticket exists
+    //
+    // Soft-delete sweep (issue #25 follow-up) — a soft-deleted incident
+    // must not be linkable as a child of a major incident.
     try {
         $ticket = db_fetch_one(
-            "SELECT `id`, `scope` FROM `{$prefix}ticket` WHERE `id` = ?",
+            "SELECT `id`, `scope` FROM `{$prefix}ticket`
+              WHERE `id` = ?
+                AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')",
             [$ticket_id]
         );
     } catch (Exception $e) {
@@ -345,13 +354,19 @@ elseif ($action === 'close') {
     }
 
     // Cascade: close all linked open tickets
+    //
+    // Soft-delete sweep (issue #25 follow-up) — a soft-deleted child
+    // ticket must not be mutated by this cascade (it would flip its
+    // status even though it's supposed to be untouched pending recovery
+    // from the wastebasket).
     $closed_count = 0;
     try {
         $linked = db_fetch_all(
             "SELECT l.`ticket_id`, t.`status`
                FROM `{$prefix}newui_major_incident_links` l
                JOIN `{$prefix}ticket` t ON t.`id` = l.`ticket_id`
-              WHERE l.`major_id` = ? AND t.`status` = 2",
+              WHERE l.`major_id` = ? AND t.`status` = 2
+                AND (t.`deleted_at` IS NULL OR t.`deleted_at` = '0000-00-00 00:00:00')",
             [$major_id]
         );
 

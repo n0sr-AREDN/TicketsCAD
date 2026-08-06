@@ -200,6 +200,39 @@ function router_evaluate($channel, $direction, array $message, $sourceMessageId 
         return [];
     }
 
+    // Phase 134 Step 5 (Model 3, GH #23) — a SECOND, unconditional consumer
+    // of every genuinely-new inbound message, independent of which (if any)
+    // routes match below. mi_attach_message_to_assigned_incidents() resolves
+    // the sender to their open assigned incident(s), if any, and writes a
+    // note to each. This is NOT gated on any route matching and NOT gated on
+    // any route's attach_action column (that is the Phase 111 mechanism a
+    // few lines below, for a DIFFERENT purpose — the designated "active
+    // event"). Whether a sender has an open assignment has nothing to do
+    // with what routes are configured, so this runs even on a channel with
+    // zero matching routes — placed BEFORE _router_get_routes()'s
+    // empty-routes early return below, deliberately, so an install with no
+    // routes configured yet (or the Model-1 fallback route disabled) still
+    // gets the attach half of "never silent drop". It never blocks or gates
+    // the route loop: the message still reaches general chat via whatever
+    // route(s) match (the Model 1 floor seeded by
+    // sql/run_phase134_step5_fallback_route.php) regardless of what this
+    // finds — both consumers run, not either/or (plan.md §6).
+    //
+    // Guarded on !$trusted (i.e. this is NOT a router-internal forwarded
+    // copy) so a message we ourselves forwarded onward can't re-trigger a
+    // second resolve/attach pass for the same logical event — mirrors the
+    // loop-prevention trust rule at the top of this function. Wrapped in
+    // try/catch even though the callee already has an absolute never-throws
+    // guarantee (defense in depth, matching this file's existing style
+    // around the Phase 111 call below).
+    if ($direction === 'inbound' && !$trusted && function_exists('mi_attach_message_to_assigned_incidents')) {
+        try {
+            mi_attach_message_to_assigned_incidents($message, $channel);
+        } catch (Throwable $e) {
+            error_log('[router] mi_attach_message_to_assigned_incidents failed (swallowed): ' . $e->getMessage());
+        }
+    }
+
     $routes = _router_get_routes($channel);
     if (empty($routes)) {
         return [];

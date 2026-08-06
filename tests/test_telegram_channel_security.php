@@ -439,7 +439,7 @@ if (function_exists('curl_init') && $connectTimeout > 0) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// E. CORRECT SETTINGS STORE, AND OUTBOUND ONLY
+// E. CORRECT SETTINGS STORE
 // ─────────────────────────────────────────────────────────────────────
 // CLAUDE.md GH #79: there are TWO stores. `settings` (name/value, read by
 // get_variable(), written by the Settings UI) is the correct one; the tiny
@@ -459,12 +459,129 @@ tg(preg_match('/WHERE\s+`?name`?\s*=\s*\?/i', $code) === 1,
 tg(preg_match("/broker_register\s*\(\s*'telegram'/", $code) === 1,
     'the adapter self-registers with broker_register(\'telegram\', …)');
 
-if (preg_match('/function\s+_telegram_receive\s*\([^)]*\)\s*\{(.*?)\n\}/s', $code, $rm)) {
-    tg(preg_match('/return\s*\[\s*\]\s*;/', $rm[1]) === 1,
-        '_telegram_receive() returns an empty array — the adapter is outbound only, '
-        . 'so no untrusted inbound payload can enter the routing engine through it');
+// ─────────────────────────────────────────────────────────────────────
+// F. _telegram_receive() — REAL AS OF PHASE 134 STEP 2 (2026-08, GH #23)
+// ─────────────────────────────────────────────────────────────────────
+// Until Phase 134 Step 2 the adapter was outbound-only and this gate
+// asserted _telegram_receive() was a bare `return [];`. That is no longer
+// the invariant this codebase wants: GH #23 Model 3 needs a real getUpdates
+// poller. What must still hold, and is checked here instead:
+//
+//   F1. _telegram_receive() still FAILS CLOSED — no request of any kind —
+//       when the bot token / chat id are unset or malformed, same guard
+//       order as _telegram_send(). Driven through the real function in a
+//       child process (db_fetch_value() stubbed to "nothing configured"),
+//       not inferred from reading the source.
+//   F2. The adapter never returns Telegram's raw response straight into
+//       the routing engine — it delegates to _telegram_parse_updates(),
+//       the pure function that enforces the chat-id filter. A future edit
+//       that started returning $data['result'] directly (skipping the
+//       filter) would defeat the whole point of Model 3's chat scoping and
+//       must fail this gate.
+//   F3. _telegram_parse_updates() itself is exercised, with a hand-built
+//       fake API response, in tests/test_phase134_receivers.php — this
+//       file stays a SECURITY gate (network/credential properties), not a
+//       duplicate of that correctness coverage.
+
+$unconfiguredRun = (static function () use ($file): array {
+    $harness = <<<'PHP'
+<?php
+function broker_register($name, $spec) { return true; }
+function db_fetch_value($sql, $params = []) {
+    return null; // every setting (token, chat id, offset) reads as unset
+}
+require $argv[1];
+echo json_encode(['result' => _telegram_receive(5)]);
+PHP;
+    $hf = tempnam(sys_get_temp_dir(), 'tgr') . '.php';
+    file_put_contents($hf, $harness);
+    $d = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+    $p = proc_open([PHP_BINARY, $hf, $file], $d, $pipes);
+    if (!is_resource($p)) { @unlink($hf); return ['__harness_error' => 'could not start child process']; }
+    $out = stream_get_contents($pipes[1]);
+    $err = stream_get_contents($pipes[2]);
+    foreach ($pipes as $pi) { fclose($pi); }
+    proc_close($p);
+    @unlink($hf);
+    $j = json_decode((string) $out, true);
+    return is_array($j) ? $j : ['__harness_error' => trim(substr((string) $out . ' ' . (string) $err, 0, 300))];
+})();
+
+tg(!isset($unconfiguredRun['__harness_error']),
+    '_telegram_receive() can be driven in isolation'
+    . (isset($unconfiguredRun['__harness_error']) ? ' — ' . $unconfiguredRun['__harness_error'] : ''));
+
+tg(($unconfiguredRun['result'] ?? '__missing__') === [],
+    'F1: _telegram_receive() fails closed (returns []) with no bot token / chat id configured — '
+    . 'no getUpdates request is made — got: ' . var_export($unconfiguredRun['result'] ?? null, true));
+
+$malformedRun = (static function () use ($file): array {
+    $harness = <<<'PHP'
+<?php
+function broker_register($name, $spec) { return true; }
+function db_fetch_value($sql, $params = []) {
+    $key = is_array($params) ? ($params[0] ?? '') : '';
+    // A syntactically valid token but a MALFORMED chat id — same shape as
+    // group A's fixture. If this reached curl at all it would attempt a
+    // real network call; the harness has no cURL stub, so a regression
+    // here would surface as a hang or a thrown error, not a false pass.
+    $fixture = [
+        'telegram_bot_token'     => '123456789:AAHt-abcdefGHIJKLmnopQRSTuvwx-yz12345',
+        'telegram_chat_id'       => 'NOT-A-NUMBER',
+        'telegram_update_offset' => '0',
+    ];
+    return $fixture[$key] ?? null;
+}
+require $argv[1];
+echo json_encode(['result' => _telegram_receive(5)]);
+PHP;
+    $hf = tempnam(sys_get_temp_dir(), 'tgm2') . '.php';
+    file_put_contents($hf, $harness);
+    $d = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+    $p = proc_open([PHP_BINARY, $hf, $file], $d, $pipes);
+    if (!is_resource($p)) { @unlink($hf); return ['__harness_error' => 'could not start child process']; }
+    $out = stream_get_contents($pipes[1]);
+    $err = stream_get_contents($pipes[2]);
+    foreach ($pipes as $pi) { fclose($pi); }
+    proc_close($p);
+    @unlink($hf);
+    $j = json_decode((string) $out, true);
+    return is_array($j) ? $j : ['__harness_error' => trim(substr((string) $out . ' ' . (string) $err, 0, 300))];
+})();
+
+tg(!isset($malformedRun['__harness_error']),
+    '_telegram_receive() with a malformed chat id can be driven in isolation'
+    . (isset($malformedRun['__harness_error']) ? ' — ' . $malformedRun['__harness_error'] : ''));
+
+tg(($malformedRun['result'] ?? '__missing__') === [],
+    'F1: _telegram_receive() fails closed (returns []) on a malformed chat id, before any '
+    . 'getUpdates request — got: ' . var_export($malformedRun['result'] ?? null, true));
+
+tg(strpos($code, '_telegram_parse_updates(') !== false,
+    'F2: _telegram_receive() delegates filtering to _telegram_parse_updates() rather than '
+    . 'returning Telegram\'s raw response into the routing engine unfiltered');
+
+if (preg_match('/function\s+_telegram_receive\s*\([^)]*\)\s*:?\s*\{/', $code, $rStart, PREG_OFFSET_CAPTURE)) {
+    // Balanced-brace extent of the function body, so a nested `if { ... }`
+    // closing brace on its own line cannot truncate the match the way a
+    // non-greedy `.*?\n\}` regex would.
+    $bodyStart = $rStart[0][1] + strlen($rStart[0][0]);
+    $depth = 1;
+    $i = $bodyStart;
+    $n = strlen($code);
+    while ($i < $n && $depth > 0) {
+        if ($code[$i] === '{') $depth++;
+        elseif ($code[$i] === '}') $depth--;
+        $i++;
+    }
+    $body = substr($code, $bodyStart, max(0, $i - 1 - $bodyStart));
+
+    tg(preg_match('/return\s+\$data(\[|;|\s)/', $body) !== 1
+       && preg_match('/return\s+\$data\[[\'"]result[\'"]\]/', $body) !== 1,
+        'F2: _telegram_receive() does not return the decoded API response ($data / $data[\'result\']) '
+        . 'directly — every code path goes through _telegram_parse_updates() first');
 } else {
-    tg(false, '_telegram_receive() could be located (source shape changed — re-review by hand)');
+    tg(false, '_telegram_receive() could be located for the body-extent check (source shape changed — re-review by hand)');
 }
 
 echo "Telegram channel security gate: " . ($tests - $fails) . " passed, $fails failed\n";

@@ -130,12 +130,24 @@ if (strpos($src, 'sse_publish_for_responder') !== false
 }
 
 // ── F-007 long tail in local_chat.php ──
+//
+// Issue #23 (rjonesbsink): the DM branch used to guard on
+// function_exists('sse_publish_for_user') while actually CALLING
+// sse_publish() — a guard/call mismatch fixed there. This check
+// originally looked for the literal string 'sse_publish_for_user',
+// which was really only ever testing that guard's presence, not the
+// thing that actually does the scoping (the 'user' scope + recipient
+// $ids passed into the sse_publish() call itself). Check for the real
+// evidence directly, so a future guard-name change can't silently
+// break this security-relevant assertion again.
 $src = code_only(file_get_contents($base . '/inc/channels/local_chat.php'));
-if (strpos($src, 'sse_publish_for_user') !== false
-    && strpos($src, 'sse_publish_for_incident') !== false) {
+$dmScoped = (bool) preg_match("/sse_publish\\([^;]*?'user'[^;]*?\\\$ids[^;]*?\\)/s", $src);
+if ($dmScoped && strpos($src, 'sse_publish_for_incident') !== false) {
     ok('inc/channels/local_chat.php scopes DMs (user) and incident chat (incident)');
 } else {
-    bad('inc/channels/local_chat.php SSE scope');
+    bad('inc/channels/local_chat.php SSE scope',
+        !$dmScoped ? "no sse_publish(...'user'...\$ids...) call found — DM scoping may be broken"
+                   : "sse_publish_for_incident call missing — incident-chat scoping may be broken");
 }
 
 // ── reference-data endpoints documented as auth-only ──

@@ -132,6 +132,9 @@ $result_responder = [
 ];
 
 // ── Active assignments (uncleared) ──
+// Soft-delete sweep (issue #25 follow-up) — same class of bug as the
+// dispatch board: if the incident was deleted while this assignment was
+// still open, the unit would show as permanently on-call to it.
 $active_assignments = [];
 try {
     $rows = db_fetch_all(
@@ -150,6 +153,7 @@ try {
          LEFT JOIN `{$prefix}in_types` `it` ON `t`.`in_types_id` = `it`.`id`
          WHERE `a`.`responder_id` = ?
            AND (`a`.`clear` IS NULL OR DATE_FORMAT(`a`.`clear`,'%y') = '00')
+           AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')
          ORDER BY `a`.`dispatched` DESC",
         [$id]
     );
@@ -196,6 +200,7 @@ try {
          WHERE `a`.`responder_id` = ?
            AND `a`.`clear` IS NOT NULL
            AND DATE_FORMAT(`a`.`clear`,'%y') != '00'
+           AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')
          ORDER BY `a`.`dispatched` DESC
          LIMIT 50",
         [$id]

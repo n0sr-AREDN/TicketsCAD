@@ -201,6 +201,12 @@ $columns = [];
 $rows    = [];
 $summary = [];
 $report_title = '';
+// Phase 132 Step 5 (GH #16) — a SEPARATE breakdown, only ever populated by
+// the 'incident_summary' case below. Kept as its own top-level response
+// key rather than folded into columns/rows: assets/js/reports.js has no
+// "second table" concept, and the existing incident-type breakdown (this
+// case's original columns/rows/summary) must not change shape.
+$disposition_breakdown = [];
 
 switch ($report) {
 
@@ -209,7 +215,13 @@ switch ($report) {
         $report_title = 'Unit Activity Log';
         $columns = ['Unit Name', 'Handle', 'Incident #', 'Scope', 'Dispatched', 'Responding', 'On-Scene', 'Clear', 'Response Time'];
 
-        $where_parts = ["`a`.`dispatched` BETWEEN ? AND ?"];
+        // Soft-delete sweep (issue #25 follow-up) — seeded first so it
+        // survives the optional filters below, same pattern used
+        // throughout this file's other report cases.
+        $where_parts = [
+            "`a`.`dispatched` BETWEEN ? AND ?",
+            "(`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')",
+        ];
         $params = [$date_start_sql, $date_end_sql];
 
         if ($responder_id > 0) {
@@ -283,7 +295,11 @@ switch ($report) {
         $report_title = 'Dispatch Log';
         $columns = ['Incident #', 'Type', 'Severity', 'Scope', 'Unit', 'Dispatched', 'Responding', 'On-Scene', 'Clear', 'Total Time'];
 
-        $where_parts = ["`a`.`dispatched` BETWEEN ? AND ?"];
+        // Soft-delete sweep (issue #25 follow-up) — see 'unit_log' above.
+        $where_parts = [
+            "`a`.`dispatched` BETWEEN ? AND ?",
+            "(`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')",
+        ];
         $params = [$date_start_sql, $date_end_sql];
 
         if ($responder_id > 0) {
@@ -357,6 +373,9 @@ switch ($report) {
         $report_title = 'Incident Summary';
         $columns = ['Incident Type', 'Total', 'High Severity', 'Medium Severity', 'Low Severity', 'Open', 'Closed'];
 
+        // Soft-delete sweep (issue #25 follow-up) — both queries in this
+        // case excluded, so a deleted incident can't skew the summary
+        // counts or the average close-time figure below.
         $data = safe_fetch_all_rpt(
             "SELECT
                 COALESCE(`it`.`type`, 'Unknown') AS `incident_type`,
@@ -369,6 +388,7 @@ switch ($report) {
             FROM `{$prefix}ticket` `t`
             LEFT JOIN `{$prefix}in_types` `it` ON `t`.`in_types_id` = `it`.`id`
             WHERE `t`.`date` BETWEEN ? AND ?
+              AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')
             GROUP BY `it`.`type`
             ORDER BY `total` DESC",
             [$date_start_sql, $date_end_sql]
@@ -399,6 +419,37 @@ switch ($report) {
             $grand_closed += (int) $row['closed'];
         }
 
+        // ── Disposition breakdown (Phase 132 Step 5, GH #16) ──────────
+        // A SEPARATE breakdown from the incident-type rows above — added
+        // ALONGSIDE them, not folded in (see $disposition_breakdown's
+        // declaration above). Mirrors the incident-type breakdown's own
+        // COALESCE(...,'Unknown') pattern: every historical/undispositioned
+        // incident (NULL disposition_id) is the NORMAL state, not an
+        // error, and must be counted in the totals rather than dropped —
+        // tasks.md Step 5 ("Include the NULL bucket ... rather than
+        // dropping it silently"). Same soft-delete sweep as the query
+        // above (literal deleted_at term, not routed through
+        // org_query_filter(), so tools/soft_delete_audit.php resolves it
+        // directly — no exception-file entry needed).
+        $dispositionData = safe_fetch_all_rpt(
+            "SELECT
+                COALESCE(`td`.`status_val`, 'No Disposition') AS `disposition_label`,
+                COUNT(*) AS `total`
+            FROM `{$prefix}ticket` `t`
+            LEFT JOIN `{$prefix}ticket_disposition` `td` ON `t`.`disposition_id` = `td`.`id`
+            WHERE `t`.`date` BETWEEN ? AND ?
+              AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')
+            GROUP BY `td`.`status_val`
+            ORDER BY `total` DESC",
+            [$date_start_sql, $date_end_sql]
+        );
+        foreach ($dispositionData as $drow) {
+            $disposition_breakdown[] = [
+                'disposition' => $drow['disposition_label'],
+                'total'       => (int) $drow['total'],
+            ];
+        }
+
         // Average time to close
         $avg_close = safe_fetch_value_rpt(
             "SELECT AVG(TIMESTAMPDIFF(MINUTE, `problemstart`, `problemend`))
@@ -406,7 +457,8 @@ switch ($report) {
              WHERE `status` = 1
                AND `problemstart` IS NOT NULL
                AND `problemend` IS NOT NULL
-               AND `date` BETWEEN ? AND ?",
+               AND `date` BETWEEN ? AND ?
+               AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')",
             [$date_start_sql, $date_end_sql]
         );
 
@@ -426,7 +478,11 @@ switch ($report) {
         $report_title = 'Incident Report';
         $columns = ['ID', 'Scope', 'Type', 'Severity', 'Status', 'Location', 'Created', 'Closed', 'Units Assigned', 'Actions'];
 
-        $where_parts = ["`t`.`date` BETWEEN ? AND ?"];
+        // Soft-delete sweep (issue #25 follow-up) — see 'unit_log' above.
+        $where_parts = [
+            "`t`.`date` BETWEEN ? AND ?",
+            "(`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')",
+        ];
         $params = [$date_start_sql, $date_end_sql];
 
         if ($incident_id > 0) {
@@ -487,7 +543,11 @@ switch ($report) {
         $report_title = 'Facility Log';
         $columns = ['Facility Name', 'Incident #', 'Scope', 'Unit', 'Dispatched', 'Arrived', 'Notes'];
 
-        $where_parts = ["`t`.`date` BETWEEN ? AND ?"];
+        // Soft-delete sweep (issue #25 follow-up) — see 'unit_log' above.
+        $where_parts = [
+            "`t`.`date` BETWEEN ? AND ?",
+            "(`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')",
+        ];
         $params = [$date_start_sql, $date_end_sql];
 
         $where = implode(' AND ', $where_parts);
@@ -606,13 +666,17 @@ switch ($report) {
         }
 
         // Incident details
+        // Soft-delete sweep (issue #25 follow-up) — a soft-deleted
+        // incident must not produce an after-action report; falls through
+        // to the same "not found" the missing-id case already returns.
         $ticket = null;
         try {
             $ticket = db_fetch_one(
                 "SELECT `t`.*, `it`.`type` AS `incident_type`, `it`.`protocol`
                  FROM `{$prefix}ticket` `t`
                  LEFT JOIN `{$prefix}in_types` `it` ON `t`.`in_types_id` = `it`.`id`
-                 WHERE `t`.`id` = ?",
+                 WHERE `t`.`id` = ?
+                   AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')",
                 [$incident_id]
             );
         } catch (Exception $e) {
@@ -1068,4 +1132,8 @@ json_response([
     'columns'      => $columns,
     'rows'         => $rows,
     'summary'      => $summary,
+    // Phase 132 Step 5 (GH #16) — only non-empty for 'incident_summary';
+    // every other report type gets [] and callers that don't know about
+    // this key are unaffected.
+    'disposition_breakdown' => $disposition_breakdown,
 ]);

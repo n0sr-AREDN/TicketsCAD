@@ -5,11 +5,12 @@
  * POST /api/incident-update.php
  *
  * Manages incident status changes and activity notes.
- * Three actions via JSON body 'action' field:
+ * Four actions via JSON body 'action' field:
  *
- *   add_note       { ticket_id, note }
- *   update_status  { ticket_id, new_status }  (1=Closed, 2=Open, 3=Scheduled)
- *   update_fields  { ticket_id, fields: { severity, description, ... } }
+ *   add_note        { ticket_id, note }
+ *   update_status   { ticket_id, new_status, disposition_id? }  (1=Closed, 2=Open, 3=Scheduled)
+ *   update_fields   { ticket_id, fields: { severity, description, ... } }
+ *   set_disposition { ticket_id, disposition_id }  (null/0 clears)
  *
  * 2026-06-28 — Phase 94 Stage 4j refactor: delegates SQL/business logic
  * to inc/incident-write.php helpers (incident_add_note_internal,
@@ -17,6 +18,18 @@
  * Endpoint owns auth/CSRF/RBAC, transition-specific audit category
  * splitting (close vs reopen vs update), SSE event-type mapping,
  * notification fan-out, and JSON response shaping.
+ *
+ * 2026-08-03 — Phase 132 Step 2 (GH #16): update_status accepts an
+ * optional disposition_id (validated + written by
+ * incident_update_status_internal() before the close proceeds; refused
+ * with a dispatcher-facing message if disposition_required_on_close is
+ * on and no disposition is available). set_disposition is a NEW action,
+ * separate from update_fields — disposition needs existence/active
+ * validation and a newui_audit_log row on every change, neither of which
+ * update_fields' generic whitelist path provides (see
+ * incident_set_disposition_internal()'s docblock in inc/incident-write.php).
+ * Gated on action.edit_incident, same scope as update_fields — no new
+ * permission (plan.md §8: selecting a disposition needs none).
  */
 
 require_once __DIR__ . '/auth.php';
@@ -48,6 +61,11 @@ if ($action === 'update_status' && !rbac_can('action.close_incident')) {
 if ($action === 'update_fields' && !rbac_can('action.edit_incident')) {
     json_error('Insufficient permissions: edit incident', 403);
 }
+// Phase 132 Step 2 (GH #16) — same scope as update_fields; no new
+// permission (plan.md §8: selecting a disposition needs none).
+if ($action === 'set_disposition' && !rbac_can('action.edit_incident')) {
+    json_error('Insufficient permissions: edit incident', 403);
+}
 
 // CSRF check
 if (empty($input['csrf_token']) || !csrf_verify($input['csrf_token'])) {
@@ -65,9 +83,14 @@ if ($ticket_id <= 0) {
 // Verify ticket exists and get current state. The helpers will accept
 // any int and silently no-op on a missing row, but the dispatcher UI
 // expects a friendly 404 here.
+//
+// Soft-delete sweep (issue #25 follow-up) — a soft-deleted incident must
+// not accept status changes or field edits.
 try {
     $ticket = db_fetch_one(
-        "SELECT `id`, `status`, `scope` FROM `{$prefix}ticket` WHERE `id` = ?",
+        "SELECT `id`, `status`, `scope` FROM `{$prefix}ticket`
+          WHERE `id` = ?
+            AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')",
         [$ticket_id]
     );
 } catch (Exception $e) {
@@ -190,15 +213,32 @@ elseif ($action === 'update_status') {
         }
     }
 
+    // Phase 132 Step 2 (GH #16) — optional disposition_id alongside a
+    // close. incident_update_status_internal() validates + writes it
+    // (via incident_set_disposition_internal()) and applies the
+    // disposition_required_on_close enforcement gate; this endpoint just
+    // passes it through.
+    $dispositionIdRaw = $input['disposition_id'] ?? null;
+    $dispositionIdInput = ($dispositionIdRaw !== null && $dispositionIdRaw !== '')
+        ? (int) $dispositionIdRaw : null;
+
     $result = incident_update_status_internal(
         $ticket_id,
         $new_status,
         (int) $current_user_id,
-        ['booked_date' => $booked]
+        ['booked_date' => $booked, 'disposition_id' => $dispositionIdInput]
     );
     if (!empty($result['errors'])) {
         ini_set('display_errors', $prevDisplay);
-        json_error('Failed to update status: ' . $result['errors'][0], 500);
+        $firstErr = (string) $result['errors'][0];
+        // Disposition-required / invalid-disposition are validation
+        // failures the dispatcher can act on, not server errors — surface
+        // the writer's own message directly instead of the generic
+        // "Failed to update status: ..." wrapper (which would bury it).
+        if (stripos($firstErr, 'disposition') !== false) {
+            json_error($firstErr, 400);
+        }
+        json_error('Failed to update status: ' . $firstErr, 500);
     }
 
     // Per-incident action-log entry — action_type 10 = "status change"
@@ -319,8 +359,50 @@ elseif ($action === 'update_fields') {
     ]);
 }
 
+// ══════════════════════════════════════════════════════════════
+// ACTION: set_disposition (Phase 132 Step 2, GH #16)
+// ══════════════════════════════════════════════════════════════
+// Independent of update_status — spec: disposition is "settable at any
+// time, not only at close" (plan.md §4). A dedicated action rather than
+// folding into update_fields' whitelist: disposition needs existence/
+// active validation AND a newui_audit_log row on EVERY change (including
+// a no-op re-set of the same value — plan.md §4's stale-value
+// mitigation), neither of which update_fields' generic whitelist path
+// provides (it only writes the per-incident `action` table log). Gated
+// on action.edit_incident — same scope as update_fields, no new
+// permission (plan.md §8: selecting a disposition needs none).
+elseif ($action === 'set_disposition') {
+    $dispositionIdRaw = $input['disposition_id'] ?? null;
+    $dispositionId = ($dispositionIdRaw !== null && $dispositionIdRaw !== '')
+        ? (int) $dispositionIdRaw : null;
+
+    $result = incident_set_disposition_internal($ticket_id, $dispositionId, (int) $current_user_id);
+    if (empty($result['updated'])) {
+        ini_set('display_errors', $prevDisplay);
+        $firstErr = !empty($result['errors']) ? (string) $result['errors'][0] : 'Disposition update failed.';
+        json_error($firstErr, 400);
+    }
+
+    require_once __DIR__ . '/../inc/sse.php';
+    sse_publish_for_incident('incident:update',
+        [
+            'ticket_id'       => $ticket_id,
+            'incident_number' => incnum_display((int) $ticket_id),
+            'fields_changed'  => ['disposition_id'],
+        ],
+        $ticket_id);
+
+    ini_set('display_errors', $prevDisplay);
+    $displayNum = incnum_display((int) $ticket_id);
+    json_response([
+        'success'        => true,
+        'message'        => 'Disposition updated on incident ' . $displayNum,
+        'disposition_id' => $result['disposition_id'],
+    ]);
+}
+
 // ── Unknown action ──
 else {
     ini_set('display_errors', $prevDisplay);
-    json_error('Unknown action: ' . $action . '. Valid actions: add_note, update_status, update_fields');
+    json_error('Unknown action: ' . $action . '. Valid actions: add_note, update_status, update_fields, set_disposition');
 }

@@ -110,10 +110,12 @@ function handleGet() {
         $id = intval($_GET['id']);
         $rows = safe_fetch_all_v(
             "SELECT v.*, vt.name AS type_name, vt.icon AS type_icon,
-                    CONCAT(m.first_name, ' ', m.last_name) AS owner_name, m.callsign AS owner_callsign
+                    CONCAT(m.first_name, ' ', m.last_name) AS owner_name, m.callsign AS owner_callsign,
+                    oo.name AS owner_org_name, oo.short_name AS owner_org_short_name
              FROM " . db_table('newui_vehicles') . " v
              LEFT JOIN " . db_table('newui_vehicle_types') . " vt ON v.vehicle_type_id = vt.id
              LEFT JOIN " . db_table('member') . " m ON v.member_id = m.id
+             LEFT JOIN " . db_table('organizations') . " oo ON v.owner_org_id = oo.id
              WHERE v.id = ?",
             [$id]
         );
@@ -175,10 +177,12 @@ function handleGet() {
 
     $rows = safe_fetch_all_v(
         "SELECT v.*, vt.name AS type_name, vt.icon AS type_icon,
-                CONCAT(m.first_name, ' ', m.last_name) AS owner_name, m.callsign AS owner_callsign
+                CONCAT(m.first_name, ' ', m.last_name) AS owner_name, m.callsign AS owner_callsign,
+                oo.name AS owner_org_name, oo.short_name AS owner_org_short_name
          FROM " . db_table('newui_vehicles') . " v
          LEFT JOIN " . db_table('newui_vehicle_types') . " vt ON v.vehicle_type_id = vt.id
          LEFT JOIN " . db_table('member') . " m ON v.member_id = m.id
+         LEFT JOIN " . db_table('organizations') . " oo ON v.owner_org_id = oo.id
          {$whereSQL}
          ORDER BY v.is_agency_vehicle DESC, v.status ASC, m.last_name, m.first_name
          LIMIT 500",
@@ -194,20 +198,54 @@ function handleGet() {
     $types = safe_fetch_all_v(
         "SELECT * FROM " . db_table('newui_vehicle_types') . " WHERE active = 1 ORDER BY sort_order"
     );
+    // Same soft-delete gap as GH#52 (facilities) — a member who has left the
+    // roster (deleted_at set) still showed up as a selectable owner here.
+    // Defensive: older installs may lack deleted_at on member.
+    $hasDeletedAt = false;
+    try {
+        $hasDeletedAt = (int) db_fetch_value(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'deleted_at'",
+            [($GLOBALS['db_prefix'] ?? '') . 'member']
+        ) > 0;
+    } catch (Exception $e) { $hasDeletedAt = false; }
+    $memberNotDeleted = $hasDeletedAt ? ' WHERE `deleted_at` IS NULL' : '';
     $members = safe_fetch_all_v(
-        "SELECT id, first_name, last_name, callsign FROM " . db_table('member') . " ORDER BY last_name, first_name"
+        "SELECT id, first_name, last_name, callsign FROM " . db_table('member')
+        . "{$memberNotDeleted} ORDER BY last_name, first_name"
+    );
+
+    // Agencies selectable as an owner (GH: Chris Byrd, Google Group
+    // 2026-08-06 — "how do I add an Agency so I can assign it as an
+    // owner"). Reuses the same `organizations` table api/organizations.php
+    // already manages; active only, same as that endpoint's own list.
+    $organizations = safe_fetch_all_v(
+        "SELECT id, name, short_name FROM " . db_table('organizations')
+        . " WHERE active = 1 ORDER BY sort_order, name"
     );
 
     json_response([
-        'vehicles' => $result,
-        'types'    => $types,
-        'members'  => $members
+        'vehicles'      => $result,
+        'types'         => $types,
+        'members'       => $members,
+        'organizations' => $organizations
     ]);
 }
 
 function handlePost() {
     $input = json_decode(file_get_contents('php://input'), true);
     if (!$input) json_error('Invalid JSON body');
+
+    // Issue #20 (public repo, security): this endpoint performed 2 INSERTs
+    // and 2 DELETEs with no CSRF verification at all — a browser-default
+    // (SameSite=Lax cookies) was the only thing standing between it and a
+    // cross-site POST. The single client apiPost() wrapper (assets/js/
+    // vehicles.js) and every config.js caller (assets/js/config.js, via
+    // apiPostDirect()) already carry csrf_token as of this fix.
+    $token = $input['csrf_token'] ?? $_GET['csrf_token'] ?? '';
+    if (!csrf_verify($token)) {
+        json_error('Invalid CSRF token', 403);
+    }
 
     // Delete vehicle
     if (($input['action'] ?? '') === 'delete') {
@@ -274,8 +312,20 @@ function handlePost() {
     }
 
     // Create or Update vehicle
+    //
+    // Owner type — Chris Byrd, Google Group 2026-08-06: adding a specific
+    // Agency as a vehicle's owner, not just a person. `member_id` and
+    // `owner_org_id` are mutually exclusive owner slots; the edit form only
+    // ever shows one selector at a time (assets/js/vehicles.js), but the
+    // server enforces it too rather than trusting the client to never send
+    // both — whichever the client actually populated wins, and the other
+    // is forced null so a stale value from a prior save can't linger.
+    $ownerOrgId = !empty($input['owner_org_id']) ? intval($input['owner_org_id']) : null;
+    $memberId   = $ownerOrgId === null && !empty($input['member_id']) ? intval($input['member_id']) : null;
+
     $fields = [
-        'member_id'         => !empty($input['member_id']) ? intval($input['member_id']) : null,
+        'member_id'         => $memberId,
+        'owner_org_id'      => $ownerOrgId,
         'vehicle_type_id'   => !empty($input['vehicle_type_id']) ? intval($input['vehicle_type_id']) : null,
         'callsign'          => trim($input['callsign'] ?? ''),
         'year'              => !empty($input['year']) ? intval($input['year']) : null,
@@ -289,7 +339,11 @@ function handlePost() {
         'insurance_carrier' => trim($input['insurance_carrier'] ?? '') ?: null,
         'insurance_policy'  => trim($input['insurance_policy'] ?? '') ?: null,
         'insurance_exp'     => !empty($input['insurance_exp']) ? $input['insurance_exp'] : null,
-        'is_agency_vehicle' => !empty($input['is_agency_vehicle']) ? 1 : 0,
+        // Derived, not trusted from the client alone: an agency owner
+        // ALWAYS implies an agency vehicle, regardless of what the client
+        // sent, so applyPrivacy()'s "no redaction for agency vehicles"
+        // check can't be defeated by a client that forgets to set this.
+        'is_agency_vehicle' => ($ownerOrgId !== null || !empty($input['is_agency_vehicle'])) ? 1 : 0,
         'is_private'        => isset($input['is_private']) ? (int)$input['is_private'] : 1,
         'status'            => $input['status'] ?? 'Active',
         'notes'             => trim($input['notes'] ?? ''),

@@ -473,8 +473,10 @@ if (!$haveTable) {
 echo "\n-- 7. Health check surfaces the jobs --\n";
 $hc = health_check_scheduled_jobs();
 is_ok(!empty($hc['checked']), 'health_check_scheduled_jobs() runs');
-is_ok(is_array($hc['jobs'] ?? null) && count($hc['jobs']) === 2,
-      'both ticks are registered and reported');
+// Phase 133 (2026-08-03) added a third registered job (audit_log_purge) —
+// this count tracks sched_job_registry(), not a fixed "two ticks" assumption.
+is_ok(is_array($hc['jobs'] ?? null) && count($hc['jobs']) === count(sched_job_registry()),
+      'every registered job is reported (currently ' . count(sched_job_registry()) . ')');
 is_ok(in_array($hc['severity'] ?? '', ['ok', 'warn', 'critical'], true),
       "section severity is one of ok/warn/critical (got '" . ($hc['severity'] ?? '?') . "')");
 

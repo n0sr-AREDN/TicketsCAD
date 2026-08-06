@@ -316,6 +316,16 @@ if ($method === 'POST') {
                 try { db_query("DELETE FROM `{$prefix}member_callsigns` WHERE `member_id` = ?", [$id]); } catch (Exception $e) {}
                 try { db_query("DELETE FROM `{$prefix}member_organizations` WHERE `member_id` = ?", [$id]); } catch (Exception $e) {}
                 try { db_query("DELETE FROM `{$prefix}member_comm_identifiers` WHERE `member_id` = ?", [$id]); } catch (Exception $e) {}
+                // Chris Byrd, Google Group 2026-08-06: "Vehicle Owner ...
+                // appears i have some null records." newui_vehicles.member_id
+                // has no foreign key and this list never included it, so
+                // purging a member left any vehicle they owned pointing at a
+                // row that no longer existed anywhere — not soft-deleted,
+                // gone — and the owner column silently rendered blank with
+                // nothing to explain why. The vehicle is a real asset and
+                // outlives its owner; null out the reference rather than
+                // touching the vehicle itself.
+                try { db_query("UPDATE `{$prefix}newui_vehicles` SET `member_id` = NULL WHERE `member_id` = ?", [$id]); } catch (Exception $e) {}
             } elseif ($type === 'responder') {
                 try { db_query("DELETE FROM `{$prefix}allocates` WHERE `resource_id` = ? AND `type` = 2", [$id]); } catch (Exception $e) {}
             }

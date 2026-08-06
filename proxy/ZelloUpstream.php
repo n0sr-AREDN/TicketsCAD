@@ -621,8 +621,22 @@ class ZelloUpstream
         if (isset($data['command']) && $data['command'] === 'on_channel_status') {
             $ch = (string) ($data['channel'] ?? '?');
             $st = (string) ($data['status'] ?? '?');
-            \plog("[Upstream] Channel status: {$ch} - {$st}");
-            ($this->onStatus)('channel_status', "Channel '{$ch}' is {$st}");
+            // Issue #21 (public repo, Ron 2026-08-02): a password-protected
+            // Consumer channel is refused by the Channels API outright — even
+            // for the channel owner — and Zello says so on the VERY FIRST
+            // on_channel_status frame: error="invalid password",
+            // error_type="configuration". This handler read only channel+status
+            // and discarded error/error_type, so the operator saw "Channel 'X'
+            // is offline" — true, unactionable, indistinguishable from an empty
+            // channel, a bad key, or a wrong channel name. Logon still
+            // succeeded, PTT still lit up, start_stream went out and Zello
+            // silently never answered it. Surface whatever Zello already told
+            // us; showing the real reason beats discarding it, on any tier.
+            $err     = trim((string) ($data['error'] ?? ''));
+            $errType = trim((string) ($data['error_type'] ?? ''));
+            $suffix  = $err !== '' ? ' — ' . $err . ($errType !== '' ? " ({$errType})" : '') : '';
+            \plog("[Upstream] Channel status: {$ch} - {$st}{$suffix}");
+            ($this->onStatus)('channel_status', "Channel '{$ch}' is {$st}{$suffix}");
             // Phase 100 — remember per-channel images_supported so we
             // can pre-reject client send_image on channels that
             // disallow images. Zello sets this at logon; may update on

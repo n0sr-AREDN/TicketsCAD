@@ -48,6 +48,12 @@ $sev_colors = [
 $status_labels = [1 => 'Closed', 2 => 'Open', 3 => 'Scheduled'];
 
 // ── Main incident query ──
+// Soft-delete sweep (issue #25 follow-up) — this is the desktop UI's own
+// incident detail view; a soft-deleted incident was still served in full
+// here (street, contact, narrative — the exact class of leak the two
+// endpoints fixed in 1502157 addressed elsewhere), and a dispatcher could
+// still act on it. Deleted rows now 404, same as the External API detail
+// path.
 try {
     $incident = db_fetch_one(
         "SELECT
@@ -73,7 +79,8 @@ try {
          LEFT JOIN `{$prefix}facilities` `f` ON `t`.`facility` = `f`.`id`
          LEFT JOIN `{$prefix}facilities` `rf` ON `t`.`rec_facility` = `rf`.`id`
          LEFT JOIN `{$prefix}user` `u` ON `t`.`_by` = `u`.`id`
-         WHERE `t`.`id` = ?",
+         WHERE `t`.`id` = ?
+           AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')",
         [$id]
     );
 } catch (Exception $e) {
@@ -87,6 +94,37 @@ if (!$incident) {
 }
 
 $sev = (int) $incident['severity'];
+
+// Phase 132 Step 4 (2026-08-04, GH #16) — current disposition_id + its
+// resolved label, read defensively and SEPARATELY from the main query
+// above: a pre-migration install (Step 1 not yet run) has neither
+// ticket.disposition_id nor the ticket_disposition table, and this must
+// degrade to null/false rather than take down the whole incident view
+// (CLAUDE.md schema-resilience pattern — the assignments/actions blocks
+// below follow the same guarded-block convention). The OFFERED-list for
+// the dropdowns is a separate endpoint (api/dispositions-picker.php,
+// mirroring api/un-statuses.php) — this is only the incident's OWN
+// current value, for immediate display without a second round trip.
+$dispositionId       = null;
+$dispositionLabel    = null;
+$dispositionRetired  = false;
+try {
+    $dRow = db_fetch_one(
+        "SELECT `t`.`disposition_id`, `td`.`status_val`, `td`.`active`
+           FROM `{$prefix}ticket` `t`
+           LEFT JOIN `{$prefix}ticket_disposition` `td` ON `t`.`disposition_id` = `td`.`id`
+          WHERE `t`.`id` = ?",
+        [$id]
+    );
+    if ($dRow && $dRow['disposition_id'] !== null && (int) $dRow['disposition_id'] > 0) {
+        $dispositionId      = (int) $dRow['disposition_id'];
+        $dispositionLabel   = $dRow['status_val'] ?? null;
+        $dispositionRetired = isset($dRow['active']) && (int) $dRow['active'] !== 1;
+    }
+} catch (Exception $e) {
+    // Pre-migration install (no disposition_id column / no
+    // ticket_disposition table) — leave the defaults above.
+}
 
 $result_incident = [
     'id'                  => (int) $incident['id'],
@@ -126,6 +164,14 @@ $result_incident = [
     'type_description'    => $incident['type_description'] ?? '',
     'protocol'            => $incident['protocol'] ?? '',
     'type_group'          => $incident['type_group'] ?? '',
+    // Phase 132 Step 4 (GH #16) — the incident's own current disposition.
+    // null when unset OR on a pre-migration install (guarded lookup
+    // above). disposition_retired is true only when the stored value's
+    // `active` = 0 — the label still resolves so the UI can show it,
+    // badge it as retired, and keep it selected.
+    'disposition_id'      => $dispositionId,
+    'disposition_label'   => $dispositionLabel,
+    'disposition_retired' => $dispositionRetired,
     // 2026-06-26 — Expose raw FK ids so the incident-detail edit form
     // can pre-select the current facility / receiving facility in its
     // dropdowns. Display fields below (facility_name, ...) stay for

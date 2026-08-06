@@ -117,6 +117,17 @@ INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VAL
     ('action.manage_orgs',     'Manage Organizations', 'action', 'Create/edit organizations'),
     ('action.manage_types',    'Manage Incident Types', 'action', 'Create/edit incident type definitions'),
     ('action.view_audit',      'View Audit Log',       'action', 'View the system audit log'),
+    -- Phase 133 (2026-08-03) — audit-log retention/purge setting + manual
+    -- trigger. Scoped like action.manage_config: Super Admin only (see the
+    -- Org Admin and Dispatcher `NOT IN (...)` exclusions below).
+    ('action.manage_audit_retention', 'Manage Audit Log Retention', 'action', 'Change the audit-log retention/purge setting and trigger a manual purge'),
+    -- Phase 132 (2026-08-03) — manage the incident-disposition list (add/
+    -- rename/reorder/retire) and the disposition-required-at-close setting.
+    -- Scoped like action.manage_config: admin-only (see the Org Admin and
+    -- Dispatcher `NOT IN (...)` exclusions below). Selecting a disposition
+    -- when closing/editing an incident needs NO permission — only managing
+    -- the list does.
+    ('action.manage_dispositions', 'Manage Incident Dispositions', 'action', 'Add/rename/reorder/retire incident dispositions and the require-at-close setting'),
     ('action.view_reports',    'Run Aggregate Reports', 'action', 'Run cross-incident / cross-responder and personnel reports (screen.reports alone only allows single-resource reports)'),
     ('action.export_data',     'Export Data',           'action', 'Export data and reports'),
     ('action.import_data',     'Import Data',           'action', 'Import data from external sources'),
@@ -156,7 +167,8 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
 -- explicitly per-role via the Roles UI, not handed to every administrator.
 INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
     SELECT 2, `id` FROM `permissions`
-    WHERE `code` NOT IN ('action.manage_config', 'action.manage_roles', 'action.bulk_delete_members');
+    WHERE `code` NOT IN ('action.manage_config', 'action.manage_roles', 'action.bulk_delete_members',
+                          'action.manage_audit_retention', 'action.manage_dispositions');
 
 -- Dispatcher gets EVERYTHING except system admin tasks (60 of 65 permissions)
 -- A dispatcher answering phones needs full operational capability
@@ -178,9 +190,14 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
         'action.intercom_unlock',      -- intercom door actuator is admin-only (Phase 114, roles 1-2)
         'action.view_reports',         -- org-wide aggregate reports are admin-only (roles 1-2, 2026-07-29);
                                        -- grant per-role via the Roles UI if your dispatchers need them
-        'action.delete_ics_form'       -- deleting an ICS form is records retention, not dispatch
+        'action.delete_ics_form',      -- deleting an ICS form is records retention, not dispatch
                                        -- (roles 1-2, 2026-08-02); a dispatcher can still delete
                                        -- a draft they created themselves
+        'action.manage_audit_retention', -- audit-log retention/purge is admin-only (roles 1 only,
+                                       -- 2026-08-03) — same tier as action.manage_config
+        'action.manage_dispositions'  -- managing the incident-disposition list is admin-only
+                                       -- (role 1 only, 2026-08-03) — same tier as action.manage_config;
+                                       -- selecting a disposition on a call needs no permission
     );
 
 -- Operator gets all screens/widgets/fields + key operational actions (45 permissions)

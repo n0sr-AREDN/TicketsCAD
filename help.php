@@ -1395,7 +1395,8 @@ pick one.</p>
         <tr><td>Available</td><td><code>av</code>, <code>avail</code>, <code>available</code></td></tr>
         <tr><td>Busy</td><td><code>busy</code></td></tr>
         <tr><td>Unavailable</td><td><code>unav</code>, <code>unavail</code>, <code>unavailable</code></td></tr>
-        <tr><td>Dispatched</td><td><code>disp</code>, <code>dispatched</code></td></tr>
+        <tr><td>Dispatched</td><td><code>disp</code>, <code>dispatched</code>, <code>dp</code></td></tr>
+        <tr><td>Enroute</td><td><code>en</code>, <code>enr</code>, <code>enroute</code></td></tr>
         <tr><td>Responding</td><td><code>resp</code>, <code>responding</code></td></tr>
         <tr><td>On Scene</td><td><code>os</code>, <code>onscene</code>, <code>on-scene</code>, <code>on scene</code></td></tr>
         <tr><td>Transporting</td><td><code>tx</code>, <code>transp</code>, <code>transport</code>, <code>transporting</code></td></tr>
@@ -1411,11 +1412,36 @@ The status keyword is matched from the end of the line, so everything before it 
 use the unit&#39;s <strong>S</strong> hotkey instead, which opens a modal with facility autocomplete /
 note input. Inline collection from the command bar is a planned v2.</p>
 
+<h6>Event Net-Control &mdash; Phase 109</h6>
+<p>Move a unit between zones on the active event, without leaving the keyboard:</p>
+<table class="table table-sm table-bordered">
+    <thead><tr><th>Command</th><th>Example</th><th>Effect</th></tr></thead>
+    <tbody>
+        <tr><td><code>/z &lt;team&gt; &lt;zone&gt;</code></td><td><code>/z alpha 3</code></td><td>Team Alpha &rarr; the zone with code or name &ldquo;3&rdquo;. <code>/zone</code> also works.</td></tr>
+        <tr><td><code>/z &lt;team&gt; clear</code></td><td><code>/z echo clear</code></td><td>Clears Echo&#39;s zone assignment. <code>none</code> and <code>off</code> also clear.</td></tr>
+    </tbody>
+</table>
+<p>Requires an active event to be selected on the Net Control board first &mdash; open Net Control
+and pick the event, then the command bar can resolve teams and zones against it.</p>
+
+<h6>Net-Control check-ins &mdash; Phase 131</h6>
+<p>Capture a whole round of check-ins in one line, while stations are still talking:</p>
+<table class="table table-sm table-bordered">
+    <thead><tr><th>Command</th><th>Example</th><th>Effect</th></tr></thead>
+    <tbody>
+        <tr><td><code>/net &lt;id&gt; &lt;note&gt; / &lt;id&gt; &lt;note&gt; / ...</code></td><td><code>/net 1234 tornado / 3344 hail</code></td><td>Two check-ins captured in one keystroke.</td></tr>
+    </tbody>
+</table>
+<p>Separate entries with <code>/</code>; within each entry the first word is the identifier and the
+rest is the note. Opens the situational screen with the check-ins loaded (or refreshes in place if
+you&#39;re already on a page carrying the check-in widget).</p>
+
 <h6>Navigation</h6>
 <table class="table table-sm table-bordered">
     <thead><tr><th>Command</th><th>Aliases</th><th>Action</th></tr></thead>
     <tbody>
-        <tr><td><code>/dashboard</code></td><td><code>/sit</code>, <code>/situation</code></td><td>Open the dashboard / situation view.</td></tr>
+        <tr><td><code>/dashboard</code></td><td><code>/dash</code>, <code>/home</code>, <code>/sit</code>, <code>/situ</code>, <code>/situation</code></td><td>Open the dashboard (your main situational view).</td></tr>
+        <tr><td><code>/bigscreen</code></td><td><code>/wall</code>, <code>/fullscreen</code>, <code>/eoc</code></td><td>Open the full-screen situation display (large monitor, EOC / command post).</td></tr>
         <tr><td><code>/search</code></td><td>&mdash;</td><td>Open the search page.</td></tr>
         <tr><td><code>/reports</code></td><td>&mdash;</td><td>Open the reports page.</td></tr>
         <tr><td><code>/settings</code></td><td>&mdash;</td><td>Open the settings page.</td></tr>

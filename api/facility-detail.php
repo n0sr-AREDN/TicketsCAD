@@ -109,6 +109,9 @@ $result_facility = [
 ];
 
 // ── Assigned incidents (facility as origin or receiving) ──
+// Soft-delete sweep (issue #25 follow-up) — all three queries below
+// excluded, so a deleted incident's stats/history couldn't skew the
+// facility's board.
 $assigned_incidents = [];
 try {
     $rows = db_fetch_all(
@@ -128,6 +131,7 @@ try {
          FROM `{$prefix}ticket` `t`
          LEFT JOIN `{$prefix}in_types` `it` ON `t`.`in_types_id` = `it`.`id`
          WHERE (`t`.`facility` = ? OR `t`.`rec_facility` = ?)
+           AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')
          ORDER BY `t`.`updated` DESC
          LIMIT 50",
         [$id, $id, $id, $id]
@@ -155,12 +159,15 @@ try {
 $stats = ['total_transports' => 0, 'transports_this_month' => 0];
 try {
     $stats['total_transports'] = (int) db_fetch_value(
-        "SELECT COUNT(*) FROM `{$prefix}ticket` WHERE `rec_facility` = ?",
+        "SELECT COUNT(*) FROM `{$prefix}ticket`
+          WHERE `rec_facility` = ?
+            AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')",
         [$id]
     );
     $stats['transports_this_month'] = (int) db_fetch_value(
         "SELECT COUNT(*) FROM `{$prefix}ticket`
-         WHERE `rec_facility` = ? AND `date` >= DATE_FORMAT(NOW(), '%Y-%m-01')",
+         WHERE `rec_facility` = ? AND `date` >= DATE_FORMAT(NOW(), '%Y-%m-01')
+           AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')",
         [$id]
     );
 } catch (Exception $e) {

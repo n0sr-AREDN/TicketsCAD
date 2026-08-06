@@ -439,6 +439,11 @@ Add:
 
 # Pending-message delivery tick (every minute) for queued broker messages.
 * * * * * php /var/www/newui/tools/pending_messages_tick.php > /dev/null 2>&1
+
+# Audit-log retention purge (daily). A genuine no-op unless an administrator
+# has turned on Settings -> Audit Log -> Retention & Purge
+# (audit_log_retention_days > 0) -- safe to add even if you haven't.
+0 3 * * * php /var/www/newui/tools/audit_log_purge_tick.php > /dev/null 2>&1
 ```
 
 - [ ] `sudo crontab -l -u www-data` shows the jobs
@@ -446,7 +451,7 @@ Add:
 
 **Backups:** there is currently no all-in-one `backup.php` script. Configure backups separately via `mysqldump` — see [BACKUP-RECOVERY-RUNBOOK.md](BACKUP-RECOVERY-RUNBOOK.md) for the script template.
 
-**Audit-log + location-reports trim:** dedicated trim scripts are planned but not yet shipped. Until they land, run `DELETE FROM audit_log WHERE created_at < NOW() - INTERVAL 365 DAY;` (and similar for `location_reports`) from a periodic SQL job.
+**Audit-log trim:** built and shipped (2026-08-03) — `tools/audit_log_purge_tick.php`, added to the crontab block above. Off by default (`audit_log_retention_days` = `0`); an administrator turns it on in Settings → Audit Log → Retention & Purge. See [AUDIT-LOG-REFERENCE.md § Retention](AUDIT-LOG-REFERENCE.md#retention). **location-reports trim** is still planned/not yet shipped — that part of this note remains accurate.
 
 Alternative to cron: systemd timers. Templates can be derived from the existing unit files under `services/dvswitch/` and `services/aprs-is/`.
 

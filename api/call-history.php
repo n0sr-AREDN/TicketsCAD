@@ -45,12 +45,15 @@ if (empty($conditions)) {
 $where = implode(' OR ', $conditions);
 
 try {
+    // Soft-delete sweep (issue #25 follow-up) — call history is a live
+    // dispatch tool; a soft-deleted incident shouldn't resurface here.
     $sql = "SELECT `t`.`id`, `t`.`scope`, `t`.`street`, `t`.`city`, `t`.`phone`,
                    `t`.`status`, `t`.`date`, `t`.`severity`,
                    `it`.`type` AS `incident_type`
             FROM `{$prefix}ticket` `t`
             LEFT JOIN `{$prefix}in_types` `it` ON `t`.`in_types_id` = `it`.`id`
             WHERE ({$where})
+              AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')
             ORDER BY `t`.`date` DESC
             LIMIT 25";
 

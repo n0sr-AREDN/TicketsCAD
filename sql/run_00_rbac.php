@@ -169,6 +169,20 @@ $perms = [
     ['action.manage_orgs',     'Manage Organizations', 'action'],
     ['action.manage_types',    'Manage Incident Types', 'action'],
     ['action.view_audit',      'View Audit Log',       'action'],
+    // Phase 133 (2026-08-03) — audit-log retention/purge. Scoped like
+    // action.manage_config: Super Admin only (see the Org Admin `NOT IN`
+    // exclusion below; Dispatcher/Operator/Read-Only/Field Unit mappings in
+    // this file are allow-lists that do not name it, so they correctly do
+    // not receive it either).
+    ['action.manage_audit_retention', 'Manage Audit Log Retention', 'action'],
+    // Phase 132 (2026-08-03) — manage the incident-disposition list
+    // (add/rename/reorder/retire) and the disposition-required-at-close
+    // setting. Scoped like action.manage_config: Super Admin only (see the
+    // Org Admin `NOT IN` exclusion below; Dispatcher/Operator/Read-Only/
+    // Field Unit mappings in this file are allow-lists that do not name it,
+    // so they correctly do not receive it either). Selecting a disposition
+    // when closing/editing an incident needs no permission.
+    ['action.manage_dispositions', 'Manage Incident Dispositions', 'action'],
     // 2026-07-29 — org-wide aggregate + personnel reports (api/reports.php).
     // Granted below to Super Admin (broad SELECT) and Org Admin (broad NOT IN);
     // Dispatcher/Operator/Read-Only/Field Unit grants below are allow-lists that
@@ -245,7 +259,8 @@ try {
 try {
     db_query("INSERT IGNORE INTO `{$prefix}role_permissions` (`role_id`, `permission_id`)
               SELECT 2, `id` FROM `{$prefix}permissions`
-              WHERE `code` NOT IN ('action.manage_config', 'action.manage_roles', 'action.bulk_delete_members')");
+              WHERE `code` NOT IN ('action.manage_config', 'action.manage_roles', 'action.bulk_delete_members',
+                                    'action.manage_audit_retention', 'action.manage_dispositions')");
     echo "[OK] Org Admin permissions mapped\n";
 } catch (Exception $e) {}
 

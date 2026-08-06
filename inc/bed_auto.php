@@ -218,6 +218,11 @@ function bed_auto_apply_on_status_change($responderId, $statusId, $statusName, $
         // Resolve the effective receiving facility from the incident,
         // keeping the per-assignment column as an OPTIONAL override for a
         // future "this unit diverts to a different hospital" feature.
+        // Soft-delete sweep (issue #25 follow-up) — a soft-deleted
+        // incident's receiving facility must not drive a bed count
+        // change. Added carefully: this JOIN and its exact bind order are
+        // load-bearing for the GH #20 fixes above (see the two
+        // preceding comment blocks) — only the WHERE clause changed.
         $openAssigns = db_fetch_all(
             "SELECT a.id AS assign_id, a.ticket_id,
                     COALESCE(NULLIF(a.rec_facility_id, 0), NULLIF(t.rec_facility, 0)) AS rec_facility_id
@@ -225,7 +230,8 @@ function bed_auto_apply_on_status_change($responderId, $statusId, $statusName, $
              JOIN `{$prefix}ticket` t ON t.id = a.ticket_id
              WHERE a.responder_id = ?
                AND (a.clear IS NULL OR a.clear = '0000-00-00 00:00:00')
-               AND COALESCE(NULLIF(a.rec_facility_id, 0), NULLIF(t.rec_facility, 0)) > 0",
+               AND COALESCE(NULLIF(a.rec_facility_id, 0), NULLIF(t.rec_facility, 0)) > 0
+               AND (t.deleted_at IS NULL OR t.deleted_at = '0000-00-00 00:00:00')",
             [$responderId]
         );
         if (empty($openAssigns)) {

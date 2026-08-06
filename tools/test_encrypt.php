@@ -202,6 +202,26 @@ test('fe_decrypt() with garbage returns false',
 test('fe_decrypt() with valid base64 but bad ciphertext returns false',
     fe_decrypt(base64_encode('this is not RSA ciphertext')) === false);
 
+// ── Regression guard (2026-08-06): the openssl.cnf candidates in
+// fe_generate_keypair() were built from dirname(PHP_BINARY) — the CALLING
+// SAPI's own executable, not PHP's directory. Under apache2handler on
+// Windows/XAMPP, PHP_BINARY is Apache's httpd.exe, so every candidate this
+// function tried lived under Apache's bin directory and none of them ever
+// existed — found by actually generating a keypair through a browser
+// request against Apache, not by running this CLI suite, where PHP_BINARY
+// happens to genuinely sit inside PHP's own directory. See
+// inc/vapid-keygen.php and tests/test_vapid_push_encryption.php for the
+// identical bug and a full subprocess-isolated proof of the same fix
+// technique (php_ini_loaded_file(), which every SAPI populates correctly).
+// This is a lighter structural check rather than repeating that whole
+// proof a second time for a near-identical fix.
+echo "\n-- OpenSSL config resolution is SAPI-independent --\n";
+$feSrc = file_get_contents(__DIR__ . '/../inc/field-encrypt.php');
+test(
+    'fe_generate_keypair() resolves openssl.cnf via php_ini_loaded_file(), not PHP_BINARY alone',
+    strpos($feSrc, 'php_ini_loaded_file()') !== false
+);
+
 // ── 11. fe_ensure_keys() is idempotent ──
 echo "\n-- Idempotent Key Generation --\n";
 $firstPub = fe_get_public_key();

@@ -354,6 +354,68 @@ foreach ($personnelSections as $sec) {
             </div>
 
             <div class="config-status-bar" id="auditStatus">Ready</div>
+
+            <!-- ── Retention & Purge (Phase 133, 2026-08-03) ──────────────
+                 Deliberately its OWN mini-form, not the generic
+                 [data-key] / settingsForm mechanism — the save must go
+                 through api/audit-retention.php so the dedicated
+                 action.manage_audit_retention permission actually gates it.
+                 api/config-admin.php?section=settings gates every write on
+                 action.manage_config alone, which would make a purpose-built
+                 permission meaningless. -->
+            <hr class="my-3">
+            <div class="settings-group" id="auditRetentionGroup">
+                <div class="settings-group-title">Retention &amp; Purge</div>
+                <p class="text-body-secondary small mb-2">
+                    Audit log rows are never deleted unless you turn this on. When enabled, a purge
+                    archives (gzip-compressed, never sent anywhere) the exact rows being removed
+                    to a file on this server BEFORE deleting them from the live table, so the record
+                    survives even though the table shrinks.
+                </p>
+                <div class="alert alert-secondary small py-2 mb-3">
+                    <i class="bi bi-info-circle me-1"></i>
+                    CJIS Security Policy &sect;5.4 sets a <strong>365-day minimum</strong> retention for
+                    Criminal Justice Information. Your state or local rules may require longer.
+                    TicketsCAD does not know which rules apply to your agency, so a value below 365
+                    is warned about here but never blocked &mdash; that decision is your agency's, not
+                    this software's, to make.
+                </div>
+
+                <form id="auditRetentionForm" class="row g-2 align-items-end">
+                    <div class="col-md-3">
+                        <label for="setAuditRetentionDays" class="form-label form-label-sm">
+                            Purge rows older than (days)
+                        </label>
+                        <input type="number" min="0" max="36500" class="form-control form-control-sm"
+                               id="setAuditRetentionDays">
+                        <div class="form-text">0 = disabled (keep forever).</div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="border rounded p-2 small">
+                            <div class="text-body-secondary">Eligible right now</div>
+                            <div class="fw-semibold" id="auditRetentionEligible">&mdash;</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 d-flex gap-2">
+                        <button type="submit" class="btn btn-sm btn-success">Save Retention Setting</button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" id="btnAuditPurgeNow">
+                            <i class="bi bi-archive me-1"></i>Purge now
+                        </button>
+                        <span class="small" id="auditRetentionSettingsStatus"></span>
+                    </div>
+                </form>
+
+                <div id="auditRetentionCjisWarning" class="alert alert-warning small mt-2 mb-0 py-2 d-none">
+                    <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                    <span id="auditRetentionCjisWarningText"></span>
+                </div>
+
+                <div class="border rounded p-2 mt-3" id="auditRetentionStatusBox">
+                    <div class="text-body-secondary small py-1">
+                        <span class="spinner-border spinner-border-sm me-1"></span>Reading retention status&hellip;
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- ── Wastebasket ─────────────────────────────────────────── -->
@@ -1867,6 +1929,107 @@ foreach ($personnelSections as $sec) {
             });
         })();
         </script>
+
+        <!-- ── Incident Dispositions (Phase 132 Step 3, GH #16) ────── -->
+        <div class="config-panel" id="panel-incident-dispositions">
+            <div class="config-panel-title">
+                <i class="bi bi-flag text-primary"></i> Incident Dispositions
+            </div>
+            <p class="text-body-secondary small mb-3">
+                Define the outcomes a dispatcher can pick when a call ends &mdash;
+                Resolved, Unfounded, Cancelled, and so on. The Label can be renamed
+                at any time. The Code cannot be changed once created &mdash; it is
+                the stable value reports and exports use, so renaming the label
+                never breaks historical data. Retiring a disposition removes it
+                from future selection but keeps it readable on incidents that
+                already carry it; nothing is ever deleted.
+            </p>
+
+            <!-- Enforcement toggle -->
+            <div class="settings-group mb-3">
+                <div class="settings-group-title">Require at close</div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="dispRequiredOnClose">
+                    <label class="form-check-label" for="dispRequiredOnClose">
+                        Require a disposition before an incident can be closed
+                    </label>
+                </div>
+                <div class="form-text">
+                    Off by default &mdash; existing installs are unaffected until an
+                    admin turns this on. A disposition can be set at any time on an
+                    open incident regardless of this setting; it is only checked
+                    at close.
+                </div>
+            </div>
+
+            <!-- Add/Edit Form -->
+            <div class="card border-0 bg-body-tertiary mb-3">
+                <div class="card-body py-2">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-2">
+                            <label class="form-label form-label-sm mb-0">Label</label>
+                            <input type="text" class="form-control form-control-sm" id="dispStatusVal" placeholder="e.g. Resolved / Handled">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label form-label-sm mb-0">Code</label>
+                            <input type="text" class="form-control form-control-sm" id="dispCode" placeholder="e.g. resolved">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label form-label-sm mb-0">Discipline</label>
+                            <input type="text" class="form-control form-control-sm" id="dispDiscipline" placeholder="blank = always offered">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label form-label-sm mb-0">Org</label>
+                            <select class="form-select form-select-sm" id="dispOrgId">
+                                <option value="">&mdash; every org &mdash;</option>
+                            </select>
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label form-label-sm mb-0">Sort</label>
+                            <input type="number" class="form-control form-control-sm" id="dispSortOrder" value="0">
+                        </div>
+                        <div class="col-md-auto">
+                            <div class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" id="dispRequiresComment">
+                                <label class="form-check-label small" for="dispRequiresComment">Requires comment</label>
+                            </div>
+                        </div>
+                        <div class="col-md-auto">
+                            <button type="button" class="btn btn-sm btn-primary" id="btnAddDisposition">
+                                <i class="bi bi-plus-lg me-1"></i>Add
+                            </button>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-md-6">
+                            <label class="form-label form-label-sm mb-0">Description</label>
+                            <input type="text" class="form-control form-control-sm" id="dispDescription" placeholder="Optional notes for admins">
+                        </div>
+                    </div>
+                    <input type="hidden" id="dispEditId" value="0">
+                </div>
+            </div>
+
+            <!-- Dispositions Table -->
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0 align-middle">
+                    <thead class="sticky-top" style="background: var(--bs-body-bg);">
+                        <tr>
+                            <th class="ps-3">Label</th>
+                            <th>Code</th>
+                            <th>Discipline</th>
+                            <th>Org</th>
+                            <th class="text-center">Sort</th>
+                            <th class="text-center">Status</th>
+                            <th class="text-center" style="width: 90px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dispositionsBody">
+                        <tr><td colspan="7" class="text-center text-body-secondary py-3">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
 
         <!-- ── PAR Checks (Phase 16a, 2026-06-11) ─────────────────── -->
         <div class="config-panel" id="panel-par-checks">
@@ -5041,7 +5204,7 @@ foreach ($personnelSections as $sec) {
                             <div class="fw-semibold mb-1">Common failure modes</div>
                             <ul class="mb-0 ps-3">
                                 <li><strong>Log shows <code>Authentication failed</code>:</strong> username or password wrong, or the account doesn't exist on the Network. Log into your Zello Work admin panel and verify the user.</li>
-                                <li><strong>Log shows <code>Authenticated successfully</code> but channel stays <code>offline</code>:</strong> channel name typo (case-sensitive), or the console account isn't a member of that channel on the Zello side.</li>
+                                <li><strong>Log shows <code>Authenticated successfully</code> but channel stays <code>offline</code>:</strong> check what follows the status — <code>&mdash; invalid password (configuration)</code> means the channel has a password and Consumer refuses it outright (there's no field anywhere to supply one; remove the channel's password instead). No error suffix at all usually means a channel name typo (case-sensitive) or the console account isn't a member of that channel on the Zello side.</li>
                                 <li><strong>Connection rejected / no log activity at all:</strong> the proxy can't reach Zello. Check the host's outbound firewall — Zello needs WSS to <code>zello.io</code> (Consumer) or <code>zellowork.io</code> (Work) on port 443.</li>
                                 <li><strong>Chat widget shows grey dot even after success:</strong> browser SSE stream is stale. Hard-refresh the page (Ctrl+Shift+R).</li>
                             </ul>
@@ -7218,6 +7381,13 @@ foreach ($personnelSections as $sec) {
                         </div>
                     </div>
                 </div>
+                <div class="settings-group">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="setTelegramPollInbound" data-key="telegram_poll_inbound">
+                        <label class="form-check-label small" for="setTelegramPollInbound">Poll for inbound messages</label>
+                    </div>
+                    <div class="form-text small">When enabled, TicketsCAD periodically checks this chat for new messages and routes them to the sender's assigned incident (or general dispatch chat if unresolved). Off by default — sending to Telegram above does not by itself turn this on.</div>
+                </div>
                 <div class="mt-2">
                     <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-check-lg me-1"></i>Save</button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="btnTestTelegram"><i class="bi bi-send me-1"></i>Send Test</button>
@@ -7264,6 +7434,15 @@ foreach ($personnelSections as $sec) {
                         <div class="col-12">
                             <label class="form-label form-label-sm">Bot OAuth Token</label>
                             <input type="password" class="form-control form-control-sm" id="setSlackToken" data-secret="1" autocomplete="new-password" placeholder="xoxb-1234-5678-abcdef">
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-12">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="setSlackPollInbound">
+                                <label class="form-check-label small" for="setSlackPollInbound">Poll for inbound messages</label>
+                            </div>
+                            <div class="form-text small">When enabled, TicketsCAD periodically checks this channel for new messages and routes them to the sender's assigned incident (or general dispatch chat if unresolved). Bot API mode only — off by default.</div>
                         </div>
                     </div>
                 </div>

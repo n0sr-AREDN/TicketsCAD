@@ -272,18 +272,35 @@ function _chat_send(array $message) {
             'ticket_id'  => $ticketId,
             'created_at' => date('c'),
         ];
+        // Issue #23 (public repo, rjonesbsink) — this whole block is
+        // real-time delivery on top of a row that's already committed
+        // above; it must be best-effort, not fatal. The first branch used
+        // to guard on function_exists('sse_publish_for_user') while
+        // actually CALLING sse_publish() — harmless only because both are
+        // defined in the same inc/sse.php require block — and the final
+        // else had NO guard at all. A caller with no recipient uid and no
+        // ticket id (exactly what an inbound-channel forward looks like)
+        // took that unguarded branch; if inc/sse.php hadn't been loaded
+        // (any CLI/background context, e.g. a routing-engine poller),
+        // "Call to undefined function sse_publish()" is a PHP Error, which
+        // does NOT extend Exception, so the catch below never sees it and
+        // the caller crashes even though the chat row was already saved.
+        // Every branch now guards on the function it actually calls.
         $recipientUid = (is_numeric($to) && (int) $to > 0) ? (int) $to : 0;
-        if ($recipientUid > 0 && function_exists('sse_publish_for_user')) {
+        if ($recipientUid > 0 && function_exists('sse_publish')) {
             // Direct message — scope to recipient + sender so both see it.
             $ids = array_unique(array_filter([$recipientUid, (int) $userId]));
             sse_publish('chat:message', $payload, $userId, 'user', $ids);
         } elseif ($ticketId && function_exists('sse_publish_for_incident')) {
             // Incident-channel chat — scope to the groups allocated to it.
             sse_publish_for_incident('chat:message', $payload, (int) $ticketId, $userId);
-        } else {
+        } elseif (function_exists('sse_publish')) {
             // Org-wide channel chat (e.g. main "all" channel) — public.
             sse_publish('chat:message', $payload, $userId);
         }
+        // If none of the SSE functions are loaded, the real-time nudge is
+        // simply skipped — browsers pick the message up on their next poll
+        // or reconnect. The row above is already durable either way.
 
         return ['success' => true, 'chat_id' => $chatId];
     } catch (Exception $e) {

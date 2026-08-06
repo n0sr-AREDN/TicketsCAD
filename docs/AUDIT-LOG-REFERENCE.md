@@ -1,305 +1,312 @@
 # Audit Log — Reference
 
 **Audience:** compliance officer, security analyst, developer querying the audit trail.
-**Schema:** OCSF (Open Cybersecurity Schema Framework) v1.x aligned.
-**Implementation:** [`inc/audit.php`](../inc/audit.php), `audit_log` table.
+**Schema:** a custom InnoDB table, loosely inspired by OCSF's category/activity/severity
+vocabulary — see [OCSF alignment notes](#ocsf-alignment-notes) for exactly how far that
+goes and where it stops.
+**Implementation:** [`inc/audit.php`](../inc/audit.php), table `newui_audit_log`.
 **Admin UI:** Settings → Audit Log.
+
+Every fact in this document was checked against the running code on 2026-08-03: the
+`CREATE TABLE` in `audit_ensure_table()`, the `audit_log()` writer, the `api/audit-log.php`
+viewer endpoint, and a live install's actual data (`newui_audit_log` had 17,868 rows at the
+time of writing). Where an example query appears below, it was run against that install
+through the PHP CLI, not typed from memory.
+
+**A note on why this rewrite exists:** an earlier version of this document described a
+table called `audit_log` with columns `action`, `entity_type`, `entity_id`, `status`
+(an ENUM), and `request_id` — none of which exist. That schema was apparently designed
+at some point but the table that actually got built (`newui_audit_log`, in
+`inc/audit.php`) took a different shape, and this document was never updated to match.
+This is the project's own documented "schema-mismatch" disease, applied to its own
+documentation. Every section below has been re-derived from the real table.
 
 ---
 
 ## Table schema
 
-```sql
-CREATE TABLE audit_log (
-    id              INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    category        VARCHAR(32)  NOT NULL,    -- auth | data | admin | comms | security
-    action          VARCHAR(64)  NOT NULL,    -- the verb (login, create, update, ...)
-    entity_type     VARCHAR(32)  NULL,        -- user | incident | role | webhook | ...
-    entity_id       INT UNSIGNED NULL,
-    actor_user_id   INT UNSIGNED NULL,        -- the user who did it (NULL = system / unauth)
-    actor_username  VARCHAR(64)  NULL,        -- denormalised for fast read
-    ip_address      VARCHAR(45)  NULL,        -- trusted-proxy-aware client IP
-    user_agent      VARCHAR(512) NULL,
-    summary         VARCHAR(255) NULL,        -- human-readable one-liner
-    details_json    JSON         NULL,        -- structured payload, schema varies by action
-    status          ENUM('success','failure','partial') DEFAULT 'success',
-    severity        ENUM('info','low','medium','high','critical') DEFAULT 'info',
-    request_id      CHAR(36)     NULL,        -- correlates with web request
-    created_at      DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+This is the literal `CREATE TABLE` from `audit_ensure_table()` (`inc/audit.php`), which
+runs on every request to `api/audit-log.php` and `api/dashboard-audit.php` — the table is
+created lazily on first use, not from `sql/base_schema.sql`. (`php sql/setup_audit_log.php`
+also creates it, and writes/reads back one test row, useful for verifying a fresh install
+by hand.)
 
-    PRIMARY KEY (id),
-    KEY idx_created   (created_at),
-    KEY idx_actor     (actor_user_id, created_at),
-    KEY idx_entity    (entity_type, entity_id, created_at),
-    KEY idx_category  (category, created_at),
-    KEY idx_security  (severity, created_at)
+```sql
+CREATE TABLE IF NOT EXISTS newui_audit_log (
+    id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+    event_time    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    user_id       INT          DEFAULT NULL,
+    user_name     VARCHAR(64)  DEFAULT NULL,
+    ip_address    VARCHAR(45)  DEFAULT NULL,
+    category      VARCHAR(32)  NOT NULL,
+    activity      VARCHAR(32)  NOT NULL,
+    severity      TINYINT      NOT NULL DEFAULT 1,
+    target_type   VARCHAR(48)  DEFAULT NULL,
+    target_id     VARCHAR(64)  DEFAULT NULL,
+    summary       VARCHAR(512) NOT NULL,
+    details       JSON         DEFAULT NULL,
+    KEY idx_event_time (event_time),
+    KEY idx_category   (category),
+    KEY idx_user_id    (user_id),
+    KEY idx_target     (target_type, target_id),
+    KEY idx_severity   (severity)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
+
+Notes on things that surprise people coming from the old doc:
+
+- `target_id` is `VARCHAR(64)`, not an integer — `audit_log()` casts whatever you pass to
+  a string before writing. Most target ids are numeric-looking strings, but not all (a
+  setting name like `audit_log_retention_days` is a valid `target_id`).
+- `details` is a native `JSON` column named `details`, not `details_json`.
+- `event_time` has second precision (`DATETIME`), not millisecond precision.
+- There is no `status` column at all — success/failure isn't tracked as a separate field.
+  A failed login is its own `activity` value (`login_failed`), not a `login` row with
+  `status='failure'`.
+- `severity` is a plain `TINYINT` (0–5), not an `ENUM` of word labels. Word labels exist
+  only as a display layer — see [Severity](#severity) below.
 
 ---
 
 ## How rows get written
 
-Every API endpoint and internal handler that mutates state calls:
-
 ```php
-audit_log(
-    string  $category,         // 'auth' | 'data' | 'admin' | 'comms' | 'security'
-    string  $action,           // 'create' | 'update' | 'delete' | 'login' | 'reset_password' | ...
-    ?string $entity_type,      // 'user' | 'incident' | 'role' | ...
-    ?int    $entity_id,        // primary key of the affected row
-    ?string $summary,          // one-line human-readable
-    ?array  $details = null,   // structured details; goes into details_json
-    string  $status = 'success',
-    string  $severity = 'info'
-);
+function audit_log(
+    string  $category,
+    string  $activity,
+    ?string $targetType = null,
+    $targetId = null,
+    string  $summary = '',
+    ?array  $details = null,
+    int     $severity = AUDIT_INFO
+): bool
 ```
 
-The function fills in the rest from session + request context:
+Call it after the action succeeds:
 
-- `actor_user_id` and `actor_username` from `$_SESSION` (NULL for unauthenticated / system events)
-- `ip_address` via `client_ip()` (trusted-proxy aware; reads X-Forwarded-For if the request came from a CIDR you've trusted)
-- `user_agent` from `$_SERVER['HTTP_USER_AGENT']`
-- `request_id` from `$_SERVER['HTTP_X_REQUEST_ID']` if present, else a per-request UUID
-- `created_at` from `CURRENT_TIMESTAMP(3)` (millisecond precision)
+```php
+require_once __DIR__ . '/../inc/audit.php';
 
-**The function never throws and never blocks.** If the audit table is missing or write fails, the error is silently dropped (an audit-log failure should never cascade into a user-facing failure). Phase 73f added `error_log()` so silent failures land in the Apache log.
+audit_log('personnel', 'create', 'member', $id, "Created member '{$name}'", [
+    'callsign' => 'KC9ABC',
+    'team'     => 'HF Radio Team',
+]);
+```
+
+The function fills in the rest from session and request context — you never pass these:
+
+- `user_id` / `user_name` from `$_SESSION['user_id']` / `$_SESSION['user']` (both `NULL`
+  for unauthenticated or system-originated events)
+- `ip_address` via `client_ip()` (`inc/client-ip.php`) — trusted-proxy-aware, so it reads
+  `X-Forwarded-For` only from an address you've configured as a trusted proxy, not from
+  whatever the request claims
+- `event_time` from the database's `NOW()`
+- `severity`, if you don't pass one — see [Severity](#severity) below for the default map
+
+**`audit_log()` never throws and never blocks the caller.** A write failure (missing
+table, bad connection) is caught, sent to `error_log()`, and the function returns `false`
+— the action that triggered the audit call still succeeds. The same is true of the
+notification fan-out described next: it is wrapped in its own `try`/`catch` so a webhook
+or push failure can never take down the audit row it's attached to.
+
+**Side effect you should know about:** after a successful insert, `audit_log()` checks an
+explicit allowlist (`_audit_to_webhook_event()` in [`inc/webhooks.php`](../inc/webhooks.php))
+mapping specific `(category, activity, target_type)` triples to business-event names like
+`incident.created` or `member.updated`. If your call matches an entry, the event is hand
+ed to `notify_fanout_dispatch()` (`inc/notify-fanout.php`), which queues it for delivery
+to webhooks, Web Push, and other subscribers. `admin`, `config`, and `security` category
+rows are **deliberately absent from that allowlist** — see
+[SIEM integration](#siem-integration) below for why this is not the same thing as "the
+audit log gets exported."
+
+There are three thin wrappers around `audit_log()` you'll see in the codebase:
+`audit_data_access()` (category `data`, activity `view`, for logging access to sensitive
+fields), `audit_login()` (category `auth`, with its own action→severity map for
+`login`/`logout`/`lockout`/`password_change`/etc.), and `audit_admin()` (category
+`config`, for admin CRUD). None of these are required — calling `audit_log()` directly is
+equally correct.
+
+### Querying from PHP instead of the admin UI
+
+`audit_get_log(array $filters, int $limit = 100, int $offset = 0)` (also in
+`inc/audit.php`) is a library function for filtered, paginated reads — used today by
+`tools/test_login_security.php`. It's the function to reach for from a script or tool.
+The admin viewer endpoint, `api/audit-log.php`, does **not** call it — it implements its
+own equivalent (and slightly more capable — it adds sort-column selection and enriches
+`ticket`/`incident` targets with the human-readable incident number) query directly.
+Functionally they agree on every column name; if you're writing new tooling, either is a
+correct reference for what's queryable.
 
 ---
 
 ## Categories
 
-| Category | When | Typical actions |
-|---|---|---|
-| `auth` | Authentication events | `login`, `logout`, `login_failed`, `lockout`, `tfa_verify`, `tfa_enroll`, `password_change`, `session_expired`, `session_destroyed` |
-| `data` | CJI / PII access and modification | `view`, `create`, `update`, `delete`, `export` on incidents, members, constituents, ICS forms |
-| `admin` | Privileged administrative actions | `role_create`, `role_assign`, `role_revoke`, `permission_change`, `user_create`, `user_disable`, `user_reset_password`, `config_change`, `view_audit_log` |
-| `comms` | Outbound communications | `send_chat`, `send_sms`, `send_email`, `broadcast`, `routing_engine_forward`, `tx_dmr_text` |
-| `security` | Security-relevant events that aren't routine auth | `csrf_reject`, `lockout_trigger`, `tfa_reset`, `encryption_key_rotation`, `key_load_failed`, `xss_attempt_blocked`, `webhook_failure` |
+The doc comment at the top of `inc/audit.php` defines the intended vocabulary:
+
+| Category | When |
+|---|---|
+| `auth` | login, logout, session, password changes |
+| `config` | system settings, display, map, API keys |
+| `personnel` | members, teams, certifications, training, ICS positions |
+| `incident` | tickets, assignments, status changes |
+| `asset` | vehicles, equipment, checkout/checkin |
+| `data` | import, export, bulk operations, sensitive-field access |
+| `system` | service events, errors, maintenance |
+| `comms` | Zello, messaging, alerts |
+
+`category` is a free-text `VARCHAR(32)` — nothing enforces this list at the database
+level, and the codebase has grown past it. A distinct-value count against the live
+install (17,868 rows, 2026-08-03) also showed `par`, `rbac`, `security`,
+`personnel_unit`, `weather`, `routing`, `external_api`, `map`, `admin`, and `equipment`
+in real use, ordered roughly by volume: `par` (roll-call/PAR events) and `rbac` (role
+grants/revokes) are the two heaviest categories on this particular install, ahead of
+`auth`. If you're writing a query that filters on `category`, check
+`SELECT DISTINCT category FROM newui_audit_log` on your own install rather than assuming
+only the eight above exist.
 
 ---
 
-## Action conventions
+## Activities
 
-Actions follow a verb-style naming. Common verbs:
+`activity` is likewise free text (`VARCHAR(32)`). `_audit_default_severity()` in
+`inc/audit.php` recognizes this set for its default-severity lookup:
 
-| Verb | Meaning |
-|---|---|
-| `create` | New row inserted |
-| `update` | Existing row modified (`details` contains a per-field old → new map) |
-| `delete` | Soft-delete (`deleted_at` set) |
-| `purge` | Hard-delete (row gone) |
-| `view` | Read access (logged only when CJI / PII is involved, not on every list page) |
-| `export` | Bulk read out of the system (CSV, JSON, XML download) |
-| `assign` / `revoke` | Permission or role change |
-| `tx` / `rx` | Outbound / inbound on a channel |
-| `attempt` / `success` / `failure` | Multi-step actions that may fail (e.g. login attempt → success or failure) |
+```
+create, update, delete, login, logout, export, import,
+assign, unassign, activate, deactivate, error, view
+```
+
+Anything not in that map defaults to `AUDIT_INFO` (1) unless the caller passes an
+explicit severity. In practice the codebase uses many activity values beyond this list —
+`status_change`, `config_change`, `grant`/`revoke`, `zone_update`, `rotate`,
+`console.view_create`, `channels.sync`, `clock_in`/`clock_out`, `apply_override` — each
+caller names the verb that fits the action; there's no fixed enum to conform to. When
+adding a new audit call, prefer an existing verb from a similar call site (`grep -rn
+"audit_log('yourcategory'" api/ inc/`) over inventing a new one, purely for query
+consistency.
 
 ---
 
 ## Severity
 
-| Severity | When |
-|---|---|
-| `info` | Normal events (login success, incident create, status change) |
-| `low` | Minor anomalies (one failed login, single CSRF reject) |
-| `medium` | Notable events (rate-limit hit, lockout fired, permission revoked) |
-| `high` | Security-relevant events that need review (admin password reset, super-admin grant, encryption key load failure) |
-| `critical` | Events that must trigger an alert (mayday, multiple lockouts, attempted privilege escalation) |
+`severity` is an integer 0–5, defined as constants in `inc/audit.php`:
 
-Severity is set at write-time by the caller. Many auth events default to `info`; security events default to `medium` or higher.
+| Value | Constant | Label (`audit_severity_label()`) | Bootstrap badge color (`audit_severity_color()`) |
+|---|---|---|---|
+| 0 | `AUDIT_UNKNOWN` | Unknown | secondary |
+| 1 | `AUDIT_INFO` | Info | info |
+| 2 | `AUDIT_LOW` | Low | success |
+| 3 | `AUDIT_MEDIUM` | Medium | warning |
+| 4 | `AUDIT_HIGH` | High | danger |
+| 5 | `AUDIT_CRITICAL` | Critical | danger |
+
+If a caller doesn't pass `$severity` (or passes `AUDIT_INFO` explicitly), `audit_log()`
+looks it up from `_audit_default_severity($activity)` — `delete` and `error` default to
+`AUDIT_HIGH`; `export` to `AUDIT_LOW`; `import`/`deactivate` to `AUDIT_MEDIUM`; everything
+else in the recognized-activity list defaults to `AUDIT_INFO`. Callers frequently override
+this — `audit_login()` maps `lockout` to `AUDIT_CRITICAL` and `password_change` /
+`login_blocked` to `AUDIT_HIGH` regardless of the generic default, and the retention purge
+(below) always logs its own purge event at `AUDIT_HIGH`.
 
 ---
 
-## `details_json` schema per category
+## `details` — real examples, not invented ones
 
-The `details_json` field is free-shape, but conventions per category make queries practical.
+`details` is a nullable `JSON` column. There's no fixed shape — every caller passes
+whatever array is useful for that specific event, and `audit_log()` JSON-encodes it with
+`JSON_UNESCAPED_UNICODE`. The rows below are **real rows pulled from a live install**
+(`SELECT ... FROM newui_audit_log WHERE category = ? ORDER BY id DESC LIMIT 1`), not
+hypothetical shapes:
 
-### `auth` actions
+```
+category=auth    activity=login          target=user#1
+  {"username":"testadmin","ip":"127.0.0.1","user_agent":"TestRunner/1.0"}
 
-```json
-// auth.login (success or failure)
-{
-  "username_attempted": "alice",
-  "tfa_used": true,
-  "remembered_device": false,
-  "reason": "wrong_password"     // only on failure
-}
+category=data    activity=view           target=ticket#123
+  {"fields":["patient_name","medical_notes"]}
 
-// auth.password_change
-{
-  "rotation": "scheduled",        // user-initiated | scheduled | admin_reset
-  "old_hash_age_days": 87
-}
+category=asset   activity=status_change  target=responder#1035
+  {"old_status_id":1,"new_status_id":2,"incidents_logged":1,"timestamps_set":1}
 
-// auth.lockout
-{
-  "lockout_until": "2026-06-15T11:00:00Z",
-  "failed_attempt_count": 5,
-  "window_minutes": 5
-}
+category=config  activity=config_change  target=settings
+  {"key":"lockout_max_attempts"}
+
+category=incident activity=create        target=ticket#10762
+  {"in_types_id":1,"severity":0,"status":2,"signal":null,
+   "patient_count":0,"assigned_count":0,"incident_number":"26-0575"}
+
+category=rbac    activity=revoke         target=user_role#9257
+  {"user_id":2,"role_id":5,"scope_kind":"global","scope_id":null,
+   "reason":"F7 audit cleanup","revoked_by":null}
 ```
 
-### `data` actions
-
-```json
-// data.update (incident)
-{
-  "changes": {
-    "severity": {"old": 3, "new": 2},
-    "status":   {"old": "active", "new": "closed"}
-  },
-  "ref": "INC-2026-00045"
-}
-
-// data.view (sensitive field)
-{
-  "field": "patient.dob",
-  "ref": "INC-2026-00045"
-}
-
-// data.export
-{
-  "format": "csv",
-  "filter": {"date_from": "2026-06-01", "date_to": "2026-06-15"},
-  "row_count": 1247
-}
-```
-
-### `admin` actions
-
-```json
-// admin.role_assign
-{
-  "target_user_id": 42,
-  "target_username": "bob",
-  "role_id": 3,
-  "role_name": "dispatcher",
-  "expires_at": "2026-12-31T23:59:59Z"
-}
-
-// admin.config_change
-{
-  "key": "password_min_length",
-  "old_value": "8",
-  "new_value": "12"
-}
-
-// admin.user_reset_password (CJIS — requires reason)
-{
-  "target_user_id": 42,
-  "target_username": "bob",
-  "reason": "user lost their phone and called the help desk",
-  "force_change_on_login": true
-}
-```
-
-### `comms` actions
-
-```json
-// comms.send_sms
-{
-  "to_count": 3,
-  "channel": "twilio",
-  "body_truncated_to": 140,
-  "subject": "Major incident"
-}
-
-// comms.tx_dmr_text
-{
-  "dmr_channel_id": 1,
-  "talkgroup": "9990",
-  "text_first_120_chars": "All clear at scene",
-  "duration_ms": 1416,
-  "engine": "piper"
-}
-```
-
-### `security` actions
-
-```json
-// security.tfa_reset
-{
-  "target_user_id": 42,
-  "reason": "lost authenticator and all backup codes"
-}
-
-// security.key_load_failed
-{
-  "key_type": "tfa",
-  "key_file": "/var/www/keys/tfa.key",
-  "error": "Permission denied"
-}
-```
+Treat these as illustrations of the pattern ("small, flat-ish, includes enough to
+reconstruct the change"), not a contract — a `data.view` row on your install may carry a
+different field list than the one above, because it's whatever the calling code passed.
+If you need to know the exact shape a specific feature writes, `grep` that feature's
+`audit_log(` call sites rather than trusting this table.
 
 ---
 
 ## Example queries
 
+Every query below was run against a live install through
+`db_fetch_all()` (same connection path the application itself uses) and returned real
+rows — not hand-verified for syntax only.
+
 ### Last 24 h of high-severity events
 
 ```sql
-SELECT created_at, actor_username, action, summary, ip_address
-  FROM audit_log
- WHERE severity IN ('high', 'critical')
-   AND created_at > NOW() - INTERVAL 1 DAY
- ORDER BY created_at DESC;
+SELECT event_time, user_name, category, activity, summary, ip_address
+  FROM newui_audit_log
+ WHERE severity >= 4
+   AND event_time > NOW() - INTERVAL 1 DAY
+ ORDER BY event_time DESC;
 ```
 
 ### Failed login storm
 
 ```sql
 SELECT ip_address, COUNT(*) AS hits
-  FROM audit_log
+  FROM newui_audit_log
  WHERE category = 'auth'
-   AND action   = 'login_failed'
-   AND created_at > NOW() - INTERVAL 1 HOUR
+   AND activity = 'login_failed'
+   AND event_time > NOW() - INTERVAL 1 HOUR
  GROUP BY ip_address
 HAVING hits > 10
  ORDER BY hits DESC;
 ```
 
-### Who touched a specific incident?
+### Who touched a specific incident
 
 ```sql
-SELECT created_at, actor_username, action, summary
-  FROM audit_log
- WHERE entity_type = 'incident'
-   AND entity_id   = 12345
- ORDER BY created_at;
+SELECT event_time, user_name, activity, summary
+  FROM newui_audit_log
+ WHERE target_type = 'ticket'
+   AND target_id   = '12345'
+ ORDER BY event_time;
 ```
 
-### Permission changes this quarter
+`target_id` is a string column — quote the value even though it looks numeric.
+
+### Role grants and revokes this quarter
 
 ```sql
-SELECT created_at, actor_username, action, summary,
-       JSON_EXTRACT(details_json, '$.role_name')         AS role,
-       JSON_EXTRACT(details_json, '$.permission_code')   AS perm
-  FROM audit_log
- WHERE category = 'admin'
-   AND action LIKE 'permission%'
-   AND created_at > NOW() - INTERVAL 90 DAY
- ORDER BY created_at;
+SELECT event_time, user_name, activity,
+       JSON_EXTRACT(details, '$.role_id') AS role_id,
+       JSON_EXTRACT(details, '$.user_id') AS target_user_id
+  FROM newui_audit_log
+ WHERE category = 'rbac'
+   AND event_time > NOW() - INTERVAL 90 DAY
+ ORDER BY event_time;
 ```
 
-### Super-admin role grants ever
+### Busiest category/activity pairs (which events write the most rows?)
 
 ```sql
-SELECT created_at, actor_username, action,
-       JSON_EXTRACT(details_json, '$.target_username') AS target
-  FROM audit_log
- WHERE action = 'role_assign'
-   AND JSON_EXTRACT(details_json, '$.role_name') = '"Super Admin"'
- ORDER BY created_at;
-```
-
-### Slow-query candidates (which actions write the most rows?)
-
-```sql
-SELECT category, action, COUNT(*) AS n
-  FROM audit_log
- WHERE created_at > NOW() - INTERVAL 7 DAY
- GROUP BY category, action
+SELECT category, activity, COUNT(*) AS n
+  FROM newui_audit_log
+ GROUP BY category, activity
  ORDER BY n DESC LIMIT 20;
 ```
 
@@ -307,135 +314,254 @@ SELECT category, action, COUNT(*) AS n
 
 ## Retention
 
-- **Default retention:** 365 days
-- **CJIS minimum:** 365 days
-- **Config knob:** `settings.audit_log_retention_days`
+**Note on table/column names in this section:** the actual audit table is
+`newui_audit_log` (see [`inc/audit.php`](../inc/audit.php)), with columns
+`event_time`, `category`, `activity`, `severity` (integer 0-5), `target_type`,
+`target_id`, `summary`, `details`. The rest of this document now uses those same
+real names throughout — this note is a holdover from when this section was the
+only part of the file that had been corrected; it can be removed the next time this
+file is touched.
 
-Enforcement: a dedicated trim script (`tools/audit-log-trim.php`) is planned but not yet shipped. Until it lands, run the trim as SQL on a cron:
+- **Default retention:** disabled (`audit_log_retention_days` = `0` — keep
+  everything forever). Upgrading TicketsCAD never starts deleting your audit
+  history on its own; an administrator turns this on deliberately.
+- **CJIS minimum:** 365 days. TicketsCAD does **not** enforce this as a
+  floor — it warns (in Settings and in the save response) when you configure
+  a value below 365, but does not block it. Your agency's own retention
+  obligations may differ from another agency's, and TicketsCAD has no way to
+  know which apply to your install.
+- **Config knob:** `settings.audit_log_retention_days` (the `settings` table,
+  read via `get_variable()` — not the separate `config` table read by
+  `get_setting()`; see CLAUDE.md's "TWO settings stores" entry if that
+  distinction is new to you).
+- **Archive before delete.** A purge never bare-deletes. Every run first
+  writes a gzip-compressed NDJSON archive (one JSON object per removed row,
+  one file per run) to a directory outside the web root
+  (`AUDIT_ARCHIVE_DIR` — platform-aware, mirrors where database backups live;
+  see [`inc/audit-retention.php`](../inc/audit-retention.php)), verifies it,
+  and only THEN deletes the archived rows — by exact row id, never a
+  re-evaluated time-range predicate, so a row a concurrent request happens to
+  insert with an old-looking timestamp can never be deleted without first
+  being archived.
+- **Manifest table:** `audit_log_purges` records every run — `ran_at`,
+  `cutoff_date`, `rows_purged`, `archive_filename`, `archive_sha256`
+  (verify an archive against this later with `sha256sum`),
+  `triggered_by` (`scheduled` | `manual`), `triggered_by_user_id`, `status`
+  (`ok` | `failed`), `detail`. A failed attempt gets a row too, not just a
+  log line — see [Tamper-resistance](#tamper-resistance) below for why a
+  purge can fail.
+- **The purge audits itself.** After a successful delete, the purge writes
+  its own `newui_audit_log` row (category `admin`, activity
+  `audit_log_purge`) naming the cutoff, the row count, and the archive — so
+  the fact that a purge happened is itself part of the permanent record, and
+  because the row is written strictly after the delete it commits, its own
+  timestamp can never fall inside the range it just purged.
+- **Enforcement:** a daily scheduled job (`tools/audit_log_purge_tick.php`,
+  wired into Settings → System Health → Scheduled Jobs as job key
+  `audit_log_purge`) plus an on-demand "Purge now" button in
+  Settings → Audit Log → Retention & Purge. Gated by a dedicated RBAC
+  permission, `action.manage_audit_retention` (granted only to role 1, Super
+  Admin, in `sql/rbac.sql` / `sql/run_00_rbac.php`). Check current status:
 
 ```bash
-# Inspect current retention setting
 mariadb newui -e "SELECT value FROM settings WHERE name='audit_log_retention_days';"
-
-# Trim manually (run as a daily cron):
-sudo mariadb newui -e "DELETE FROM audit_log WHERE created_at < NOW() - INTERVAL 365 DAY;"
+mariadb newui -e "SELECT ran_at, cutoff_date, rows_purged, status FROM audit_log_purges ORDER BY id DESC LIMIT 5;"
 ```
 
-Override per-record retention is **not** supported by design — every event has the same retention. If you need longer retention for specific event types, export to a SIEM with longer retention.
+Override per-record retention is **not** supported by design — every event
+has the same retention. If you need longer retention for specific event
+types, get them into your own archive or a SIEM (see below) before your
+configured cutoff.
 
 ---
 
 ## Export
 
-### Admin UI
+There is **no built-in bulk export** of the general audit log today — this corrects the
+previous version of this section, which described an `api/audit-log.php?action=export`
+endpoint and an admin "Export" panel with JSONL/CSV format options. Neither exists;
+`api/audit-log.php` accepts no `action` or `format` parameter and always returns a JSON
+page of at most 200 rows (`limit`, capped at 200, with `offset` for pagination).
 
-Settings → Audit Log → **Export**.
+What actually exists:
 
-Filters: date range, category, severity, actor user, entity type.
+- **The general Audit Log viewer** (Settings → Audit Log) is search/filter/sort/paginate
+  only — there is no export button on that panel.
+- **The RBAC-scoped "Audit Trail" tab** (Settings → Roles & Permissions → Audit Trail;
+  `assets/js/roles-audit.js`) has an **"Export CSV" button**, but it only exports the
+  rows currently loaded on screen (whatever the active filters returned, up to the 200-row
+  page size fetched from `api/audit-log.php?category=rbac&...`) — built client-side in the
+  browser with `Blob`/`URL.createObjectURL`, not a server-side streaming export. It's a
+  convenience for "grab what I'm looking at," not a compliance export tool.
+- **`api/audit-log.php` itself is pageable** — `limit` (max 200) and `offset` let a script
+  walk the entire table in pages if you're authenticated as an admin (or hold
+  `action.view_audit`). That's the closest thing to a programmatic export path today; it
+  is not a purpose-built one.
 
-Formats: JSONL (one event per line, OCSF-aligned), CSV (flat schema, lossy on `details_json`).
-
-The export is a single HTTP download; for large ranges, expect a few-second hold while we stream.
-
-### Programmatic export
+If you need a genuine bulk export — for a CJIS evidence packet, or to seed a SIEM — the
+practical options with the current schema are:
 
 ```bash
-# JSONL, last 30 days, only auth events
-curl -s -H "Cookie: PHPSESSID=YOUR_ADMIN_SESSION" \
-     "https://cad.example.org/api/audit-log.php?action=export&from=2026-05-15&to=2026-06-15&category=auth&format=jsonl" \
-  > /var/log/tcad-audit-may.jsonl
+# Full table, as NDJSON, via mariadb-dump-adjacent select-into-outfile-style tooling
+# is not wired up either; the simplest reliable path with what ships today is a
+# straight mysqldump of the table, or a script that walks api/audit-log.php with
+# limit/offset until `total` is exhausted. Neither is provided out of the box.
+mariadb-dump newui newui_audit_log --where="event_time >= '2026-05-01'" > audit-may.sql
 ```
 
-The endpoint streams; no pagination needed. Large exports (millions of rows) may take minutes.
+If you build a proper export tool for this, it belongs at a path like
+`tools/audit-log-export.php` — no such file exists yet.
 
-### SIEM integration patterns
+---
 
-#### Pattern 1: nightly batch to S3/Splunk
+## SIEM integration
+
+**There is no general-purpose "ship every audit row to a SIEM" mechanism.** What exists
+instead is narrower and worth understanding precisely, because it's easy to
+mis-read as the same thing:
+
+`audit_log()` checks each row it writes against an explicit allowlist —
+`_audit_to_webhook_event()` in [`inc/webhooks.php`](../inc/webhooks.php) — that maps a
+small set of `(category, activity, target_type)` triples to named business events
+(`incident.created`, `member.updated`, `assign.created`, and so on; see the function for
+the full current list). A match gets queued for delivery to whatever webhook subscribers
+you've registered, via the general [webhooks system](WEBHOOKS-INTEGRATOR-GUIDE.md).
+
+Critically: **`admin`, `config`, and `security` category rows are deliberately absent
+from that allowlist**, per the comment at the top of `_audit_to_webhook_event()` — "Anything
+not in the map fires nothing — admin/config/security audit rows are deliberately absent
+and CANNOT leak to external subscribers." That's most of what a compliance-minded reader
+would actually want in a SIEM (privilege changes, config changes, security events). The
+webhook system was built for operational integrations (notify an external system when an
+incident is created), not as an audit-export channel, and it deliberately excludes the
+audit-heavy categories to avoid becoming one by accident.
+
+If you want to ship the actual audit log to an external SIEM, nothing built-in does it
+today. Patterns that would work against the current schema, offered as suggestions —
+not shipped capability:
+
+**Nightly batch dump.** The most reliable low-effort option, since it needs nothing new:
 
 ```cron
-# crontab -u www-data
-30 1 * * * mariadb-dump newui audit_log --where="created_at >= CURDATE() - INTERVAL 1 DAY" | gzip | aws s3 cp - s3://my-bucket/tcad-audit/$(date +\%F).sql.gz
+30 1 * * * mariadb-dump newui newui_audit_log --where="event_time >= CURDATE() - INTERVAL 1 DAY" | gzip > /var/backups/tcad-audit-$(date +\%F).sql.gz
 ```
 
-#### Pattern 2: real-time via webhook
+**SQL replica.** Standard MariaDB replication to a read-only, append-only replica gives a
+SIEM-side copy without touching the application. This is the pattern the tamper-resistance
+section below is written to be compatible with.
 
-Subscribe a Splunk HEC / Datadog / ELK endpoint to the `audit.*` events via the [webhooks system](WEBHOOKS-INTEGRATOR-GUIDE.md). Note that audit events are NOT currently fired as webhooks (queued for a future phase); for now use the batch pattern.
-
-#### Pattern 3: SQL replica
-
-Replicate the `audit_log` table to a separate, append-only DB (read-only SIEM-side). Standard MariaDB replication works.
+**A dedicated export endpoint.** If you need this often enough to justify building it,
+the shape would be an admin-gated endpoint that pages through `newui_audit_log` (the same
+query `api/audit-log.php` already runs, without the 200-row cap) and streams NDJSON. This
+does not exist yet — file an issue or write it against `action.view_audit`.
 
 ---
 
 ## Tamper-resistance
 
-The audit log is append-only by code convention (no endpoint calls `UPDATE` or `DELETE` against `audit_log`). For defence-in-depth, **revoke the DELETE/UPDATE grants from the application's DB user**:
+The audit log is append-only by application code — no endpoint calls `UPDATE` or `DELETE`
+against `newui_audit_log` directly; the only thing that ever deletes from it is the
+retention purge described above, and only after archiving what it's about to remove. For
+defence-in-depth, you can **revoke the DELETE/UPDATE grants from the application's DB
+user**:
 
 ```sql
-REVOKE DELETE, UPDATE ON newui.audit_log FROM 'newui'@'localhost';
--- The retention cron uses a separate DB user with DELETE permission ONLY on audit_log.
--- Use that user for any audit-log trim job you wire up.
+REVOKE DELETE, UPDATE ON newui.newui_audit_log FROM 'newui'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-With this in place, even a successful SQL-injection attack on the app would not be able to silently rewrite history.
+With this in place, even a successful SQL-injection attack against the app could not
+silently rewrite history.
 
-For higher assurance, write audit rows to an off-box append-only store (S3 with object-lock, AWS CloudTrail-style) in real time. Not yet implemented — file a feature request if you need it.
+**This has a real trade-off with the retention feature above, stated plainly rather than
+hidden:** revoking DELETE also disables the automated purge — it cannot delete what it has
+archived. TicketsCAD detects this BEFORE doing any work (`audit_retention_check_delete_capability()`
+runs a zero-row `DELETE ... WHERE 1=0` privilege probe — safe, because it can never match
+a real row, but MySQL/MariaDB evaluate the privilege to run the statement before evaluating
+the `WHERE` clause) and fails loudly: the manifest (`audit_log_purges`) gets a row with
+`status='failed'` naming the denial, Settings → Audit Log → Retention & Purge shows a red
+status, and Settings → System Health → Scheduled Jobs shows the job as failed rather than
+quietly skipped. `tools/audit_log_purge_tick.php` always connects with the application's
+own configured DB credentials — it does not accept a separate, more-privileged connection.
+So today the choice is binary: leave DELETE granted and let the built-in job run, or revoke
+it and purge manually/off-box on your own schedule, using the same archive-then-delete
+manifest this feature already produces. See
+[CJIS-POSTURE.md § Auditing and Accountability](CJIS-POSTURE.md#54--auditing-and-accountability)
+for the compliance framing of this trade-off.
+
+For higher assurance, write audit rows to an off-box append-only store (S3 with object
+lock, or similar) in real time. Not implemented — file a feature request if you need it.
 
 ---
 
 ## What's NOT logged
 
-- **Routine page views** that don't touch CJI / PII (dashboard load, settings page open)
-- **Read access to non-sensitive lists** (incident list, responder list — these are visible to anyone with the relevant screen perm; logging every view would balloon the table)
-- **Detailed per-keystroke actions** in the new-incident form (we log the final save, not every input change)
-- **Internal SSE event publishes** (would dwarf real events; covered by application logs)
+- **Routine page views** that don't touch sensitive data (dashboard load, settings page
+  open) — only `audit_data_access()` calls (category `data`, activity `view`) log reads,
+  and those are opt-in per call site, not automatic on every GET.
+- **Every list-page render** (incident list, responder list) — these are gated by RBAC
+  screen permissions, but rendering the list itself isn't an audit event; logging every
+  view would balloon the table (the live install's busiest categories, `par` and `rbac`,
+  are already the top two by volume without list-view logging).
+- **Internal SSE event publishes** — the real-time event stream (`inc/sse.php`) is a
+  separate mechanism from the audit log; publishing an SSE event doesn't itself write an
+  audit row unless the code path that triggered it also calls `audit_log()`.
 
-If your compliance regime requires logging the things in this list, we have to add new audit hooks. File an issue.
+If your compliance regime requires logging something in this list that isn't covered, a
+new audit hook is a small, additive change — one `audit_log()` call at the point the
+event happens. See [When you want a new audit hook](#when-you-want-a-new-audit-hook)
+below.
 
 ---
 
 ## OCSF alignment notes
 
-We use OCSF v1.x naming conventions where they apply:
+`inc/audit.php` describes itself as an "OCSF-inspired lightweight audit logger" — inspired
+is the operative word. TicketsCAD borrows OCSF's general shape (an event has a category, an
+activity/verb, a severity, an actor, a target, and structured details) but does **not**
+implement the Open Cybersecurity Schema Framework's actual wire format: there's no numeric
+`class_uid`, no `activity_id`, no `severity_id`/`status_id` enum, and no OCSF-shaped JSON
+export. If a downstream tool expects real OCSF, it needs a translation layer you'd write
+yourself — TicketsCAD gives you the raw columns to build one from, not a shipped one.
 
-| OCSF field | Our column | Notes |
+Rough correspondence, for orientation only:
+
+| OCSF concept | Nearest TicketsCAD column | Gap |
 |---|---|---|
-| `class_uid` | (implied by `category`) | OCSF class 3002 (Authentication), 6003 (User Inventory), etc. — we don't store the numeric class explicitly |
-| `activity_id` | (derived from `action`) | OCSF activity numbers; we use the verb form |
-| `time` | `created_at` (in millis) | We store as DATETIME(3); OCSF expects epoch millis. Conversion happens at export |
-| `actor.user.uid` | `actor_user_id` | |
-| `actor.user.name` | `actor_username` | |
+| `class_uid` (numeric event class) | `category` (free-text string) | No numeric mapping exists |
+| `activity_id` (numeric verb) | `activity` (free-text string) | No numeric mapping exists |
+| `time` | `event_time` | Second precision, not epoch millis |
+| `actor.user.uid` | `user_id` | |
+| `actor.user.name` | `user_name` | |
 | `src_endpoint.ip` | `ip_address` | |
-| `metadata.event_code` | `action` | |
 | `message` | `summary` | |
-| `severity_id` | `severity` | OCSF: 1=info, 2=low, 3=medium, 4=high, 5=critical — same |
-| `status_id` | `status` | OCSF: 1=success, 2=failure |
-
-The JSONL export emits OCSF-compatible records. CSV export is denormalised for spreadsheet review and may lose nested `details_json` keys.
+| `severity_id` | `severity` | Values 0–5 happen to line up with OCSF's severity scale numerically, but nothing enforces or documents that correspondence in code |
+| `status_id` | — | No equivalent column; success/failure is expressed as a distinct `activity` value (e.g. `login` vs `login_failed`), not a status field |
 
 ---
 
 ## When you want a new audit hook
 
-If a state change in the codebase isn't being logged and should be, add a call:
+If a state change in the codebase isn't being logged and should be, add a call after the
+action succeeds (so a failed action doesn't get logged as though it worked):
 
 ```php
 require_once __DIR__ . '/../inc/audit.php';
 
 audit_log(
-    'admin',
+    'config',
     'config_change',
     'setting',
-    null,
-    "Changed password policy minimum length from $old to $new",
+    'password_min_length',
+    "Changed password policy minimum length from {$old} to {$new}",
     ['key' => 'password_min_length', 'old_value' => $old, 'new_value' => $new],
-    'success',
-    'medium'
+    AUDIT_MEDIUM
 );
 ```
 
-Add the call AFTER the action succeeds (so a failed action doesn't get logged as success). For failures, change `status` to `failure` and `severity` to `medium` or higher.
+For an action that can fail partway, log the failure as its own distinct `activity`
+(e.g. `import_failed` alongside `import`) at `AUDIT_HIGH` or `AUDIT_CRITICAL`, rather than
+inventing a status field this schema doesn't have.
 
 ---
 
@@ -443,13 +569,21 @@ Add the call AFTER the action succeeds (so a failed action doesn't get logged as
 
 | What | Path |
 |---|---|
-| Audit log writer | [`inc/audit.php`](../inc/audit.php) |
-| Audit log admin endpoint | [`api/audit-log.php`](../api/audit-log.php) |
-| Trim cron | `tools/audit-log-trim.php` (planned) |
-| Export cron template | `tools/audit-log-export.php` (planned) |
-| Schema migration | `sql/setup_audit_log.php` (or per-feature migration that creates audit_log) |
-| Admin UI | Settings → Audit Log in [`settings.php`](../settings.php) |
+| Audit log writer + reader (`audit_log()`, `audit_get_log()`, `audit_ensure_table()`) | [`inc/audit.php`](../inc/audit.php) |
+| Audit log admin viewer endpoint | [`api/audit-log.php`](../api/audit-log.php) |
+| Dashboard "Recent activity" widget endpoint (`widget.audit_log` permission) | [`api/dashboard-audit.php`](../api/dashboard-audit.php) |
+| Retention/purge logic | [`inc/audit-retention.php`](../inc/audit-retention.php) |
+| Retention/purge admin endpoint | [`api/audit-retention.php`](../api/audit-retention.php) |
+| Retention/purge scheduled tick (job key `audit_log_purge`) | [`tools/audit_log_purge_tick.php`](../tools/audit_log_purge_tick.php) |
+| Retention/purge migration (table + RBAC + default setting) | [`sql/run_phase133_audit_retention.php`](../sql/run_phase133_audit_retention.php) |
+| Manual table setup / verification tool | [`sql/setup_audit_log.php`](../sql/setup_audit_log.php) |
+| RBAC-scoped "Audit Trail" tab (category=rbac, with CSV-of-current-page export) | [`assets/js/roles-audit.js`](../assets/js/roles-audit.js) |
+| Webhook event allowlist (`_audit_to_webhook_event()`) | [`inc/webhooks.php`](../inc/webhooks.php) |
+| Admin UI | Settings → Audit Log in [`settings.php`](../settings.php); Retention & Purge controls in the same panel |
 
 ---
 
-This reference is maintained alongside the code. If an action that should be logged isn't, that's a bug — file an issue or patch.
+This reference is maintained alongside the code. If an action that should be logged isn't,
+that's a bug — file an issue or patch. If you find another sentence in this file that
+isn't true against the current code, that's also a bug — the whole reason this rewrite
+happened is that the previous version drifted for months without anyone noticing.

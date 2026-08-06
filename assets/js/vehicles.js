@@ -11,6 +11,7 @@
     var allVehicles    = [];
     var lookupTypes    = [];
     var lookupMembers  = [];
+    var lookupOrgs     = [];
     var selectedId     = null;
     var sortField      = 'callsign';
     var sortDir        = 'asc';
@@ -19,6 +20,8 @@
     var filterType     = 'all';
     var searchTerm     = '';
     var searchTimer    = null;
+    var csrfTokenEl    = document.getElementById('csrfToken');
+    var csrfToken      = csrfTokenEl ? csrfTokenEl.value : '';
 
     // ── DOM refs ─────────────────────────────────────────────────
     var $loading      = document.getElementById('loadingSpinner');
@@ -73,6 +76,7 @@
     }
 
     function apiPost(data, cb) {
+        data.csrf_token = csrfToken;
         fetch('api/vehicles.php', {
             method: 'POST',
             credentials: 'same-origin',
@@ -99,6 +103,7 @@
             allVehicles   = data.vehicles || [];
             lookupTypes   = data.types || [];
             lookupMembers = data.members || [];
+            lookupOrgs    = data.organizations || [];
 
             buildTypeFilters();
             populateFormDropdowns();
@@ -126,6 +131,7 @@
     function populateFormDropdowns() {
         var typeSelect = document.getElementById('editVehicleType');
         var ownerSelect = document.getElementById('editOwner');
+        var ownerOrgSelect = document.getElementById('editOwnerOrg');
 
         if (typeSelect) {
             var html = '<option value="">-- None --</option>';
@@ -136,7 +142,7 @@
         }
 
         if (ownerSelect) {
-            var html2 = '<option value="">-- No Owner --</option>';
+            var html2 = '<option value="">-- Select a person --</option>';
             for (var j = 0; j < lookupMembers.length; j++) {
                 var m = lookupMembers[j];
                 html2 += '<option value="' + m.id + '">' +
@@ -145,6 +151,18 @@
                     '</option>';
             }
             ownerSelect.innerHTML = html2;
+        }
+
+        if (ownerOrgSelect) {
+            var html3 = '<option value="">-- Select an agency --</option>';
+            for (var k = 0; k < lookupOrgs.length; k++) {
+                var o = lookupOrgs[k];
+                html3 += '<option value="' + o.id + '">' +
+                    esc(o.name) +
+                    (o.short_name ? ' (' + esc(o.short_name) + ')' : '') +
+                    '</option>';
+            }
+            ownerOrgSelect.innerHTML = html3;
         }
     }
 
@@ -165,6 +183,7 @@
                     (v.make || '') + ' ' + (v.model || '') + ' ' +
                     (v.callsign || '') + ' ' + (v.color || '') + ' ' +
                     (v.owner_name || '') + ' ' + (v.owner_callsign || '') + ' ' +
+                    (v.owner_org_name || '') + ' ' + (v.owner_org_short_name || '') + ' ' +
                     (v.year || '')
                 ).toLowerCase();
                 if (haystack.indexOf(term) === -1) continue;
@@ -189,8 +208,8 @@
                     vb = (b.type_name || '').toLowerCase();
                     break;
                 case 'owner':
-                    va = (a.owner_name || '').toLowerCase();
-                    vb = (b.owner_name || '').toLowerCase();
+                    va = (a.owner_name || a.owner_org_name || '').toLowerCase();
+                    vb = (b.owner_name || b.owner_org_name || '').toLowerCase();
                     break;
                 case 'status':
                     va = (a.status || '').toLowerCase();
@@ -236,7 +255,9 @@
                 '<td class="fw-semibold font-monospace">' + esc(v.callsign || '—') + '</td>' +
                 '<td>' + agencyBadge + esc(vehicleDesc) + (v.color ? ' <small class="text-body-secondary">(' + esc(v.color) + ')</small>' : '') + '</td>' +
                 '<td><span class="badge bg-secondary bg-opacity-50" style="font-size:0.65rem;">' + esc(v.type_name || '—') + '</span></td>' +
-                '<td>' + esc(v.owner_name || '—') + '</td>' +
+                '<td>' + (v.owner_org_name
+                    ? '<i class="bi bi-building me-1 text-body-secondary" title="Agency"></i>' + esc(v.owner_org_name)
+                    : esc(v.owner_name || '—')) + '</td>' +
                 '<td><span class="badge bg-' + (statusColors[v.status] || 'secondary') + ' bg-opacity-75" style="font-size:0.65rem;">' + esc(v.status) + '</span></td>' +
                 '<td class="text-center">' + privacyIcon + '</td>' +
                 '</tr>';
@@ -305,7 +326,9 @@
             '<div class="col-md-4"><div class="text-body-secondary">Color</div><div>' + esc(v.color || '—') + '</div></div>' +
             '<div class="col-md-4"><div class="text-body-secondary">Unit / Callsign</div><div>' + esc(v.callsign || '—') + '</div></div>' +
             '<div class="col-md-4"><div class="text-body-secondary">Owner</div><div>' +
-                (v.owner_name ? esc(v.owner_name) + (v.owner_callsign ? ' (' + esc(v.owner_callsign) + ')' : '') : '—') +
+                (v.owner_org_name
+                    ? '<i class="bi bi-building me-1 text-body-secondary" title="Agency"></i>' + esc(v.owner_org_name)
+                    : (v.owner_name ? esc(v.owner_name) + (v.owner_callsign ? ' (' + esc(v.owner_callsign) + ')' : '') : '—')) +
             '</div></div>' +
             '</div>';
 
@@ -345,6 +368,25 @@
         document.getElementById('btnDeleteVehicle').setAttribute('data-id', v.id);
     }
 
+    // ── Owner type toggle (Person / Agency / None) ─────────────────
+    function setOwnerType(type) {
+        var radio = document.getElementById(
+            type === 'agency' ? 'editOwnerTypeAgency' :
+            type === 'person' ? 'editOwnerTypePerson' : 'editOwnerTypeNone'
+        );
+        if (radio) radio.checked = true;
+
+        var personWrap = document.getElementById('editOwnerPersonWrap');
+        var agencyWrap = document.getElementById('editOwnerAgencyWrap');
+        personWrap.classList.toggle('d-none', type !== 'person');
+        agencyWrap.classList.toggle('d-none', type !== 'agency');
+
+        // Switching away from a slot clears its selection so a stale
+        // hidden value can't ride along into the next save.
+        if (type !== 'person') document.getElementById('editOwner').value = '';
+        if (type !== 'agency') document.getElementById('editOwnerOrg').value = '';
+    }
+
     // ── Show Edit Form ───────────────────────────────────────────
     function showEditForm(vehicle) {
         $detailEmpty.classList.add('d-none');
@@ -364,8 +406,23 @@
         document.getElementById('editCallsign').value = vehicle ? (vehicle.callsign || '') : '';
         document.getElementById('editVehicleType').value = vehicle ? (vehicle.vehicle_type_id || '') : '';
         document.getElementById('editOwner').value = vehicle ? (vehicle.member_id || '') : '';
+        document.getElementById('editOwnerOrg').value = vehicle ? (vehicle.owner_org_id || '') : '';
         document.getElementById('editStatus').value = vehicle ? (vehicle.status || 'Active') : 'Active';
-        document.getElementById('editAgency').checked = vehicle ? !!parseInt(vehicle.is_agency_vehicle) : false;
+
+        // Owner type — a specific agency wins, then a person, then a
+        // vehicle marked agency-owned with no specific agency picked yet
+        // (the legacy state every existing agency vehicle was in before
+        // this selector existed), then none. Chris Byrd, Google Group
+        // 2026-08-06: this is what lets an existing "Agency Vehicle"
+        // checkbox-only vehicle be upgraded to a named agency just by
+        // opening it and picking one — no separate migration of old data
+        // needed.
+        var ownerType = 'none';
+        if (vehicle && vehicle.owner_org_id) ownerType = 'agency';
+        else if (vehicle && vehicle.member_id) ownerType = 'person';
+        else if (vehicle && parseInt(vehicle.is_agency_vehicle)) ownerType = 'agency';
+        setOwnerType(ownerType);
+
         document.getElementById('editPlate').value = vehicle ? (vehicle.plate_number || '') : '';
         // Issue #42: plate State is now a DB-backed <select>; route through
         // the shared helper so a legacy free-text value isn't blanked.
@@ -389,6 +446,9 @@
 
     // ── Save Vehicle ─────────────────────────────────────────────
     function saveVehicle() {
+        var ownerTypeEl = document.querySelector('input[name="editOwnerType"]:checked');
+        var ownerType = ownerTypeEl ? ownerTypeEl.value : 'none';
+
         var data = {
             id:                 document.getElementById('editVehicleId').value || 0,
             year:               document.getElementById('editYear').value || null,
@@ -397,9 +457,10 @@
             color:              document.getElementById('editColor').value.trim(),
             callsign:           document.getElementById('editCallsign').value.trim(),
             vehicle_type_id:    document.getElementById('editVehicleType').value || null,
-            member_id:          document.getElementById('editOwner').value || null,
+            member_id:          ownerType === 'person' ? (document.getElementById('editOwner').value || null) : null,
+            owner_org_id:       ownerType === 'agency' ? (document.getElementById('editOwnerOrg').value || null) : null,
             status:             document.getElementById('editStatus').value,
-            is_agency_vehicle:  document.getElementById('editAgency').checked ? 1 : 0,
+            is_agency_vehicle:  ownerType === 'agency' ? 1 : 0,
             plate_number:       document.getElementById('editPlate').value.trim(),
             plate_state:        document.getElementById('editPlateState').value.trim().toUpperCase(),
             vin:                document.getElementById('editVin').value.trim(),
@@ -535,6 +596,14 @@
             var id = this.getAttribute('data-id');
             if (id) deleteVehicle(parseInt(id, 10));
         });
+
+        // Owner type toggle
+        var ownerTypeRadios = document.getElementsByName('editOwnerType');
+        for (var k = 0; k < ownerTypeRadios.length; k++) {
+            ownerTypeRadios[k].addEventListener('change', function () {
+                if (this.checked) setOwnerType(this.value);
+            });
+        }
 
         // Save button
         document.getElementById('btnSaveVehicle').addEventListener('click', function () {

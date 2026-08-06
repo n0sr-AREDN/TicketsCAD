@@ -140,9 +140,43 @@ function broker_send($channel, array $message) {
 /**
  * Receive pending messages from a channel.
  *
+ * DE-DUPLICATION (Phase 134 Step 4, GH #23) lives HERE, not inside each
+ * adapter, per plan.md §2. _telegram_receive() and _slack_receive() both
+ * persist their upstream cursor EAGERLY, right after a successful fetch
+ * (see their own docblocks) — that is only safe if a re-delivered message
+ * (crash-and-retry between the fetch and the log/route step, or an
+ * upstream at-least-once guarantee) is caught somewhere before it can be
+ * logged/routed twice. Doing that check ONE time here means every current
+ * and future poll-based channel gets the same guarantee automatically, by
+ * declaring 'dedupe_key' in its broker_register() call, rather than each
+ * adapter reinventing (or forgetting) its own de-duplication.
+ *
+ * A message is deduplicated by INSERT IGNORE'ing (channel, external_id)
+ * into `inbound_message_dedupe`; an insert that affects 0 rows is a
+ * genuine duplicate and is skipped ENTIRELY — no log row, no route
+ * evaluation, per plan.md §2. A channel that declares no 'dedupe_key' at
+ * all (dmr/email/local_chat/sms today) never enters that branch, so this
+ * is purely additive — zero behaviour change for them.
+ *
+ * EXCEPTION BEHAVIOUR (Phase 134 Step 4): before this phase, this function
+ * had NO real callers anywhere in the app (grepped) and swallowed every
+ * Exception from the handler's receive() call, always returning []. That
+ * makes a genuine channel failure indistinguishable from "nothing new
+ * right now" — which is incompatible with the per-channel backoff
+ * channel_receive_run() (inc/channel-receive.php) implements per plan.md
+ * §1. Since nothing depended on the old swallow-and-return-[] behaviour,
+ * a Throwable from the handler's receive() callable now propagates to the
+ * caller instead of being swallowed here. The per-message bookkeeping
+ * (log write, dedupe insert, route evaluation) is unaffected — each stays
+ * independently best-effort, matching the rest of this file, so a bad
+ * ROUTE for message 2 of 3 can never take message 1 or 3's log/route with
+ * it.
+ *
  * @param string $channel  Channel code
  * @param int    $limit    Max messages to retrieve
- * @return array  Messages array
+ * @return array  Messages array — only the newly-seen ones, once
+ *                de-duplicated (identical to the handler's own return for
+ *                a channel with no dedupe_key).
  */
 function broker_receive($channel, $limit = 50) {
     global $_broker_channels;
@@ -152,21 +186,66 @@ function broker_receive($channel, $limit = 50) {
     $handler = $_broker_channels[$channel];
     if (!is_callable($handler['receive'] ?? null)) return [];
 
-    try {
-        $messages = call_user_func($handler['receive'], $limit);
+    // Deliberately NOT wrapped in try/catch — see "EXCEPTION BEHAVIOUR"
+    // above. A Throwable here is a genuine channel failure and must reach
+    // the caller so it can back off, not be silently absorbed into [].
+    $messages = call_user_func($handler['receive'], $limit);
+    if (!is_array($messages)) $messages = [];
 
-        // Log inbound messages and evaluate routing rules
-        foreach ($messages as $msg) {
-            $inboundId = _broker_log_message($channel, 'inbound', $msg);
-            if (function_exists('router_evaluate')) {
-                router_evaluate($channel, 'inbound', $msg, $inboundId);
+    $dedupeKey = $handler['dedupe_key'] ?? null;
+    $prefix    = $GLOBALS['db_prefix'] ?? '';
+    $accepted  = [];
+
+    foreach ($messages as $msg) {
+        if ($dedupeKey !== null) {
+            $externalId = is_array($msg) ? (string) ($msg[$dedupeKey] ?? '') : '';
+            if ($externalId === '') {
+                // A channel that declares a dedupe_key but returns a message
+                // with no value for it is a bug in the adapter, not a reason
+                // to drop the operator's only visibility into that message —
+                // let it through, undeduplicated, and say so loudly.
+                error_log("[broker] channel '{$channel}' declares dedupe_key "
+                    . "'{$dedupeKey}' but a received message has no value for "
+                    . "it — dedup skipped for this message (check {$channel}'s "
+                    . "receive() normalization).");
+            } else {
+                try {
+                    $stmt = db_query(
+                        "INSERT IGNORE INTO `{$prefix}inbound_message_dedupe` (`channel`, `external_id`) VALUES (?, ?)",
+                        [$channel, $externalId]
+                    );
+                    if ($stmt->rowCount() === 0) {
+                        // Genuine duplicate — already ingested on an earlier
+                        // poll. Skip it entirely: no log row, no route.
+                        continue;
+                    }
+                } catch (Exception $e) {
+                    // Dedupe bookkeeping itself failed (e.g. the table is
+                    // missing on an install that hasn't migrated yet, or a
+                    // transient DB error). Fail OPEN — let the message
+                    // through undeduplicated rather than silently dropping
+                    // it. Worst case is a duplicate note; the alternative
+                    // (fail closed) would be a lost message, which is worse.
+                    error_log("[broker] dedupe insert failed for channel '{$channel}': " . $e->getMessage());
+                }
             }
         }
 
-        return $messages;
-    } catch (Exception $e) {
-        return [];
+        $accepted[] = $msg;
+        $inboundId = _broker_log_message($channel, 'inbound', $msg);
+        if (function_exists('router_evaluate')) {
+            try {
+                router_evaluate($channel, 'inbound', $msg, $inboundId);
+            } catch (Throwable $e) {
+                // A bad route for THIS message must never cost the log
+                // write already made, nor block the next message in the
+                // batch.
+                error_log("[broker] router_evaluate failed for inbound '{$channel}' message: " . $e->getMessage());
+            }
+        }
     }
+
+    return $accepted;
 }
 
 /**

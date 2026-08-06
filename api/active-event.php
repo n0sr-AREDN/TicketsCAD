@@ -61,8 +61,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $scope = null;
         if ($ticketId > 0) {
             try {
+                // Soft-delete sweep (issue #25 follow-up) — a soft-deleted
+                // active-event ticket must not keep showing as the live
+                // event header.
                 $row = db_fetch_one(
-                    "SELECT `scope` FROM `{$prefix}ticket` WHERE `id` = ? LIMIT 1",
+                    "SELECT `scope` FROM `{$prefix}ticket`
+                      WHERE `id` = ?
+                        AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')
+                      LIMIT 1",
                     [$ticketId]
                 );
                 $scope = $row['scope'] ?? null;

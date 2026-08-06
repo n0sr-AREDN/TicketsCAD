@@ -218,6 +218,9 @@ if ($method === 'GET') {
 
     // ── Recent assignments (last 5 closed) ─────────────────────
     // Phase 69: same schema fixes as the current-assignment query.
+    // Soft-delete sweep (issue #25 follow-up) — the current-assignment
+    // query above already excludes deleted_at; this "recent" one (full
+    // street address + description) did not.
     $recentAssignments = [];
     if (!empty($viewResponderIds)) {
         $ph = implode(',', array_fill(0, count($viewResponderIds), '?'));
@@ -233,6 +236,7 @@ if ($method === 'GET') {
              WHERE a.`responder_id` IN ($ph)
                AND a.`clear` IS NOT NULL
                AND DATE_FORMAT(a.`clear`,'%y') != '00'
+               AND (t.`deleted_at` IS NULL OR t.`deleted_at` = '0000-00-00 00:00:00')
              ORDER BY a.`clear` DESC
              LIMIT 5",
             $viewResponderIds

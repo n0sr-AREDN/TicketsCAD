@@ -45,6 +45,15 @@ if (is_file(__DIR__ . '/../vendor/autoload.php')) {
     error_log('[push] vendor/autoload.php missing — push delivery disabled until `composer install` runs');
 }
 
+// GH#31: the per-message encryption key minishlink/web-push generates on
+// every send (not just the one-time VAPID keypair GH#8 covers) needs
+// vapid_find_openssl_conf() in scope — tools/patch_vendor_webpush.php wires
+// the vendored call to it, but only if this function has already been
+// defined by the time that call runs. Previously this file was only
+// required from api/push-admin.php's keygen action, so a real send never
+// loaded it at all.
+require_once __DIR__ . '/vapid-keygen.php';
+
 // These `use` aliases are safe even when the classes aren't loaded —
 // they're just compile-time namespace shortcuts. Instantiation happens
 // only inside push_fire(), which is gated by _push_enabled().
@@ -61,9 +70,29 @@ use Minishlink\WebPush\Subscription;
  * @return int  count of subscriptions a push was attempted for
  */
 function push_fire(string $eventType, array $payload = []): int {
-    // Settings gate — bail fast if push is disabled or VAPID not set.
-    if (! _push_enabled()) return 0;
-    if (! _push_vapid_config()) return 0;
+    // Issue #22 (public repo): push_fire() is the ONLY production call
+    // site of router_evaluate('audit_event', 'outbound', ...) — the fan-
+    // out for every routing-engine channel an audit event can reach, not
+    // just Web Push (see the Phase 99v-3-cleanup note just below). This
+    // used to gate on _push_enabled()/_push_vapid_config() before ever
+    // reaching the router, so an install using Slack/Telegram routing and
+    // NOT Web Push — or one with a blank push_vapid_subject, the least
+    // obvious of the three VAPID settings and the one the key-generation
+    // button doesn't populate — lost every audit-event route silently.
+    // Routes read as enabled, "Send test" succeeded (it calls the
+    // adapter directly and never touches push_fire()), and real incident
+    // traffic went nowhere with no error anywhere.
+    //
+    // Whether this site can sign a Web Push JWT has no bearing on
+    // whether Slack should hear about an incident, so push's own
+    // precondition is no longer checked here. inc/channels/push.php's
+    // own send handler (the 'push' destination inside the fan-out below)
+    // already re-checks _push_enabled()/_push_vapid_config() independently
+    // and returns a structured ['success'=>false,'error'=>'...'] result
+    // rather than throwing — so an unconfigured install still cleanly
+    // fails ONLY the push leg (visible in the routing log with the real
+    // reason) while Slack/Telegram/other routes in the same fan-out
+    // proceed and succeed.
 
     // Phase 99v-3-cleanup (a beta tester/Eric beta 2026-06-30): push delivery
     // is now driven entirely by the routing engine. Authoritative

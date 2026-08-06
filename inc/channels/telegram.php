@@ -2,21 +2,36 @@
 /**
  * Channel: Telegram
  *
- * Posts incident / PAR / system alerts to a Telegram chat via a bot,
- * using the Telegram Bot API (sendMessage). Outbound only.
+ * Posts incident / PAR / system alerts to a Telegram chat via a bot, using
+ * the Telegram Bot API (sendMessage), and — as of Phase 134 Step 2
+ * (2026-08, GH #23 Model 3) — can poll that bot's inbound messages via
+ * getUpdates. Polling is NOT wired to a scheduler by this step: nothing
+ * calls _telegram_receive() on a schedule until Phase 134 Step 4 (the
+ * poller) lands. See specs/phase-134-inbound-routing-model3/plan.md §3.
  *
  * Configuration (Settings → Telegram):
- *   telegram_bot_token = Bot token from @BotFather
- *   telegram_chat_id   = Target group chat ID (negative, e.g. -100123456789)
+ *   telegram_bot_token     = Bot token from @BotFather
+ *   telegram_chat_id       = Target group chat ID (negative, e.g. -100123456789)
+ *   telegram_update_offset = getUpdates() cursor; managed internally, not
+ *                            a user-facing setting.
  *
  * Setup: docs/TELEGRAM-SETUP-GUIDE.md
  */
 
 broker_register('telegram', [
-    'name'    => 'Telegram',
-    'send'    => '_telegram_send',
-    'receive' => '_telegram_receive',
-    'status'  => '_telegram_status'
+    'name'       => 'Telegram',
+    'send'       => '_telegram_send',
+    'receive'    => '_telegram_receive',
+    'status'     => '_telegram_status',
+    // Phase 134 §1: capability flag a later poller (Step 4, not built yet)
+    // reads to decide which registered channels it is allowed to call
+    // receive() on. A channel that never sets 'pollable' (local_chat and
+    // everything else) is structurally excluded — no allowlist to keep in
+    // sync, and no repeat of re-ingesting our own outbound traffic.
+    'pollable'   => true,
+    // Read by broker_receive() (Phase 134 Step 4) to compute the dedupe
+    // table's external_id for a message returned from receive().
+    'dedupe_key' => 'update_id',
 ]);
 
 /**
@@ -118,14 +133,181 @@ function _telegram_send(array $message) {
     return ['success' => false, 'error' => 'Telegram API returned an unexpected response (see error log)'];
 }
 
-/** No inbound polling — TicketsCAD only posts to Telegram, it doesn't read replies. */
+/**
+ * Poll Telegram's getUpdates for messages in the configured chat.
+ *
+ * Thin wrapper: performs the HTTP fetch, then hands the decoded response
+ * to _telegram_parse_updates() — a pure function with no curl, no
+ * database, no globals — for the filtering/offset-advancement logic. That
+ * split is what makes the interesting part of this function testable:
+ * this codebase has no curl-mocking convention (grepped tests/*.php —
+ * existing curl-driven adapters are either exercised live, or, for pure
+ * security properties, driven through a child PHP process that never
+ * reaches curl_exec() at all; see tests/test_telegram_channel_security.php
+ * group A). See tests/test_phase134_receivers.php for the fake-response
+ * coverage of _telegram_parse_updates().
+ *
+ * Fails closed (empty array, no request made) on missing or malformed
+ * configuration, same guard order as _telegram_send(). Not wired to a
+ * scheduler as of this commit — see file header.
+ */
 function _telegram_receive($limit = 50) {
-    return [];
+    $config = _telegram_get_config();
+    $token  = trim((string) ($config['telegram_bot_token'] ?? ''));
+    $chatId = trim((string) ($config['telegram_chat_id'] ?? ''));
+
+    if ($token === '' || $chatId === '') return [];
+    if (!preg_match(TELEGRAM_TOKEN_RE, $token)) return [];
+    if (!preg_match(TELEGRAM_CHAT_ID_RE, $chatId)) return [];
+
+    $offset = (int) ($config['telegram_update_offset'] ?? 0);
+
+    // 'timeout' => 0 is Telegram's OWN long-poll parameter, not a cURL
+    // option — 0 means "answer immediately with whatever's pending" rather
+    // than holding the HTTP connection open waiting for new messages. A
+    // scheduled tick controls its own polling cadence (Phase 134 Step 4);
+    // this adapter must never itself block for Telegram's long-poll window.
+    $ch = curl_init('https://api.telegram.org/bot' . $token . '/getUpdates?' . http_build_query([
+        'offset'  => $offset,
+        'limit'   => max(1, min(100, (int) $limit)),
+        'timeout' => 0,
+    ]));
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER  => true,
+        CURLOPT_SSL_VERIFYPEER  => true,
+        CURLOPT_SSL_VERIFYHOST  => 2,
+        CURLOPT_FOLLOWLOCATION  => false,
+        CURLOPT_PROTOCOLS       => CURLPROTO_HTTPS,
+        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+        CURLOPT_CONNECTTIMEOUT  => 5,
+        CURLOPT_TIMEOUT         => 10,
+    ]);
+
+    $resp = curl_exec($ch);
+    $err  = curl_error($ch);
+    curl_close($ch);
+
+    if ($resp === false) {
+        error_log('[telegram] getUpdates request failed: ' . $err);
+        return [];
+    }
+
+    $data = json_decode($resp, true);
+    if (!is_array($data) || empty($data['ok'])) {
+        error_log('[telegram] getUpdates unexpected response: ' . substr((string) $resp, 0, 500));
+        return [];
+    }
+
+    [$messages, $newOffset] = _telegram_parse_updates($data, $chatId, $offset);
+    if ($newOffset !== $offset) {
+        _telegram_set_update_offset($newOffset);
+    }
+    return $messages;
+}
+
+/**
+ * Pure parse/filter/offset logic for a decoded Telegram getUpdates
+ * response. No curl, no database, no globals — everything it needs is a
+ * parameter, which is what lets tests/test_phase134_receivers.php drive it
+ * with a hand-built fake API response instead of mocking curl.
+ *
+ * @param array  $apiResponse   Decoded JSON, e.g. ['ok'=>true,'result'=>[...]].
+ *                               Caller has already checked ['ok'] truthy.
+ * @param string $chatId        The configured telegram_chat_id to filter to
+ *                               (string compare — chat ids are negative
+ *                               integers for groups/supergroups, and
+ *                               json_decode() keeps them as real PHP ints
+ *                               within 64-bit range, so casting both sides
+ *                               to string is exact, not lossy).
+ * @param int    $currentOffset The offset the fetch was made with — the
+ *                               value returned unchanged when $apiResponse
+ *                               carries no updates at all.
+ * @return array{0: array, 1: int} [$messages, $newOffset]. $newOffset
+ *         advances past the MAX update_id seen across EVERY update in the
+ *         response, matching or not — an unrelated chat's traffic must
+ *         never pin the cursor (plan.md §3): offset=N tells Telegram "give
+ *         me updates after N", so a cursor that only advances on a match
+ *         would re-fetch the same non-matching updates forever.
+ */
+function _telegram_parse_updates(array $apiResponse, string $chatId, int $currentOffset): array {
+    $updates = $apiResponse['result'] ?? [];
+    if (!is_array($updates)) $updates = [];
+
+    $messages    = [];
+    $maxUpdateId = null;
+
+    foreach ($updates as $update) {
+        if (!is_array($update)) continue;
+
+        $updateId = isset($update['update_id']) ? (int) $update['update_id'] : null;
+        if ($updateId !== null && ($maxUpdateId === null || $updateId > $maxUpdateId)) {
+            $maxUpdateId = $updateId;
+        }
+
+        // Only plain text messages are handled — edited_message,
+        // callback_query, etc. still count toward the offset above (so
+        // they are never re-fetched) but produce no routed message.
+        $msg = $update['message'] ?? null;
+        if (!is_array($msg)) continue;
+
+        $chat      = $msg['chat'] ?? [];
+        $msgChatId = isset($chat['id']) ? (string) $chat['id'] : '';
+        if ($msgChatId === '' || $msgChatId !== $chatId) continue; // unrelated chat
+
+        $text = trim((string) ($msg['text'] ?? ''));
+        if ($text === '') continue; // no text body (sticker/photo/etc.) — nothing to route
+
+        $from   = $msg['from'] ?? [];
+        $sender = '';
+        if (!empty($from['username'])) {
+            $sender = (string) $from['username'];
+        } elseif (isset($from['id'])) {
+            $sender = (string) $from['id'];
+        }
+
+        $messages[] = [
+            'from'      => $sender,
+            'body'      => $text,
+            'to'        => $msgChatId,
+            'type'      => 'message',
+            'priority'  => 'normal',
+            // Matches the 'dedupe_key' declared in broker_register() above
+            // — broker_receive() (Phase 134 Step 4) reads this key to
+            // compute the inbound_message_dedupe table's external_id.
+            'update_id' => $updateId,
+        ];
+    }
+
+    $newOffset = ($maxUpdateId !== null) ? ($maxUpdateId + 1) : $currentOffset;
+    return [$messages, $newOffset];
+}
+
+/**
+ * Persist the getUpdates cursor to the `settings` table (name/value) — the
+ * SAME store _telegram_get_config() reads, per this codebase's GH #79
+ * rule: the runtime-settings store is `settings`, never the separate
+ * `config` table (get_setting()). A direct db query is used here rather
+ * than get_variable()'s request-scoped static cache deliberately — a
+ * poller tick calls _telegram_receive() and may read the offset again
+ * later in the SAME process, and get_variable()'s cache would still show
+ * the pre-write value.
+ */
+function _telegram_set_update_offset(int $offset) {
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+    try {
+        db_query(
+            "INSERT INTO `{$prefix}settings` (`name`, `value`) VALUES ('telegram_update_offset', ?)
+             ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)",
+            [(string) $offset]
+        );
+    } catch (Exception $e) {
+        error_log('[telegram] could not persist update offset: ' . $e->getMessage());
+    }
 }
 
 function _telegram_get_config() {
     $prefix = $GLOBALS['db_prefix'] ?? '';
-    $keys = ['telegram_bot_token', 'telegram_chat_id'];
+    $keys = ['telegram_bot_token', 'telegram_chat_id', 'telegram_update_offset'];
     $config = [];
     foreach ($keys as $k) {
         try {

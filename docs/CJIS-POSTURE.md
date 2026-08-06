@@ -1,7 +1,7 @@
 # CJIS Security Policy — TicketsCAD Posture Brief
 
 **Audience:** compliance officer, security auditor, agency CIO evaluating TicketsCAD for use with Criminal Justice Information (CJI).
-**Scope:** TicketsCAD NewUI v4.0 as of 2026-06-15; amended 2026-07-30 to document outbound connections to third-party services, including the optional Radio AI feature (see [§5.10](#outbound-connections-to-third-party-services)).
+**Scope:** TicketsCAD NewUI v4.0 as of 2026-06-15; amended 2026-07-30 to document outbound connections to third-party services, including the optional Radio AI feature (see [§5.10](#outbound-connections-to-third-party-services)); amended 2026-08-03 to describe the real audit-log retention/purge mechanism (§5.4) — a prior revision incorrectly stated the audit log was never pruned by design.
 **Companion docs:** [SECURITY-POLICY.md](SECURITY-POLICY.md) · [BACKUP-RECOVERY-RUNBOOK.md](BACKUP-RECOVERY-RUNBOOK.md) · [AUDIT-LOG-REFERENCE.md](AUDIT-LOG-REFERENCE.md)
 
 ---
@@ -56,20 +56,20 @@ Retention is **minimum 365 days**.
 
 | Control | TicketsCAD evidence |
 |---|---|
-| **Automated audit log** | [`audit_log`](AUDIT-LOG-REFERENCE.md) table — OCSF-aligned schema. Every state-changing action writes a row via `audit_log($category, $action, $entity_type, $entity_id, $details, $context)` |
+| **Automated audit log** | [`newui_audit_log`](AUDIT-LOG-REFERENCE.md) table, OCSF-inspired (category/activity/severity, not a certified OCSF schema — see [AUDIT-LOG-REFERENCE.md § OCSF alignment notes](AUDIT-LOG-REFERENCE.md#ocsf-alignment-notes)). Every state-changing action writes a row via `audit_log($category, $activity, $targetType, $targetId, $summary, $details, $severity)` |
 | **Auth events logged** | `audit_log` category=`auth`: every login attempt (success/fail), 2FA verify, password change, password reset, lockout trigger, session destroy |
 | **RBAC changes logged** | category=`admin`: role create/edit/delete, grant create/revoke, permission change, super-admin promote/demote |
 | **CJI access logged** | category=`data`: per-incident view (when the incident has a sensitivity label), patient-info view, address-detail view (per-field perms) |
 | **System events** | category=`security`: TFA enrollment / disable, encryption key rotation, password policy change |
-| **Audit log access logged** | category=`admin`, action=`view_audit_log` — every admin who opens the audit log is themselves audit-logged |
-| **365-day retention** | `audit_log` is **never pruned** — there is no audit-retention setting in Settings and no trim job, so the 365-day floor is met by keeping everything. Corrected 2026-08-03: earlier revisions of this table described a retention control and an `audit-log-trim` cron. Neither exists. If you add pruning of your own, **do not go below 365 days for CJIS deployments** |
-| **Tamper resistance** | `audit_log` is append-only in code (no UPDATE / DELETE called from any endpoint). DB-level constraint: only the DB owner can DELETE; recommend revoking that grant from the application user (`REVOKE DELETE ON newui.audit_log FROM 'newui'@'localhost';`) |
+| **Audit log access logged** | Not currently true — opening the Audit Log viewer (`api/audit-log.php`) does not itself write an audit-log row. Flagged 2026-08-03 as a gap to close, not a shipped control; see [AUDIT-LOG-REFERENCE.md](AUDIT-LOG-REFERENCE.md) for the real, verified capability list. |
+| **365-day retention** | Retention is a real, working setting (`audit_log_retention_days` in Settings → Audit Log → Retention & Purge), **off by default** (`0` = keep forever — upgrading never starts deleting your history on its own). When an administrator turns it on, a daily job (and an on-demand "Purge now" button) **archives** every row older than the threshold — gzip-compressed NDJSON, written to disk BEFORE any row is deleted — then removes those rows from the live table. Nothing is bare-deleted; the record moves to an archive file, it does not disappear. TicketsCAD does **not** hard-enforce the 365-day CJIS minimum: it warns, in the Settings UI and in the save response, when the configured value is below 365 days, but a lower value is not blocked — your agency's own retention obligations are yours to apply, and TicketsCAD cannot know which jurisdiction's rules govern a given install. See [AUDIT-LOG-REFERENCE.md § Retention](AUDIT-LOG-REFERENCE.md#retention) for the archive format and manifest table (`audit_log_purges`). (Corrected 2026-08-03: a prior revision of this document said the table was never pruned by design; that was rejected as removing intent rather than fixing the gap — see the "Solving it, not redefining it" note in AUDIT-LOG-REFERENCE.md.) |
+| **Tamper resistance** | `newui_audit_log` is append-only in application code — no endpoint calls UPDATE or DELETE against it directly; only the retention purge above ever deletes rows, and only after archiving them. DB-level constraint: only the DB owner can DELETE by default; you may further **revoke that grant from the application's DB user** (`REVOKE DELETE ON newui.newui_audit_log FROM 'newui'@'localhost';`) for defence-in-depth against a compromised app instance rewriting history. **This has a real trade-off with retention, stated plainly rather than hidden:** revoking DELETE also disables the automated purge — it cannot delete what it has archived. TicketsCAD detects this before doing any work (a zero-row `DELETE ... WHERE 1=0` privilege probe) and fails LOUDLY — visible on Settings → Audit Log → Retention & Purge and on the Scheduled Jobs status page, naming the exact reason — rather than silently doing nothing. As shipped, `tools/audit_log_purge_tick.php` always connects with the application's own configured DB credentials (`config.php`) — it does not (yet) accept a separate, more-privileged connection. So today the choice is binary and deliberate: (a) leave the app's DB user able to DELETE from `newui_audit_log` and let the built-in retention job run automatically, or (b) revoke that grant for maximum tamper-resistance and purge manually — e.g. on a schedule you control, using a dedicated DB user with DELETE granted only on this table, running the archive-then-delete steps yourself against the manifest this feature already produces. A future version may let the retention job authenticate with separate, narrower-scoped credentials than the app's own; it does not today. |
 | **Time synchronisation** | We require chrony/systemd-timesyncd on the VM. The CJIS audit-log timeline is only as good as the system clock. See [INSTALLATION-CHECKLIST.md](INSTALLATION-CHECKLIST.md) |
-| **Export to SIEM** | Audit-log records can be exported via [`api/audit-log.php?action=export`](AUDIT-LOG-REFERENCE.md#export) in JSONL or CSV. Recommend a daily cron to a log aggregator (Splunk, ELK, Datadog) |
+| **Export to SIEM** | Not currently built. `api/audit-log.php` returns at most 200 rows per request for the on-screen viewer; there is no bulk JSONL/CSV export endpoint and no `action=export` parameter. A narrow webhook fan-out exists (`_audit_to_webhook_event()`) but it deliberately excludes the `admin`/`config`/`security` categories a SIEM integration would need. See [AUDIT-LOG-REFERENCE.md § Export](AUDIT-LOG-REFERENCE.md#export) for the real state and suggested patterns if you want to build this yourself against the current schema. |
 
 ### Gaps / your responsibility
 
-- **Off-box log shipping.** TicketsCAD writes the audit log to the local DB. CJIS auditors often want logs replicated to a separate, append-only system. **You must configure the SIEM export.**
+- **Off-box log shipping.** TicketsCAD writes the audit log to the local DB. CJIS auditors often want logs replicated to a separate, append-only system. There is no built-in SIEM export today (see the table row above) — **if you need this, you must build or script it yourself** against `newui_audit_log`, or use the retention feature's gzip-NDJSON archives as a starting point.
 - **Annual log review.** CJIS requires periodic audit-log review. Add this to your [MAINTENANCE-RUNBOOK.md](MAINTENANCE-RUNBOOK.md) quarterly cadence.
 
 ---
@@ -272,7 +272,7 @@ When in doubt, configure these tighter than the defaults:
 | `session_timeout_minutes` (other roles) | 1440 | 30 |
 | `tfa_required_roles` | none | ALL roles (CJIS = all CJI access is MFA-protected) |
 | `tfa_remember_days` | 30 | 7 |
-| `audit_log_retention_days` | 365 | 365 (minimum; some CSAs require longer) |
+| `audit_log_retention_days` | 0 (disabled — keep everything forever) | At least 365; some CSAs require longer. TicketsCAD warns but does not block a lower value — this is your call to make, not ours to enforce. See §5.4 above. |
 | `owntracks_allow_anonymous` | 0 | 0 (must stay 0 for CJIS) |
 | `owntracks_require_token` | 1 (if configured) | 1 |
 | `radio_ai_enabled` | 0 | **0 — must stay 0.** Sends amateur-radio transcripts to a commercial LLM API outside your boundary (see §5.10) |
@@ -309,7 +309,7 @@ When the CJIS auditor visits, hand them:
 - It is **not a certificate of compliance**. There's no FBI seal on this PDF.
 - It is **not a substitute for your CSO's risk assessment**. They have to sign off.
 - It is **not exhaustive**. CJIS Policy v6.0 is 250+ pages; this brief covers the sections with substantial TicketsCAD-side controls and points you at where the gaps are.
-- It is **dated 2026-06-15, amended 2026-07-30**. CJIS Policy revisions happen periodically. Re-audit against the current version before each annual recert.
+- It is **dated 2026-06-15, amended 2026-07-30 and 2026-08-03**. CJIS Policy revisions happen periodically. Re-audit against the current version before each annual recert.
 
 ---
 

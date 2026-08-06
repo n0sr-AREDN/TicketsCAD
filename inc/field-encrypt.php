@@ -303,12 +303,29 @@ function fe_generate_keypair()
         'digest_alg'       => 'sha256',
     );
 
-    // XAMPP on Windows needs explicit path to openssl.cnf
-    $cnfPaths = array(
-        getenv('OPENSSL_CONF'),
-        dirname(PHP_BINARY) . '/extras/ssl/openssl.cnf',
-        dirname(PHP_BINARY) . '/../apache/conf/openssl.cnf',
-    );
+    // XAMPP on Windows needs explicit path to openssl.cnf.
+    //
+    // PHP_BINARY is the calling SAPI's OWN executable, not PHP's directory —
+    // found 2026-08-06 chasing the identical bug in inc/vapid-keygen.php by
+    // actually clicking a button in a browser against Apache rather than
+    // only running CLI tests. Under apache2handler on XAMPP, PHP_BINARY is
+    // Apache's httpd.exe, so dirname(PHP_BINARY) pointed at Apache's own bin
+    // directory and neither path below it ever existed — this fallback had
+    // never actually worked through a real request. php_ini_loaded_file()
+    // does not have this problem: every SAPI, CLI included, loads a php.ini
+    // from inside PHP's own directory.
+    $phpDirs = array();
+    $iniFile = php_ini_loaded_file();
+    if ($iniFile !== false && $iniFile !== '') {
+        $phpDirs[] = dirname($iniFile);
+    }
+    $phpDirs[] = dirname(PHP_BINARY);
+
+    $cnfPaths = array(getenv('OPENSSL_CONF'));
+    foreach ($phpDirs as $phpDir) {
+        $cnfPaths[] = $phpDir . '/extras/ssl/openssl.cnf';
+        $cnfPaths[] = $phpDir . '/../apache/conf/openssl.cnf';
+    }
     foreach ($cnfPaths as $cnf) {
         if ($cnf && file_exists($cnf)) {
             $config['config'] = $cnf;

@@ -36,6 +36,7 @@
         initAssignControls();
         initNoteForm();
         initStatusControls();
+        initDispositionControls(); // Phase 132 Step 4 (GH #16)
         initPARCard(id);  // Phase 16a (2026-06-11)
         initTopMayday(id); // 2026-06-11 — always-visible Mayday button
         initSecurityBadge(id); // Phase 18c (2026-06-11) — security label badge + dialog
@@ -1084,6 +1085,12 @@
 
                 // Set initial keyboard focus based on URL tab parameter
                 setInitialFocus();
+
+                // Phase 132 Step 4 (GH #16) — the disposition picker
+                // options depend on this incident's type discipline, so
+                // load it once the incident (and therefore its type) is
+                // known.
+                loadDispositionOptions(id);
             })
             .catch(function (err) {
                 showAlert('Failed to load incident: ' + escHtml(err.message), 'danger');
@@ -1110,6 +1117,7 @@
                 renderTimeStatus(data.incident);
                 syncStatusSelect(data.incident);
                 loadResponders();
+                loadDispositionOptions(id); // Phase 132 Step 4 — current value may have changed
             })
             .catch(function () {});
     }
@@ -1934,6 +1942,14 @@
         statusBtn.addEventListener('click', function () {
             changeStatus();
         });
+
+        // Phase 132 Step 4 (GH #16) — show/hide the close-flow disposition
+        // row as soon as the dispatcher picks Closed, before they even
+        // click Update.
+        var statusSelect = document.getElementById('statusSelect');
+        if (statusSelect) {
+            statusSelect.addEventListener('change', updateCloseDispositionVisibility);
+        }
     }
 
     function syncStatusSelect(inc) {
@@ -1943,6 +1959,17 @@
 
         statusSelect.value = String(inc.status);
         statusControls.classList.remove('d-none');
+        updateCloseDispositionVisibility(); // Phase 132 Step 4
+    }
+
+    // Phase 132 Step 4 (GH #16) — the close-flow disposition row is only
+    // relevant while "Closed" is the selected target status.
+    function updateCloseDispositionVisibility() {
+        var statusSelect = document.getElementById('statusSelect');
+        var row = document.getElementById('closeDispositionRow');
+        if (!statusSelect || !row) return;
+        var closing = (parseInt(statusSelect.value, 10) === 1);
+        row.classList.toggle('d-none', !closing);
     }
 
     function changeStatus() {
@@ -1995,6 +2022,25 @@
             }
         }
 
+        // Phase 132 Step 4 (GH #16) — courtesy client-side check: block
+        // BEFORE round-tripping to the API when enforcement is on and no
+        // disposition is available (neither already set on the incident
+        // nor chosen in the close-flow dropdown just now). The API's own
+        // refusal (inc/incident-write.php, disposition_required_on_close)
+        // is still the real enforcement — this only saves a round trip
+        // and gives a friendlier message.
+        var closeDispositionSelect = document.getElementById('closeDispositionSelect');
+        var chosenDispositionId = closeDispositionSelect ? closeDispositionSelect.value : '';
+        if (newStatus === 1 && window.DISPOSITION_REQUIRED_ON_CLOSE) {
+            var alreadyHasDisposition = incidentData && incidentData.incident &&
+                incidentData.incident.disposition_id;
+            if (!alreadyHasDisposition && !chosenDispositionId) {
+                showAlert(escHtml(window.DISPOSITION_REQUIRED_MESSAGE ||
+                    'A disposition is required before closing this incident.'), 'warning');
+                return;
+            }
+        }
+
         statusBtn.disabled = true;
         statusBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Updating...';
 
@@ -2006,6 +2052,13 @@
         };
         if (bookedDate) {
             body.booked_date = bookedDate;
+        }
+        // Phase 132 Step 4 — same conditional-add pattern as booked_date
+        // above. Sent whenever the close-flow dropdown has a value,
+        // whether or not enforcement is on (plan.md §4: settable any
+        // time; the close dropdown is just another place to set it).
+        if (newStatus === 1 && chosenDispositionId) {
+            body.disposition_id = parseInt(chosenDispositionId, 10);
         }
 
         fetch('api/incident-update.php', {
@@ -2030,6 +2083,107 @@
             statusBtn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Update';
             statusBtn.disabled = false;
             showAlert('Failed to change status: ' + escHtml(err.message), 'danger');
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  DISPOSITION (Phase 132 Step 4, GH #16)
+    //
+    //  One options list (api/dispositions-picker.php — active, filtered
+    //  by the incident's type discipline + org, with the hard
+    //  never-empty fallback: see disposition_options_for_ticket_internal()
+    //  in inc/disposition-admin.php) feeds TWO selects:
+    //    #dispositionSelect      — beside the Add Note box, settable any
+    //                              time, writes immediately on change via
+    //                              set_disposition.
+    //    #closeDispositionSelect — inside the close-flow controls, sent
+    //                              inline with update_status (changeStatus()
+    //                              above) rather than writing on change.
+    // ═══════════════════════════════════════════════════════════════
+    var dispositionOptions = null; // last response from the picker endpoint
+
+    function loadDispositionOptions(ticketId) {
+        if (!ticketId) return;
+        fetch('api/dispositions-picker.php?ticket_id=' + encodeURIComponent(ticketId), { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                dispositionOptions = (data && !data.error) ? data : null;
+                applyDispositionOptions();
+            })
+            .catch(function () {
+                dispositionOptions = null;
+                applyDispositionOptions();
+            });
+    }
+
+    function applyDispositionOptions() {
+        var data = dispositionOptions;
+        var ids = ['dispositionSelect', 'closeDispositionSelect'];
+        for (var s = 0; s < ids.length; s++) {
+            var sel = document.getElementById(ids[s]);
+            if (!sel) continue;
+
+            var noneLabel = (window.INCDETAIL_DISPOSITION_NONE) || '— None —';
+            sel.innerHTML = '';
+            var none = document.createElement('option');
+            none.value = '';
+            none.textContent = noneLabel;
+            sel.appendChild(none);
+
+            if (!data) continue; // fetch failed — leave just the None option
+
+            var list = data.dispositions || [];
+            for (var i = 0; i < list.length; i++) {
+                var d = list[i];
+                var opt = document.createElement('option');
+                opt.value = String(d.id);
+                var label = d.status_val || ('#' + d.id);
+                if (data.current_id && d.id === data.current_id && data.current_retired) {
+                    label += ' (retired)';
+                }
+                opt.textContent = label;
+                sel.appendChild(opt);
+            }
+            sel.value = data.current_id ? String(data.current_id) : '';
+        }
+    }
+
+    function initDispositionControls() {
+        var sel = document.getElementById('dispositionSelect');
+        if (!sel) return;
+        sel.addEventListener('change', function () {
+            setDisposition(getIncidentId(), sel.value);
+        });
+    }
+
+    function setDisposition(ticketId, dispositionIdStr) {
+        if (!ticketId) return;
+        fetch('api/incident-update.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'set_disposition',
+                ticket_id: ticketId,
+                disposition_id: dispositionIdStr ? parseInt(dispositionIdStr, 10) : null,
+                csrf_token: getCsrfToken()
+            })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.error) {
+                showAlert(escHtml(data.error), 'danger');
+                loadDispositionOptions(ticketId); // revert the select to the real current value
+                return;
+            }
+            showAlert(escHtml(data.message), 'success');
+            // Refresh both selects + incidentData.incident.disposition_id
+            // (the close-flow required-check reads that field).
+            loadDispositionOptions(ticketId);
+            refreshIncident();
+        })
+        .catch(function (err) {
+            showAlert('Failed to update disposition: ' + escHtml(err.message), 'danger');
+            loadDispositionOptions(ticketId);
         });
     }
 

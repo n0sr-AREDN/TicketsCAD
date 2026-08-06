@@ -57,6 +57,10 @@ $zoneJoin = $hasZoneCols
     ? "LEFT JOIN `{$prefix}event_zones` `z` ON `z`.`id` = `a`.`current_zone_id`"
     : "";
 
+// Soft-delete sweep (issue #25 follow-up) — same class of bug as the
+// dispatch board: this feeds the unit list / map's "current assignment"
+// display, so a unit assigned to an incident deleted while open would
+// show as permanently on-call to it.
 $assigns = [];
 $zoneByResponder = [];   // rid => {id,name,code,color} of the unit's current zone
 $rows = db_fetch_all(
@@ -68,6 +72,7 @@ $rows = db_fetch_all(
      {$zoneJoin}
      WHERE (`t`.`status` = 2 OR `t`.`status` = 3)
        AND (`a`.`clear` IS NULL OR DATE_FORMAT(`a`.`clear`,'%y') = '00')
+       AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')
      ORDER BY COALESCE(`a`.`on_scene`, `a`.`responding`, `a`.`dispatched`) DESC, `a`.`id` DESC"
 );
 foreach ($rows as $r) {

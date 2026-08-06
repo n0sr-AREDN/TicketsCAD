@@ -109,15 +109,27 @@ try {
             `t`.`updated`,
             `it`.`type` AS `type_name`,
             `it`.`group` AS `type_group`,
+            `td`.`code` AS `disposition_code`,
             (SELECT COUNT(*) FROM `{$prefix}assigns` `a`
              WHERE `a`.`ticket_id` = `t`.`id`
              AND (`a`.`clear` IS NULL OR `a`.`clear` = '0000-00-00 00:00:00')
             ) AS `assigned_units`
          FROM `{$prefix}ticket` `t`
          LEFT JOIN `{$prefix}in_types` `it` ON `t`.`in_types_id` = `it`.`id`
+         LEFT JOIN `{$prefix}ticket_disposition` `td` ON `t`.`disposition_id` = `td`.`id`
          WHERE `t`.`status` = 2
+           AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')
          ORDER BY `t`.`date` DESC
          LIMIT 200"
+        // Soft-delete sweep (issue #25 follow-up) — this feed is consumed
+        // by external systems (weather alert boards, partner agencies);
+        // a deleted incident must not be exported to them.
+        //
+        // Phase 132 Step 5 (GH #16) — disposition_code, via a LEFT JOIN so
+        // an incident with no disposition (the normal state for a feed
+        // that only lists OPEN incidents — a disposition is usually set at
+        // or after close) still returns a row rather than being dropped;
+        // the column is simply NULL, carried through below.
     );
 
     $status_labels = [1 => 'Closed', 2 => 'Open', 3 => 'Scheduled'];
@@ -142,6 +154,9 @@ try {
             'status'         => 'Open',
             'opened'         => $row['opened'],
             'updated'        => $row['updated'],
+            // Phase 132 Step 5 (GH #16) — null/absent, not an error, on the
+            // (usual) OPEN incident that has no disposition recorded yet.
+            'disposition_code' => $row['disposition_code'] ?? null,
             'assigned_units' => (int) $row['assigned_units'],
         ];
     }
@@ -215,6 +230,9 @@ if ($format === 'atom') {
             . 'Address: ' . $inc['address'] . "\n"
             . 'Severity: ' . $inc['severity_text'] . "\n"
             . 'Assigned Units: ' . $inc['assigned_units'];
+        if (!empty($inc['disposition_code'])) {
+            $entryContent .= "\n" . 'Disposition: ' . $inc['disposition_code'];
+        }
         if ($inc['description']) {
             $entryContent .= "\n" . $inc['description'];
         }
@@ -255,6 +273,9 @@ foreach ($incidents as $inc) {
     $descParts[] = 'Address: ' . $inc['address'];
     $descParts[] = 'Severity: ' . $inc['severity_text'];
     $descParts[] = 'Assigned Units: ' . $inc['assigned_units'];
+    if (!empty($inc['disposition_code'])) {
+        $descParts[] = 'Disposition: ' . $inc['disposition_code'];
+    }
     if ($inc['description']) {
         $descParts[] = $inc['description'];
     }

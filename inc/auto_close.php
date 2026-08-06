@@ -116,9 +116,14 @@ function auto_close_maybe_schedule(int $ticketId, int $userId): array {
     auto_close_ensure_column();
     $prefix = $GLOBALS['db_prefix'] ?? '';
     try {
+        // Soft-delete sweep (issue #25 follow-up) — a soft-deleted
+        // incident must not have an auto-close scheduled against it.
         $ticket = db_fetch_one(
             "SELECT id, status, auto_close_scheduled_at
-             FROM `{$prefix}ticket` WHERE id = ? LIMIT 1",
+             FROM `{$prefix}ticket`
+              WHERE id = ?
+                AND (deleted_at IS NULL OR deleted_at = '0000-00-00 00:00:00')
+              LIMIT 1",
             [$ticketId]
         );
         if (!$ticket) return ['scheduled' => false, 'reason' => 'ticket_not_found'];
@@ -207,11 +212,14 @@ function auto_close_sweep(int $limit = 20): array {
     $closed = 0;
     $skipped = 0;
     try {
+        // Soft-delete sweep (issue #25 follow-up) — never auto-close a
+        // soft-deleted incident (a status write it shouldn't receive).
         $due = db_fetch_all(
             "SELECT id FROM `{$prefix}ticket`
               WHERE auto_close_scheduled_at IS NOT NULL
                 AND auto_close_scheduled_at <= ?
                 AND status <> 1
+                AND (deleted_at IS NULL OR deleted_at = '0000-00-00 00:00:00')
               LIMIT ?",
             [$now, $limit]
         );
@@ -246,7 +254,12 @@ function auto_close_sweep(int $limit = 20): array {
                 continue;
             }
             require_once __DIR__ . '/incident-write.php';
-            $res = incident_update_status_internal($tid, 1, 0);
+            // Phase 132 Step 2 (GH #16) — this sweep closes incidents with
+            // no human present, so it must not start silently failing the
+            // moment an admin turns disposition_required_on_close on.
+            // Mirrors the Phase 129 PAR lesson: a disabled/gated feature
+            // must not silently break unrelated background housekeeping.
+            $res = incident_update_status_internal($tid, 1, 0, ['skip_disposition_check' => true]);
             if (!empty($res['errors'])) {
                 error_log('[auto_close] sweep close #' . $tid . ': ' . implode(',', $res['errors']));
                 $skipped++;

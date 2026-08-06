@@ -227,9 +227,16 @@ function assign_create_internal(int $ticketId, int $responderId, string $role, i
     $now = date('Y-m-d H:i:s');
 
     // Verify ticket exists
+    //
+    // Soft-delete sweep (issue #25 follow-up) — this is the canonical
+    // writer behind api/incident-assign.php and every other assignment
+    // path in the app; a soft-deleted incident must not accept new unit
+    // assignments through any of them.
     try {
         $ticket = db_fetch_one(
-            "SELECT `id` FROM `{$prefix}ticket` WHERE `id` = ?",
+            "SELECT `id` FROM `{$prefix}ticket`
+              WHERE `id` = ?
+                AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')",
             [$ticketId]
         );
     } catch (Exception $e) {

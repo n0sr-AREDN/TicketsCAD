@@ -292,9 +292,16 @@ $csrf     = csrf_token();
                                     <i class="bi bi-person me-1"></i>Owner &amp; Status
                                 </div>
                                 <div class="row g-2">
-                                    <div class="col-6">
+                                    <div class="col-9">
                                         <label class="form-label form-label-sm mb-0">Owner</label>
-                                        <select class="form-select form-select-sm" id="editOwner"></select>
+                                        <div class="btn-group btn-group-sm w-100" role="group" aria-label="Owner type">
+                                            <input type="radio" class="btn-check" name="editOwnerType" id="editOwnerTypeNone" value="none" autocomplete="off">
+                                            <label class="btn btn-outline-secondary" for="editOwnerTypeNone">None</label>
+                                            <input type="radio" class="btn-check" name="editOwnerType" id="editOwnerTypePerson" value="person" autocomplete="off">
+                                            <label class="btn btn-outline-secondary" for="editOwnerTypePerson">Person</label>
+                                            <input type="radio" class="btn-check" name="editOwnerType" id="editOwnerTypeAgency" value="agency" autocomplete="off">
+                                            <label class="btn btn-outline-secondary" for="editOwnerTypeAgency">Agency</label>
+                                        </div>
                                     </div>
                                     <div class="col-3">
                                         <label class="form-label form-label-sm mb-0">Status</label>
@@ -304,11 +311,11 @@ $csrf     = csrf_token();
                                             <option value="Disposed">Disposed</option>
                                         </select>
                                     </div>
-                                    <div class="col-3">
-                                        <div class="form-check form-check-sm mt-4">
-                                            <input class="form-check-input" type="checkbox" id="editAgency">
-                                            <label class="form-check-label small" for="editAgency">Agency Vehicle</label>
-                                        </div>
+                                    <div class="col-9 d-none" id="editOwnerPersonWrap">
+                                        <select class="form-select form-select-sm" id="editOwner"></select>
+                                    </div>
+                                    <div class="col-9 d-none" id="editOwnerAgencyWrap">
+                                        <select class="form-select form-select-sm" id="editOwnerOrg"></select>
                                     </div>
                                 </div>
                             </div>

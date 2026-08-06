@@ -4,7 +4,7 @@ REM  TicketsCAD - Windows background job runner
 REM
 REM  The Windows counterpart to the systemd timers described in
 REM  docs/MAINTENANCE-RUNBOOK.md. Windows has no systemd, so on a Windows/IIS
-REM  install these two jobs need a Task Scheduler entry or they never run at
+REM  install these jobs need a Task Scheduler entry or they never run at
 REM  all -- and nothing except Settings -> Status will say so.
 REM  (GH openises/TicketsCAD#18)
 REM
@@ -15,8 +15,12 @@ REM      /RU SYSTEM /RL HIGHEST /F ^
 REM      /TR "C:\inetpub\wwwroot\TicketsCAD\tools\run-scheduled-jobs.bat"
 REM
 REM  One minute is Windows' minimum repeat interval, and it happens to match
-REM  both jobs' interval. One task drives both ticks: fewer moving parts than
-REM  two tasks, and they are always in step.
+REM  every job below's interval (all three are 60s jobs as of Phase 134). One
+REM  task drives all three ticks: fewer moving parts than three separate
+REM  tasks, and they are always in step. (channel_receive_tick, added Phase
+REM  134, is a no-op sweep -- 0 channels polled -- on any install that
+REM  hasn't opted a channel in to inbound polling, so scheduling it
+REM  unconditionally alongside the other two is safe and harmless.)
 REM
 REM  Verify it is FIRING, not merely registered -- those look identical from
 REM  the Task Scheduler UI. Watch the run counter climb on
@@ -57,7 +61,10 @@ if errorlevel 1 set "RC=1"
 "%TICKETSCAD_PHP%" tools\pending_messages_tick.php >> "%LOGDIR%\pending_messages_tick.log" 2>&1
 if errorlevel 1 set "RC=1"
 
-REM Both jobs always run: a failure in one must not stop the other. The exit
-REM code reports whether either failed, so Task Scheduler's "Last Run Result"
-REM is meaningful.
+"%TICKETSCAD_PHP%" tools\channel_receive_tick.php >> "%LOGDIR%\channel_receive_tick.log" 2>&1
+if errorlevel 1 set "RC=1"
+
+REM All three jobs always run: a failure in one must not stop the others. The
+REM exit code reports whether any of them failed, so Task Scheduler's
+REM "Last Run Result" is meaningful.
 exit /b %RC%

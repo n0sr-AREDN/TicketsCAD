@@ -710,6 +710,135 @@ function incident_clear_stragglers(int $ticketId, int $userId, array $opts = [])
 }
 
 /**
+ * Set (or clear) an incident's disposition — independent of any status
+ * change. Per spec.md's "Resolved Q2" and plan.md §4: dispositions are
+ * "settable at any time, not only at close." Extracted as its own
+ * function (rather than folded into incident_update_fields_internal()'s
+ * generic whitelist) because a disposition write needs TWO things that
+ * whitelist path does not provide: existence/active validation against
+ * `ticket_disposition`, and a row in the separate `newui_audit_log` table
+ * (audit_log()) rather than only the per-incident `action` table log.
+ * incident_update_status_internal() delegates to THIS function when a
+ * close call carries a disposition_id, so that validation lives in
+ * exactly one place instead of being duplicated at both call sites.
+ *
+ * Validation:
+ *   - $dispositionId of null (or <= 0) CLEARS the incident's disposition.
+ *     Clearing is always allowed and still writes audit_log (every
+ *     change is logged, per plan.md §4) — it never touches the
+ *     retired-disposition check below, because nothing is being newly
+ *     assigned.
+ *   - A non-null $dispositionId must exist in `ticket_disposition` AND
+ *     have `active` = 1. A RETIRED (active=0) disposition can never be
+ *     newly assigned via this function. Retirement (plan.md §2) only
+ *     removes a row from FUTURE selection — this function must never, by
+ *     itself or via any caller, clear/rewrite an incident's EXISTING
+ *     disposition_id just because the disposition it points to later
+ *     became inactive. There is no code path anywhere that does that;
+ *     don't add one.
+ *
+ * Every SUCCESSFUL write is recorded to audit_log() — including a change
+ * to an already-set value (plan.md §4's deliberate mitigation for the
+ * stale-disposition risk raised on GH #16: a value that changed late, or
+ * was re-confirmed unchanged, must be traceable either way). The
+ * audit_log() call is wrapped in try/catch: a logging failure must never
+ * block the disposition write that already succeeded, per this project's
+ * standing audit-trail rule (CLAUDE.md's Authentication/RBAC/Audit
+ * section — audit writes are logged-and-swallowed on failure, not
+ * fatal). audit_log() already catches internally, but only `Exception`,
+ * not every `Throwable` — this try/catch is belt-and-suspenders for an
+ * `Error` (e.g. a future signature change), never the primary defense.
+ *
+ * Caller is responsible for:
+ *   - CSRF or bearer auth
+ *   - RBAC — no NEW permission exists for setting a disposition
+ *     (plan.md §8): use whatever already gates the call site
+ *     (action.edit_incident for a standalone set, action.close_incident
+ *     when bundled into a close).
+ *
+ * @param int      $ticketId
+ * @param int|null $dispositionId  null/0 clears; otherwise must be an
+ *                                 active ticket_disposition id
+ * @param int      $userId         acting user, for audit attribution
+ * @return array {
+ *   'updated'        => bool        true on a successful write (including
+ *                                    a clear, or a re-set of the same value)
+ *   'disposition_id' => int|null    the value now stored (null = cleared)
+ *   'errors'         => string[]    validation/DB failures; empty on success
+ * }
+ *
+ * Phase 132 Step 2 (2026-08-03, GH #16).
+ */
+function incident_set_disposition_internal(int $ticketId, ?int $dispositionId, int $userId): array {
+    if ($ticketId <= 0) {
+        return ['updated' => false, 'disposition_id' => null, 'errors' => ['invalid ticket_id']];
+    }
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+
+    // Treat 0 the same as null — "no disposition" / clear.
+    $newId = ($dispositionId !== null && $dispositionId > 0) ? $dispositionId : null;
+
+    if ($newId !== null) {
+        try {
+            $row = db_fetch_one(
+                "SELECT `id`, `active` FROM `{$prefix}ticket_disposition` WHERE `id` = ?",
+                [$newId]
+            );
+        } catch (Exception $e) {
+            return ['updated' => false, 'disposition_id' => null,
+                    'errors' => ['disposition lookup failed: ' . $e->getMessage()]];
+        }
+        if ($row === null) {
+            return ['updated' => false, 'disposition_id' => null,
+                    'errors' => ['Selected disposition does not exist.']];
+        }
+        if ((int) $row['active'] !== 1) {
+            return ['updated' => false, 'disposition_id' => null,
+                    'errors' => ['Selected disposition is retired and cannot be newly assigned.']];
+        }
+    }
+
+    // Prior value, for the audit details. Best-effort — never block the
+    // write below just because this lookup failed.
+    $oldId = null;
+    try {
+        $existing = db_fetch_value(
+            "SELECT `disposition_id` FROM `{$prefix}ticket` WHERE `id` = ?", [$ticketId]);
+        $oldId = ($existing !== null && $existing !== false && (int) $existing > 0) ? (int) $existing : null;
+    } catch (Exception $e) { /* non-fatal */ }
+
+    try {
+        db_query(
+            "UPDATE `{$prefix}ticket` SET `disposition_id` = ?, `updated` = ? WHERE `id` = ?",
+            [$newId, date('Y-m-d H:i:s'), $ticketId]
+        );
+    } catch (Exception $e) {
+        return ['updated' => false, 'disposition_id' => null,
+                'errors' => ['disposition write failed: ' . $e->getMessage()]];
+    }
+
+    // Audit EVERY successful change, including a no-op re-set of the same
+    // value — see the function docblock's "Every SUCCESSFUL write" note.
+    if (!function_exists('audit_log') && is_file(__DIR__ . '/audit.php')) {
+        require_once __DIR__ . '/audit.php';
+    }
+    if (function_exists('audit_log')) {
+        try {
+            audit_log('incident', 'disposition_set', 'ticket', $ticketId,
+                $newId !== null
+                    ? "Disposition set on incident #{$ticketId}"
+                    : "Disposition cleared on incident #{$ticketId}",
+                ['old_disposition_id' => $oldId, 'new_disposition_id' => $newId, 'user_id' => $userId]);
+        } catch (Throwable $e) {
+            error_log('[incident-write] audit_log failed for disposition change on ticket '
+                . $ticketId . ': ' . $e->getMessage());
+        }
+    }
+
+    return ['updated' => true, 'disposition_id' => $newId, 'errors' => []];
+}
+
+/**
  * Change an incident's status — handles the three legal transitions
  * (1=Closed, 2=Open, 3=Scheduled) with all the side-effects
  * api/incident-update.php's update_status branch used to do inline:
@@ -717,7 +846,11 @@ function incident_clear_stragglers(int $ticketId, int $userId, array $opts = [])
  *   - Closing (status=1): stamps problemend = NOW(), auto-clears every
  *     active assigns row on this ticket, and resets each affected
  *     responder's un_status_id back to "Available" UNLESS the responder
- *     still has another active assignment elsewhere.
+ *     still has another active assignment elsewhere. Optionally validates
+ *     + writes a disposition_id passed in $extra (Phase 132 Step 2, GH
+ *     #16), and — when disposition_required_on_close is on — refuses the
+ *     close outright if the incident has no disposition (existing or
+ *     newly-supplied) at all.
  *   - Reopening (status=2): clears problemend back to NULL.
  *   - Scheduling (status=3): stamps booked_date (caller-supplied).
  *
@@ -735,6 +868,23 @@ function incident_clear_stragglers(int $ticketId, int $userId, array $opts = [])
  * @param array $extra           Per-transition extras:
  *                                 ['booked_date' => 'YYYY-MM-DD HH:MM:SS']
  *                                 required when $newStatus === 3
+ *                                 ['disposition_id' => int]  (close only,
+ *                                   optional) — validated + written via
+ *                                   incident_set_disposition_internal()
+ *                                   before the close proceeds
+ *                                 ['skip_disposition_check' => bool]
+ *                                   (close only) — skips the
+ *                                   disposition_required_on_close
+ *                                   enforcement gate. ONLY
+ *                                   inc/auto_close.php's sweep sets this
+ *                                   (see that call site) — a background
+ *                                   close with no human present must not
+ *                                   start silently failing the moment an
+ *                                   admin turns the setting on (Phase 129
+ *                                   PAR lesson). Every other caller gets
+ *                                   the real gate. A disposition_id
+ *                                   passed alongside this flag is still
+ *                                   validated and written normally.
  * @return array {
  *   'updated'           => bool   true on a real status flip
  *   'cleared_assigns'   => int    rows in `assigns` marked cleared (close only)
@@ -742,7 +892,8 @@ function incident_clear_stragglers(int $ticketId, int $userId, array $opts = [])
  *   'errors'            => string[] Validation/DB errors
  * }
  *
- * Phase 94 Stage 4j extraction (2026-06-28).
+ * Phase 94 Stage 4j extraction (2026-06-28). Phase 132 Step 2 (2026-08-03,
+ * GH #16) added the disposition validate/write + enforcement gate.
  */
 function incident_update_status_internal(int $ticketId, int $newStatus, int $userId, array $extra = []): array {
     static $validStatuses = [1, 2, 3]; // Closed, Open, Scheduled
@@ -763,6 +914,56 @@ function incident_update_status_internal(int $ticketId, int $newStatus, int $use
 
     try {
         if ($newStatus === 1) {
+            // ── Phase 132 Step 2 (GH #16) — disposition validate/write +
+            // enforcement gate, BEFORE any status mutation. ──
+            //
+            // A disposition_id passed alongside the close is validated
+            // and written through incident_set_disposition_internal() —
+            // the SAME function an independent (open-incident) set uses
+            // — so the existence/active check lives in exactly one
+            // place, never duplicated here. Doing this first means an
+            // invalid/retired disposition_id refuses the whole close;
+            // nothing about the ticket's status changes.
+            $dispositionIdRaw = $extra['disposition_id'] ?? null;
+            $dispositionIdInput = ($dispositionIdRaw !== null && $dispositionIdRaw !== '')
+                ? (int) $dispositionIdRaw : null;
+            if ($dispositionIdInput !== null && $dispositionIdInput <= 0) {
+                $dispositionIdInput = null;
+            }
+            if ($dispositionIdInput !== null) {
+                $dispResult = incident_set_disposition_internal($ticketId, $dispositionIdInput, $userId);
+                if (empty($dispResult['updated'])) {
+                    return ['updated' => false, 'cleared_assigns' => 0, 'reset_responders' => 0,
+                            'errors' => !empty($dispResult['errors'])
+                                ? $dispResult['errors']
+                                : ['Selected disposition is invalid.']];
+                }
+            }
+
+            // Enforcement gate — fires ONLY at the close transition
+            // (plan.md §5: an open incident with no disposition is a
+            // normal state even with enforcement on). Skipped only when
+            // the caller sets 'skip_disposition_check' — ONLY
+            // inc/auto_close.php's sweep does this (see that call site):
+            // a background close with no human present must not start
+            // silently failing every sweep the instant an admin turns
+            // this setting on (Phase 129 PAR lesson — a disabled/gated
+            // feature must not silently break unrelated housekeeping).
+            $skipDispositionCheck = !empty($extra['skip_disposition_check']);
+            if (!$skipDispositionCheck && get_variable('disposition_required_on_close') === '1') {
+                $curDispositionId = null;
+                try {
+                    $curDispositionId = db_fetch_value(
+                        "SELECT `disposition_id` FROM `{$prefix}ticket` WHERE `id` = ?", [$ticketId]);
+                } catch (Exception $e) { /* fall through — treat as none set */ }
+                $hasDisposition = ($curDispositionId !== null && $curDispositionId !== false
+                    && (int) $curDispositionId > 0);
+                if (!$hasDisposition) {
+                    return ['updated' => false, 'cleared_assigns' => 0, 'reset_responders' => 0,
+                            'errors' => ['A disposition is required to close this incident.']];
+                }
+            }
+
             // ── Closing: stamp problemend + cascade-clear assignments ──
             db_query(
                 "UPDATE `{$prefix}ticket` SET `status` = 1, `problemend` = ?, `updated` = ? WHERE `id` = ?",

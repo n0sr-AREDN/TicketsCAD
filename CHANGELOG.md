@@ -3,6 +3,846 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.7] — 2026-08-06
+
+### Security
+
+- **The 4.2.3 backup fix moved database archives INTO a web-served directory on
+  Windows.** 4.2.3 closed the directory-exposure advisory by moving backups
+  "above the web root", computed as the parent of the application directory.
+  That is correct on a Linux layout — `/var/www/newui` gives `/var/www` — and
+  inverted on a standard Windows one: `C:\inetpub\wwwroot\TicketsV4` gives
+  `C:\inetpub\wwwroot`, the physical path of Default Web Site, bound to port 80.
+  XAMPP behaves the same way. So on those hosts **upgrading is what created the
+  exposure** — no misconfiguration was required and no instruction had to be
+  followed — and the Status page reported the install healthy throughout,
+  because its exposure check probes only the URL TicketsCAD itself is served on
+  and an archive published by a different site on a different port is invisible
+  to it. The Windows default is now `%ProgramData%\TicketsCAD\backups`, which is
+  a site root under no stock configuration; the POSIX default is unchanged
+  because it was correct. Existing archives are never moved for you — the 4.2.3
+  location is tracked as a historical directory so they stay listed and are
+  never pruned, and a Critical note names 4.2.3 as the cause rather than
+  implying operator error. The check now verifies the DESTINATION with a
+  short-lived random-token canary on the default ports as well as the
+  application's own, counting a `200` only when the body contains the token, and
+  states what it could not see — another hostname, another port, a reverse
+  proxy — including on a passing result. Reported by Ron Jones
+  (@rjonesbsink), who tested what the shipped fix actually did on his own server
+  rather than assuming it had worked. See GHSA-rrp6-pqhj-w5wj.
+
+- **The RSA private key and the 2FA encryption key were written into a
+  web-served directory on Windows** (GHSA-3jmh-c6f6-64jc, reported by Ron Jones
+  / @rjonesbsink). `FE_KEYS_DIR` was `NEWUI_ROOT . '/../keys'` on every
+  platform, with the intent documented as "one level ABOVE the install
+  directory, on purpose … so the private key is not HTTP-reachable". That is
+  true on Linux and backwards on Windows: IIS sites are subdirectories of a
+  *served* `C:\inetpub\wwwroot`, so the keys landed in
+  `C:\inetpub\wwwroot\keys` — inside Default Web Site, bound to port 80 — and
+  XAMPP has the identical shape. The directory was confirmed served:
+  `GET /keys/_probe.txt` returned **200**. `GET /keys/private.pem` returned
+  404.3, but only because IIS ships no MIME mapping for `.pem`; that is an
+  accident of the file's name, any *mapped* extension in the folder is served,
+  a single `staticContent` entry removes it, and **Apache serves `.pem` as
+  plain text** with no allow-list at all. The folder had no `web.config` and no
+  `.htaccess`. Same root cause as the `BACKUP_DIR` regression, one directory
+  over — the third time this assumption has been implemented independently, so
+  the three helpers that answer "is this directory published, and can we fence
+  it?" now live once, in `inc/served-dir.php`, with `backup_*` names kept as
+  delegating wrappers. **The Windows default is now
+  `%ProgramData%\TicketsCAD\keys`**; POSIX is unchanged, because it was correct
+  there. **Existing keys are never moved**: the historical location is checked
+  first and, if it holds `private.pem`, `public.pem` or `tfa.key`, that is the
+  directory the install keeps using — an upgrade cannot break field encryption
+  or lock every 2FA user out, and a half-completed key move is worse than the
+  exposure it would fix. Instead, Settings → System Health gains an **Encryption key
+  location** row that grades the directory from local evidence, proves
+  reachability with the random-token canary on the default ports (the probe is
+  now shared with the backups check rather than copied), lists the key files
+  found there, prints platform-correct copy → verify → delete instructions, and
+  states what it could not see even when it passes; `tools/check-health.php`
+  prints the same on the command line. The `define()` is **guarded**, so
+  `define('FE_KEYS_DIR', …)` in `config.php` now works — it never did, because
+  PHP cannot redefine a constant and the application always got there first.
+  Deny rules (`web.config` using Request Filtering, plus `.htaccess`) are
+  written beside the keys unconditionally, wherever they live, and beside the
+  text-to-speech API keys as well. `inc/tfa.php`, `api/tfa-key.php` and
+  `tools/tfa-migrate-key.php` no longer guess the directory independently — a
+  `tfa.key` written where `inc/field-encrypt.php` is not looking would un-enrol
+  everyone. And the 2FA migration error, which said "Failed to generate key
+  file. Check directory permissions." and thereby pointed administrators at
+  granting write access to a folder published on port 80, now names the
+  directory and says when it is one nothing should be written to.
+  `tests/test_fe_keys_dir_platform.php` (111 assertions) drives the real
+  resolver against real directories on both platform shapes, exercises the
+  config.php override in a fresh process because a guarded define cannot be
+  tested any other way, and asserts the upgrade case explicitly: an install
+  whose keys are already in the old place keeps them.
+- **The web-exposure self-check reported "no non-public directory answered"
+  while a database archive was being served, and the published advisory taught
+  the same wrong test.** Reported by @rjonesbsink from a live install:
+  `/backups/` answered **403 while the archive inside it answered 200 and
+  downloaded in full** — the complete database export. That is not an unusual
+  server; it is what any server with directory listing off and no deny rule on
+  files does, and on Apache `Options -Indexes` alone produces it. So a `403` on
+  the folder is simultaneously the most reassuring answer a server can give and
+  worthless as evidence — and it was both the fallback our own check used and
+  the one-minute command the Critical advisory told frightened operators to run.
+  The check now asks for a **file** or declines to answer: a real archive named
+  from any backup directory inside the served tree (the `backup_dir` setting and
+  both historical defaults, not just the one location the old code globbed);
+  failing that the existing random-token canary, which is conclusive without
+  putting an archive URL into a proxy or CDN log; failing both, a distinct
+  **"Not determined"** state that renders grey on Settings → System Health, counts in
+  the page's unknown bucket, and prints `[????]` from `tools/check-health.php`.
+  A directory request can no longer produce a "blocked" verdict at all, and an
+  install with no backup yet is reported as untested rather than safe. The
+  canary also gained the application's own URL prefix, without which it could
+  not reach an in-tree backups directory on a subdirectory install. Every copy
+  of the manual check is corrected — the advisory (with a "corrected" note, so
+  anyone who ran the old one knows to re-run), `docs/WEB-SERVER-HARDENING.md`,
+  `SECURITY.md`, `docs/INSTALL.md`, `docs/INSTALLATION-CHECKLIST.md` and
+  `tools/check-health.php` — each now naming an archive and saying plainly why
+  the folder request does not count.
+- **The IIS deny rules shipped in v4.2.3 did not deny — they returned HTTP
+  500.19.** `sql/web.config` and `tools/web.config` (and the template
+  `backup_harden_dir()` writes into `backups/`) were invalid IIS configuration.
+  The directories were unreachable, but only because the configuration threw:
+  the rule never ran, so anything that made the file parse would have reopened
+  them, and the 500 page discloses the application's physical path meanwhile.
+  Reported with a per-variable test matrix by @rjonesbsink on stock IIS 10 /
+  Windows 11. Three independent defects, each fatal on its own: `<authorization>`
+  was a direct child of `<system.webServer>` instead of sitting under
+  `<security>`; `<deny users="*" />` is the ASP.NET element, where IIS URL
+  Authorization wants `<add accessType="Deny" users="*" />`; and that entry
+  collides with the `users="*"` rule `applicationHost.config` ships at server
+  level unless a `<remove users="*" />` precedes it (`0x800700b7`), which is a
+  property of the *default* IIS configuration and so failed on every stock
+  install. A fourth, non-fatal: the accompanying
+  `<hiddenSegments><add segment="." /></hiddenSegments>` answered 200 — it
+  neither errored nor blocked, so both mechanisms in the file were inert. The
+  hidden-segments rule is removed rather than repaired (hidden segments match
+  **any** path segment, so a site-level entry for `vendor` also blocks
+  `assets/vendor/` and unstyles every page — this project has done that to two
+  live sites before). Every shipped `web.config` — `sql/`, `tools/` and the
+  template `backup_harden_dir()` writes — now carries **one** mechanism,
+  `<security><requestFiltering><fileExtensions allowUnlisted="false" />`.
+  Request Filtering is part of a default IIS installation; URL Authorization —
+  the form measured at 401, and what the first repair shipped — is an optional
+  role service, and a `web.config` naming a section whose module is absent
+  answers 500.19 instead of denying, which is this same bug wearing a different
+  hat. (The 401 was measured after the reporter installed that feature by hand;
+  the 500s are what reproduce untouched.) The rule denies the **file** and not
+  merely the listing — the distinction the backups report turned on — and
+  extension-less URLs such as `GET /tools/` with it; a denied request is a `404`
+  logged with substatus `404.7`. URL Authorization is documented as an optional
+  extra layer for administrators who have the role service, never as the only
+  rule. `tests/test_iis_webconfig_syntax.php` parses every shipped and
+  documented `web.config`, rejects all four broken shapes structurally, rejects
+  URL Authorization used alone, and models the documented filtering behaviour so
+  that "the archive is denied, not just the listing" is executable rather than
+  remembered. The IIS instructions in `docs/WEB-SERVER-HARDENING.md` and
+  `docs/INSTALL-WINDOWS-IIS.md` carried the same broken snippet and advised
+  site-level hidden segments including `vendor`; both are corrected, both now
+  describe one mechanism and its limits — including what has **not** been
+  measured on a live IIS — and the self-check says plainly that a `500` on IIS
+  is a broken config rather than protection.
+
+- **Directories that are not part of the web interface — including database
+  backups — were served over HTTP.** The documented install points the web root
+  at the application root, so every directory in the tree was published unless
+  the operator had configured their web server not to, and nothing shipped told
+  it to. Confirmed from the public internet against a live install on
+  2026-07-30: `GET /backups/<archive>.zip` returned **HTTP 200 and a 110 MB
+  database dump with no authentication**, `GET /backups/` listed every archive,
+  `GET /sql/` and `GET /tools/` listed 181 and 109 internal scripts,
+  `GET /sql/run_migrations.php` **applied database migrations**, and
+  `GET /inc/db.php` was served.
+
+  **Check your own install in one minute** — anything answering `200` is
+  affected:
+
+  ```bash
+  curl -s -o /dev/null -w 'sql   %{http_code}\n' https://your-site/sql/run_migrations.php
+  curl -s -o /dev/null -w 'tools %{http_code}\n' https://your-site/tools/
+  # Backups: ask for an ARCHIVE BY NAME (filenames: Settings -> Backup / Maintenance).
+  # A 403 on /backups/ proves nothing about the files inside it.
+  curl -s -o /dev/null -w 'archive %{http_code}\n' \
+       https://your-site/backups/ticketscad-20260728-020000.zip
+  ```
+
+  Four independent defences now ship, because no single one covers every
+  install:
+
+  - **Deny rules in the repository** — the root `.htaccess`, plus
+    `sql/.htaccess`, `tools/.htaccess` and `web.config` files for IIS. They
+    arrive with the update instead of having to be added by hand. The Apache
+    vhost template also stopped enabling directory indexes (it said
+    `Options Indexes FollowSymLinks`, which is how `GET /backups/` came to
+    return a browsable list).
+  - **An nginx configuration snippet, because `.htaccess` does nothing there.**
+    `docs/nginx/ticketscad-hardening.conf`, with
+    `docs/WEB-SERVER-HARDENING.md` stating plainly which server needs which
+    file. **If you run nginx or IIS, the shipped `.htaccess` files do not
+    protect you and you must apply the equivalent.**
+  - **Every one of the 296 scripts under `sql/` and `tools/` refuses to run
+    over HTTP** (`403 CLI only`, before loading configuration or touching the
+    database). This is the layer that works on any web server in any
+    configuration — including one where no deny rules were ever installed —
+    and `tests/test_web_exposure_hardening.php` fails the suite if a new script
+    ever lands without it.
+  - **Backups moved above the web root.** The default is now `../backups`, a
+    sibling of the install directory, on the same reasoning that already put
+    the encryption keys in `../keys`. **Nothing is moved or deleted for you:**
+    archives written by an earlier version stay where they are, stay listed and
+    downloadable in Settings → Backup / Maintenance, and are never touched by retention
+    pruning. Settings → System Health tells you how many are still in a served
+    directory and gives you the command to move them. Docker installs get the
+    `app_backups` volume remounted at `/var/www/backups`; the volume and its
+    contents carry over unchanged.
+
+  **The install now checks itself.** Settings → System Health has a "Web exposure" row
+  that probes `backups/`, `sql/` and `tools/` over HTTP against this server and
+  shows a red banner if any of them answers — so a later nginx upgrade or vhost
+  edit that quietly re-opens one of these is reported rather than assumed away.
+
+  If your `backups/` directory was reachable, treat the database as disclosed
+  and work through
+  `docs/security/advisory-2026-07-30-exposed-directories.md`, which covers
+  checking your access logs, which credentials to rotate, and what to tell your
+  members.
+
+### Fixed
+
+- **Push notifications and RSA field encryption could not find their own
+  OpenSSL configuration through a real web server, even after GH#8's fix —
+  and every openssl.cnf candidate path in this codebase was being searched
+  in the wrong directory.** GH#8 fixed VAPID keypair generation on a host
+  whose OpenSSL cannot find its config file (the common case on stock
+  Windows PHP), but never touched the SEPARATE encryption key
+  `minishlink/web-push` generates for every push message, in vendored code
+  with no config-aware fallback of its own — an install could show "Keypair
+  configured" and then fail every actual send, forever, because
+  `inc/push.php` never even loaded `inc/vapid-keygen.php`. A composer
+  post-install/post-update hook (`tools/patch_vendor_webpush.php`) now
+  patches that one vendored call site to reuse the same config resolution,
+  idempotently, failing the build loudly rather than silently if a future
+  `minishlink/web-push` release changes the method enough that the patch
+  can no longer apply. The "Generate New Keypair" action also now runs a
+  live self-test of the send path and reports plainly when a valid keypair
+  still cannot actually send, instead of only ever reporting keygen
+  success. Found and reported by Ron Jones (@rjonesbsink), GH #31.
+
+  Verifying that fix in a browser against real Apache — not only running
+  the CLI test suite — surfaced a second, more fundamental bug behind it:
+  every candidate `openssl.cnf` path, in both `inc/vapid-keygen.php` and an
+  identical copy in `inc/field-encrypt.php` (RSA field encryption), was
+  built from `dirname(PHP_BINARY)` — the calling SAPI's own executable, not
+  PHP's directory. Under `apache2handler`, `PHP_BINARY` is Apache's own
+  `httpd.exe`, so `dirname(PHP_BINARY)` pointed at Apache's bin directory
+  and none of the candidates under it had ever existed; every prior test of
+  this fallback ran under CLI PHP, where `PHP_BINARY` happens to genuinely
+  sit inside PHP's own directory, so the fallback had never actually been
+  exercised through a real request on any web server. Both files now
+  resolve via `php_ini_loaded_file()` first, which every SAPI populates
+  correctly.
+
+- **Settings → Facilities kept showing a facility after it was deleted from
+  the main Facilities screen.** A second, separate read path
+  (`api/config-admin.php`) queried the table directly with no `deleted_at`
+  filter — the same class of bug GH#52 fixed once already for
+  `api/facilities.php`, in an endpoint nobody had touched since. Reported by
+  Chris Byrd, Google Group.
+
+- **A vehicle's owner went blank, with nothing to explain why, after that
+  person was permanently removed from the roster.** `newui_vehicles.member_id`
+  has no foreign key. Permanently deleting a member (the wastebasket "purge"
+  action) already cleaned up `member_certifications` / `member_callsigns` /
+  `member_organizations` / `member_comm_identifiers`, but never touched
+  vehicles that member owned — left a dangling reference with nothing to
+  resolve. Purging a member now clears them from any vehicle they owned.
+  Soft-deleted members are also excluded from the owner-selection dropdown
+  going forward, the same GH#52-class gap as the Facilities fix above, in a
+  third read path. Reported by Chris Byrd, Google Group.
+
+- **A `proc_open` pipe deadlock froze the entire Zello proxy on Windows, and
+  silently truncated synthesised speech everywhere.** `stream_set_blocking()`
+  cannot put a `proc_open` pipe into non-blocking mode on Windows: it returns
+  `false` and the stream stays blocking. Two functions written independently —
+  `ZelloProxyApp::runPipe()` and `tts_run_pipe()` — both relied on it working,
+  and in both the timeout guard sat *after* a blocking read, so the guard was
+  unreachable and could not fire. `runPipe()` blocked waiting for stderr bytes
+  Piper never sends while the child filled the stdout pipe buffer; because it
+  runs inside a ReactPHP loop, **the whole proxy stopped** — no upstream
+  traffic, no browser clients served, recovery by killing `piper.exe` by hand.
+  `tts_run_pipe()` never drained stderr at all and then reported `ok=true`,
+  `detail='ok'` with the audio cut to one buffer, which no caller could detect.
+  Reproduced and measured on this project's Windows box: a verbatim copy of the
+  `runPipe` loop captured exactly 16,384 of 200,000 bytes and then wedged past
+  its 5 s guard until killed externally at 25 s; `tts_run_pipe` given a 1 s
+  guard against a child exiting at 6 s returned at 6.11 s. All three descriptors
+  are now temp files, so nothing can block on a full pipe in either direction
+  and the deadline is reachable — the same cases now complete in 0.11 s and
+  0.12 s with every byte captured, and a genuine timeout returns `null` instead
+  of passing a truncated buffer off as audio. Behaves identically on POSIX. A
+  third instance of the same pattern in `tests/test_dmr_bridge_http.php` (where
+  it could have hung CI rather than failing it) is fixed too, and a tree sweep
+  now gates any new pairing of `proc_open` with `stream_set_blocking`. Reported
+  by Ron Jones (@rjonesbsink), with a working diff and before/after
+  measurements. ([#28](https://github.com/openises/TicketsCAD/issues/28))
+
+- **Spoken read-outs played roughly 1.5× too slowly on Windows, underrunning on
+  almost every frame.** `pumpTtsFrame()` sent exactly one voice frame per
+  periodic-timer tick, which is only correct if ticks land on schedule. A
+  periodic timer is a floor, not a promise: Windows' default timer quantum is
+  ~15.6 ms, so a 20 ms request rounds up to two quanta. Measured against the
+  real `StreamSelectLoop` here — nominal 20 ms delivered a 31.15 ms mean
+  (1.56×), nominal 10 ms delivered 15.32 ms — which stretched a 608-frame clip
+  (12,160 ms of audio) to 18.29 s of wall time with 608 of 608 frames arriving
+  after the receiver needed them. Audibly choppy on a live channel. How many
+  frames are due is now derived from the wall clock rather than from a count of
+  ticks, with the timer running at half the frame interval so a backlog always
+  has a tick to ride out on. It is self-correcting — a late tick emits the
+  backlog — and it cannot run fast, because the answer comes from the clock. A
+  100 ms pre-roll banks a jitter buffer, without which a corrected *rate* still
+  sounds rough as the receiver starts on frame 0 with nothing buffered; larger
+  leads finish early and risk clipping the tail. The same clip now measures
+  12.06 s (0.99×) with 1 underrun. The completion log reports the wall-vs-audio
+  ratio, which is what made the problem measurable in the first place. The
+  pacing arithmetic lives in `proxy/tts_pacer.php` so the code the proxy runs is
+  the code under test. Reported and verified by ear on a real transmission by
+  Ron Jones (@rjonesbsink).
+  ([#28](https://github.com/openises/TicketsCAD/issues/28))
+
+- **The TTS deployment guide's `ffmpeg` default is unreachable for a Windows
+  service.** `zello_tts_ffmpeg_bin` defaults to the bare name `ffmpeg`, resolved
+  on `PATH` — genuinely all it takes on Debian, which is what the guide
+  described. The common Windows installers put it on the *per-user* `PATH`,
+  while the proxy runs as a service (typically `SYSTEM`) whose environment has
+  no such entry, so the lookup fails at the point of use rather than at
+  configuration and the read-out just produces no audio. Documented, with the
+  fix: give an absolute path. Reported by Ron Jones (@rjonesbsink).
+  ([#28](https://github.com/openises/TicketsCAD/issues/28))
+
+- **The diagnostics blamed a proxy or firewall for a failure that has no
+  response code.** When the live-update stream timed out, the check said "a
+  proxy or firewall is likely blocking the long-lived connection" regardless of
+  what the browser actually reported. `EventSource.readyState=0` is CONNECTING:
+  the request was accepted and *no headers ever arrived*, so there is no HTTP
+  status to read — a genuinely different condition from a 502, and one the
+  documented decision tree in `docs/TROUBLESHOOTING.md` could not express
+  because every branch of it assumed the server answered. The reporter worked
+  through proxy and firewall theories first, in that order, because that is what
+  the application told him to check; the actual cause was IIS on Windows 11 Home
+  capping concurrent requests at 3, which the navbar's stream and the
+  diagnostics page's own second stream exhaust between them. `readyState=0` now
+  says the request was accepted but never answered and names connection limits
+  first; `readyState=1` is separated out as a buffering problem; and both the
+  Windows/IIS install guide and the troubleshooting entry document the cap, how
+  to measure it, and why a single tab needs two long-lived slots. Reported by
+  Ron Jones (@rjonesbsink).
+  ([#29](https://github.com/openises/TicketsCAD/issues/29))
+
+- **The documentation sent operators to menu items that do not exist.** Nine
+  runbooks, three security advisories and five places in the application's own
+  text told the reader to open a settings menu item called **Status**. There
+  has never been one: `inc/config-sidebar.php` renders that link with the label
+  **System Health**. A second, **Backup**, was the same shape of wrong — the
+  item reads **Backup / Maintenance**. One of the affected documents is a
+  *Critical* security advisory, so the reader was mid-incident when they went
+  looking for something that was not there. Sweeping the whole tree against the
+  real menu turned up 130 more: *Communications* (the section is
+  **Communications & Integrations**), *Maps & Places*, *Audit & Compliance*,
+  *Active Sessions*, *Users*, *Web Push*, *FCC Lookup* and a dozen others,
+  every one a name the menu has not carried for months. All are corrected.
+  Two were worse than a stale label: **`docs/CJIS-POSTURE.md` and
+  `docs/TROUBLESHOOTING.md` both described an audit-log retention setting, and
+  an `audit-log-trim` cron, that have never existed** — `audit_log` is never
+  pruned. Both entries now say so.
+
+  This is the schema-mismatch pattern one layer further out — a document
+  confidently naming something that is not there — and nothing could catch it,
+  because nothing compared the words in the docs to the words in the menu. A
+  human reviewing a training video found it. Now
+  `tests/test_doc_navigation_labels.php` parses the labels out of the sidebar
+  source on every run and fails on any documented settings path that names
+  something else. It derives rather than lists, deliberately: a gate carrying
+  its own copy of the menu would keep approving the old name after a rename,
+  which is the same defect wearing a test's clothes. Paths belonging to a
+  *third-party* app's Settings menu — ATAK, OwnTracks, the Traccar Client —
+  are correct as written and are listed, with a stated reason each, in
+  `tools/doc_nav_label_exceptions.txt`. One consequence worth knowing when
+  writing a correction note: the gate cannot tell an instruction from a
+  quotation, so name a wrong label in prose rather than as a path.
+
+- **The Voice & Speech "Test" button could never play audio, on any install.**
+  Synthesis worked, the engine reported green, the API answered `success: true`
+  and the interface said it was playing a sample — and there was silence. The
+  shipped Content-Security-Policy had no `media-src` directive, so `<audio>`
+  fell back to `default-src 'self'`, and `'self'` does not cover the `data:`
+  URI the endpoint returns. Nothing was misconfigured: it was the shipped
+  policy against the shipped endpoint, so every install had it. The policy now
+  carries `media-src 'self' data: blob:` and nothing wider — no hosts, no
+  wildcards, and `default-src` is untouched. The same gap was silently blocking
+  **live incoming Zello voice**, which is delivered to `<audio>` as a `blob:`
+  MediaSource URL, so that is fixed by the same line. Separately, the test
+  button used to announce success *before* calling `play()` and then discard
+  every playback error, which is what made this undiagnosable rather than
+  merely broken — the browser stated the exact reason and the code deleted it.
+  It now reports what actually happened. Reported by Ron Jones
+  (@rjonesbsink), who instrumented the playback path to recover the error the
+  interface was throwing away. GH #27.
+
+- **Deleting an incident did not stop it being served, and on the dispatch
+  board it did not stop it being *worked*.** `deleted_at` was checked in the
+  External API only when deciding whether a write could proceed, never when
+  deciding what to return, so both the list and the detail endpoint handed back
+  soft-deleted incidents in full — street address, caller name, narrative — with
+  no field marking them as deleted. The same term was missing from
+  `api/incidents.php`, which is what the dispatcher board and the dashboard
+  widget read, and there the consequence was worse. An incident deleted while
+  **open** keeps `status = 2`, so it matched the board query forever: one
+  reported install had a deleted incident sitting on the board as a live open
+  call for 22 hours. An incident deleted while **closed** reappeared whenever
+  anything re-stamped `problemend`. Both read paths in both endpoints now filter
+  soft-deleted incidents, as the four sibling External API endpoints already
+  did; a deleted incident returns `not_found` rather than being served as
+  though live. There is no `?include_deleted` option — deliberately; the
+  wastebasket is the permission-gated place to look at deleted records.
+  Reported by Ron Jones (@rjonesbsink), who then extended it to the internal
+  board after noticing a deleted incident greyed out among live ones. GH #25.
+
+- **Deleted incidents could not be recovered, because the wastebasket could not
+  list them.** The wastebasket asked `ticket` for columns named `nature` and
+  `address`. Neither exists — they are `scope` and `street` — so the query
+  raised an error, the surrounding guard swallowed it and returned an empty
+  list, and every soft-deleted incident was invisible in the one screen that
+  exists to bring it back. This shipped alongside the fix above on purpose:
+  closing the read paths without it would have left a mistakenly deleted
+  incident hidden everywhere *and* unrecoverable, which is worse than the leak.
+  Found while fixing GH #25.
+
+- **GH #25's fix covered two endpoints; a sweep of the rest found 77 more
+  places that read `ticket`.** Eric's own closing comment on the issue
+  predicted it: "a grep for `FROM .*ticket` without a `deleted_at` term
+  would probably find others. It does." This is that sweep, done properly
+  rather than folded in silently. 53 were genuine gaps and are fixed:
+  statistics, reports, the incident detail/list/search pages, the
+  wall-display call board (a separate endpoint from the dispatch board GH
+  #25 already fixed — same "deleted-while-open never ages out" bug),
+  facility detail, call history, the External API's note-adding endpoint,
+  PAR's overdue-broadcast roster, the unit list/detail "current assignment"
+  displays, major-incident linking and cascade-close, the incident export to
+  Winlink, event-zone coverage, and the canonical unit-assignment writer
+  (`inc/assignment-write.php`) — a soft-deleted incident can no longer
+  receive a new unit assignment through ANY path, dispatcher UI or API
+  alike. The other 24 are left alone on purpose, with a stated reason each:
+  audit/history views that must keep showing what happened even after the
+  incident they're about was deleted (the audit log, a message's historical
+  incident attachment, a logged time entry's incident label, a responder's
+  personal ICS-214 timeline); the incident-number collision check, which
+  must see a deleted incident's number to avoid reissuing it — the same
+  shape of exception Eric named explicitly on the issue; a handful of
+  internal config/permission resolvers that never serve incident content in
+  the first place; and pre-wastebasket compatibility fallbacks. New
+  permanent gate: `tools/soft_delete_audit.php` resolves the codebase's
+  `$where`-array query-building idiom (not just literal SQL strings) well
+  enough to tell a real gap from a query that already excludes deleted rows
+  through a variable, and fails the suite on any NEW `ticket` read site that
+  doesn't — so the next one added doesn't reopen this quietly. GH #25.
+
+- **Timestamps were measured against the wrong clock on any server not set to
+  UTC.** TicketsCAD stores date/time columns as local wall-clock time in your
+  install's configured `area_timezone`, but several places compared those
+  stored values against UTC. On a UTC server the two are the same instant, so
+  this was invisible to us; on every other server the affected features were
+  off by exactly your UTC offset — five hours for US Central. **If your server
+  is not on UTC, you were affected.** No database changes are needed: the
+  stored data was always correct, only the queries reading it were wrong. Pull
+  and reload PHP.
+
+  What you will see fixed:
+
+  - **APRS map.** It no longer reports "0 stations in window" with a banner
+    claiming "APRS-IS receive listener is not active. Last position received
+    5h ago" while the listener is healthy. Station ages now read in seconds,
+    and the listener status reflects reality.
+  - **Mesh / ATAK packet ages.** Packets delivered by a bridge were stamped in
+    UTC while packets logged directly were stamped locally, so the same table
+    held two clocks. "Recently heard node" windows never expired (so bridge
+    failover could pick a dead bridge), ATAK event ages could show as
+    negative, and multi-bridge hop-latency figures were nonsense.
+  - **External API tokens.** A token with an expiry date stopped working one
+    UTC offset early — up to five or six hours before the time shown in the
+    admin panel, which kept displaying it as Active the whole time.
+  - **Unit staleness and "last updated" displays.** Units on the incident
+    detail page and the units list were flagged stale when they were not, and
+    unit history timestamps, the OwnTracks diagnostics page, and chat messages
+    you had just sent all rendered one UTC offset off.
+
+- **The DMR bridge could not work on Docker at all, and TicketsCAD sent the
+  wrong bearer token to every bridge.** Two independent defects, both reported
+  with exact reproductions by @kmk1971 against a private HBLink3 master
+  ([openises/tickets#10](https://github.com/openises/tickets/issues/10)).
+
+  - **The bridge's HTTP control surface never started on Docker.**
+    `services/dvswitch/hbp_client.py` started its control server only when
+    `DMR_BEARER_TOKEN`, `DMR_PIPER_BIN` *and* `DMR_PIPER_VOICE` were all set —
+    but the two Piper variables appear nowhere under
+    `services/dvswitch/docker/`, so on every Docker deployment port 18091
+    never opened. The DMR side kept working and the entrypoint still printed
+    "HTTP control on 18091", so the bridge looked healthy; the only symptom
+    was the CAD unable to connect. The surface now starts on the bearer token
+    alone — `/health`, `/audio-stream`, `/tx/audio` and `/tx/stream` never
+    needed speech synthesis. Only `/tx/text` does, and it now answers 503
+    naming the two variables to set. The container image ships without a
+    speech engine by design (voice models are 50-110 MB, per-voice licensed,
+    and language-specific); mount one to enable `/tx/text` — see
+    `docs/RADIO-DMR-DOCKER.md`. The entrypoint no longer announces a port it
+    has not bound.
+
+  - **Every unattended call to the bridge answered 401.** The bearer token was
+    stored as a SHA-256 digest, and eight callers then read that column and put
+    it in an `Authorization: Bearer` header. Hashing at rest is right for a
+    credential you *verify* and wrong for one you *present*: the CAD is a
+    client here and needs the value, not a digest of it. Only the Test dialog
+    worked, because it asks an operator to paste the plaintext by hand — so
+    live audio, push-to-talk, health polling, weather read-outs and the
+    radio-AI responder had never authenticated on any install. The token is
+    now stored in the form the callers need; it is still shown exactly once,
+    at mint time, and is never returned by any GET.
+
+    **If you already have a DMR channel, its stored token is a hash and cannot
+    be recovered.** `php sql/run_migrations.php` detects this and names the
+    affected channels, and they are flagged **token unusable** in
+    Settings → Communications & Integrations → DMR. Two ways to repair, both leaving the
+    channel working: paste the token you saved at mint time into that
+    channel's Test dialog — a successful `/health` is the bridge confirming
+    the value, so TicketsCAD adopts it with no bridge restart — or rotate the
+    token and update the bridge's `DMR_BEARER_TOKEN`.
+
+  - Also from the same report: the **TX 0.5 s 1 kHz tone** button posted to
+    `/tx/test`, which the native HBP bridge had never implemented (it 404'd);
+    it is now implemented. The unused `channel_recent_calls` action proxied
+    `/calls/recent`, which likewise does not exist there, and has been removed
+    — `channel_recent_messages` already serves that panel from local rows and
+    works while the bridge is offline.
+
+### Added
+
+- **A vehicle's owner can now be a specific agency, not just a person.** The
+  only way to mark a vehicle as agency-owned was a boolean "Agency Vehicle"
+  checkbox with no identity attached to it — so an agency-owned vehicle's
+  owner column always read blank, which was the other half of the "Vehicle
+  Owner … null records" report above once the dangling-reference bug was
+  fixed. The Owner field on a vehicle is now a three-way choice — Person,
+  Agency, or none — reusing the existing `organizations` table (the same one
+  Settings → Organizations already manages; no new concept, no new
+  admin screen). Picking an agency implies "agency vehicle" automatically,
+  derived server-side rather than trusted from the client alone, so the
+  existing privacy-redaction exemption for agency vehicles can't be defeated
+  by a form that forgets to also check a separate box. An existing vehicle
+  that only ever had the checkbox checked, with no specific agency, opens in
+  the new form as Agency-type with no agency selected — pick one and save;
+  no backfill or migration of old data required. Reported by Chris Byrd,
+  Google Group.
+
+- **Inbound routing to the sender's assigned incident — feature complete,
+  closes GH #23 (Phase 134, Step 5 of 5, Model 3).** The last piece:
+  `router_evaluate()` now calls `mi_attach_message_to_assigned_incidents()`
+  (Step 3) unconditionally on every genuinely-new inbound message —
+  independent of which, if any, routes match, and separate from the
+  existing Phase 111 `attach_action='add_note'` mechanism, which serves a
+  different purpose (a single designated "active event"). A new seeded
+  route (`source_channel='*'`, `dest_channel='local_chat'`,
+  `direction='inbound'`) is the Model 1 floor: every inbound message from a
+  polled channel reaches general dispatch chat, resolved sender or not,
+  assigned incident or not — both consumers run, never either/or, so a
+  dispatcher watching general chat still sees a message go by even when it
+  also landed on a specific incident. A message the router itself
+  forwarded onward does not re-trigger the resolver a second time. No new
+  RBAC permission — the resolution/attach logic runs unattended, not
+  behind a user action. With this step, GH #23's full path (a field unit's
+  Telegram or Slack message routing to the incident they're actually
+  assigned to, instead of only general dispatch chat) is live end to end;
+  polling itself still requires an operator to opt a channel in via
+  Settings (Step 4), off by default. See
+  `specs/phase-134-inbound-routing-model3/plan.md` for the complete
+  5-step build record.
+
+- **Inbound routing to the sender's assigned incident — the poller (Phase
+  134, Step 4 of 5, GH #23 Model 3).** A new `tools/channel_receive_tick.php`
+  scheduled job (60s, same shape as `par_tick`/`pending_messages_tick`) polls
+  every broker channel that has declared itself pollable AND been opted in
+  by an operator — two new Settings checkboxes, "Poll for inbound messages"
+  on the Telegram and Slack panels, both off by default; nothing is ever
+  polled without an explicit admin action. De-duplication now lives in
+  `broker_receive()` itself rather than per-adapter: a message is
+  `INSERT IGNORE`'d into the `inbound_message_dedupe` table (Step 1) before
+  it is logged or routed, so Telegram's and Slack's eager cursor advancement
+  (Step 2) can never double-ingest a re-delivered message, and any future
+  poll-based channel gets the same guarantee automatically just by declaring
+  a `dedupe_key`. A channel that repeatedly fails backs off on a capped
+  exponential curve (1, 2, 4… up to 60 minutes) rather than hammering a
+  broken upstream every tick; a successful poll clears the backoff
+  immediately. `sched_job_required('channel_receive_tick')` follows this
+  project's "shipped default is not usage" rule: the job reads as not-required
+  on a fresh or CI install (both opt-ins default off) and turns required —
+  naming which channel — the moment an operator flips either switch. Windows'
+  `run-scheduled-jobs.bat` and the systemd timer docs in
+  `docs/MAINTENANCE-RUNBOOK.md` both gained the third tick alongside the
+  existing two. No inbound message is attached to an incident yet — that's
+  Step 5, which wires the Step 3 resolver into the routing path; this step
+  only gets messages flowing through the existing (currently empty) route
+  set. See `specs/phase-134-inbound-routing-model3/plan.md` §9 for the
+  remaining step.
+
+- **Inbound routing to the sender's assigned incident — the resolver (Phase
+  134, Step 3 of 5, GH #23 Model 3).** New `mi_assigned_incident_ticket_ids(int
+  $memberId): array` (`inc/message-incident.php`) resolves a member to the
+  open incidents their unit is currently assigned to, and a new sibling,
+  `mi_attach_message_to_assigned_incidents()`, attaches an inbound message to
+  every one of them — a sender assigned to two open incidents gets a note on
+  both, per the spec's explicit v1 decision; no primary-unit gate is needed to
+  ship this. The plan's original SQL sketch guessed a `responder.member_id`
+  column; that column does not exist on this schema (confirmed via `SHOW
+  COLUMNS`) — the resolver instead reuses the two real linkages
+  `inc/comm_resolve.php`'s reverse function already established
+  (`unit_personnel_assignments` for multi-person units, `responder.
+  personal_for_member_id` for personal units), just walked in the opposite
+  direction. An open assignment alone isn't enough to resolve: the query also
+  joins `ticket` and filters `deleted_at` explicitly, because nothing cascades
+  a soft-delete onto `assigns` rows — the exact "stranded assigns" class of bug
+  this project has hit before. An unresolved sender, or a resolved sender with
+  no open assignment, is a deliberate silent no-op here — the Model-1 general-
+  chat fallback is a separate, later step (§6), not this function's job.
+  `assigns` fixtures in the new tests are created and cleared through the real
+  `assign_create_internal()`/`assign_update_status_internal()` writers, not
+  hand-inserted, per this project's repeated "test asserts against state the
+  real writer never produces" failure class; a ticket is soft-deleted through
+  `incident_soft_delete_internal()` to prove the exclusion, not a hand-written
+  `UPDATE`. No poller or router wiring yet — this step is the resolver and its
+  tests only; see `specs/phase-134-inbound-routing-model3/plan.md` §9 for the
+  remaining steps.
+
+- **Inbound routing to the sender's assigned incident — real Telegram/Slack
+  receivers (Phase 134, Step 2 of 5, GH #23 Model 3).** `_telegram_receive()`
+  and `_slack_receive()` (`inc/channels/telegram.php`, `inc/channels/slack.php`)
+  are no longer stubs — both are now thin, security-hardened wrappers around a
+  real `getUpdates`/`conversations.history` fetch, each delegating all
+  filtering to a pure function (`_telegram_parse_updates()` /
+  `_slack_parse_messages()`) with no curl, no database, and no globals, so the
+  filtering logic itself is testable with hand-built fake API responses rather
+  than a live network call. Telegram's cursor (`telegram_update_offset`)
+  advances past every update it sees — including traffic from an unrelated
+  chat — so a burst of off-topic messages can never pin the poller forever;
+  Slack's cursor (`slack_last_ts`) does the same across filtered-out bot/
+  system messages. Slack additionally filters `bot_id` and any non-empty
+  `subtype` (a trap Telegram's `getUpdates` never presents, so nothing in a
+  Telegram-first reading of this code would have anticipated it) and resolves
+  a configured channel *name* to its stable ID once, caching the result
+  (`slack_resolved_channel_id`/`_for`) and invalidating the cache the moment
+  the configured name changes — scoped to `types=public_channel` only, because
+  Slack's `conversations.list` fails the *entire* call with `missing_scope`
+  the moment `private_channel` is requested alongside a token that only has
+  public access. Both channels' `broker_register()` entries gain
+  `'pollable' => true` + a declared `dedupe_key` (`update_id` / `ts`) — a
+  capability flag the not-yet-built poller (Step 4) will read, so channels
+  that never opt in (starting with `local_chat`) are structurally excluded
+  with no allowlist to keep in sync. The pre-existing security gate,
+  `tests/test_telegram_channel_security.php`, is updated rather than weakened:
+  its old invariant ("`_telegram_receive()` returns a bare `[]`") is
+  necessarily gone now that the function does real work, replaced by three
+  stronger checks driven through real child processes — fails closed with no
+  bot token/chat id configured, fails closed on a malformed chat id, and
+  (via a balanced-brace extraction of the function body, so a nested `if {
+  }` can't truncate the match) never returns Telegram's raw API response
+  directly into the routing engine, only through the chat-filtering pure
+  function. No poller exists yet to call either receiver in production — this
+  step is receivers and their tests only; see
+  `specs/phase-134-inbound-routing-model3/plan.md` §9 for the remaining
+  steps.
+
+- **Inbound routing to the sender's assigned incident — dedupe table +
+  channel seed (Phase 134, Step 1 of 5, GH #23 Model 3).** Foundation for
+  routing a field unit's Telegram/Slack message to the incident they're
+  actually assigned to, instead of only general dispatch chat. A new
+  `inbound_message_dedupe` table (real `UNIQUE KEY (channel, external_id)`
+  — verified by inserting the same pair twice through the migration, not
+  by reading the DDL) will let the poller (a later step) advance its
+  cursor eagerly without risking duplicate ingestion. Two new `comm_modes`
+  rows (`telegram`, `slack`) let a member's Telegram username or Slack
+  member id be recorded through the existing generic Roster → Comm/
+  Location IDs UI — no new UI code needed. `inc/comm_resolve.php`'s
+  sender-resolution reverse-map gains `telegram => username` and
+  `slack => user_id`, verified end-to-end (a real member record resolves
+  correctly from a real identifier row, including a check that a Slack id
+  never accidentally resolves as a Telegram handle). This step is schema
+  and seeds only — no live polling, no message ingestion; see
+  `specs/phase-134-inbound-routing-model3/plan.md` §9 for the remaining
+  steps.
+
+- **Structured incident disposition — schema, seeds, and permission
+  (Phase 132, Step 1 of 5).** Foundation for closing out GH #16: a new
+  `ticket_disposition` lookup table (six seeded cross-discipline codes —
+  Resolved / Handled, Unfounded, Cancelled, Duplicate Call, Referred to Other
+  Agency, No Action Necessary — each with a stable, never-renamed `code` for
+  export/integration alongside a renameable label) and `ticket.disposition_id`
+  (nullable — every historical incident stays disposition-less forever, no
+  backfill). A new setting, `disposition_required_on_close`, defaults **off**
+  so upgrading never changes an existing install's close behaviour. Captions
+  seeded in all five shipped languages. A new RBAC permission,
+  `action.manage_dispositions`, gates *managing* the disposition list —
+  scoped Super-Admin-only like `action.manage_config`; selecting a disposition
+  on a call needs no permission (see the writer below). This step was schema
+  and seeds only, no writer or API — see
+  `specs/phase-132-incident-disposition/tasks.md` for the remaining steps.
+
+- **Structured incident disposition — writer, close enforcement, API (Phase
+  132, Step 2 of 5).** A disposition can now actually be set: `set_disposition`
+  is a new `api/incident-update.php` action, and `update_status` accepts an
+  optional `disposition_id` alongside a close. Every change — including a
+  re-set to the same value — writes an `audit_log` row, so a disposition that
+  changed late or was re-confirmed unchanged is traceable either way. A
+  **retired** disposition can never be newly assigned, but an incident that
+  already carries one keeps reading it back unchanged even after retirement —
+  retiring only removes a choice from *future* selection. When
+  `disposition_required_on_close` (Step 1, off by default) is turned on, a
+  close with no disposition is refused with a dispatcher-facing message
+  instead of a generic failure; an open incident with no disposition stays
+  entirely normal, the gate only fires at the close transition itself.
+  `auto_close.php`'s background sweep is deliberately **exempt** from this
+  gate — the same Phase 129 PAR lesson applies here: a background close with
+  no human present must not start silently failing every sweep the moment an
+  admin turns on an unrelated setting. No UI yet (Step 3+); this step is the
+  writer and API only.
+
+- **Structured incident disposition — Settings panel (Phase 132, Step 3 of
+  5).** A new "Incident Dispositions" panel (Settings → Application —
+  Dispatch → Incident Dispositions) lets an admin add, edit, retire, and
+  reactivate dispositions, and surfaces the `disposition_required_on_close`
+  enforcement toggle in the same panel. Retiring is never a delete — a
+  retired disposition stays visible in the admin list and on any incident
+  that already carries it, it just can't be newly assigned going forward. A
+  disposition's `code` (the stable export/integration key) is locked once
+  created; only the label, description, discipline, org scope, sort order,
+  and requires-comment flag can change later. A new standalone endpoint,
+  `api/dispositions.php`, gates on the dedicated `action.manage_dispositions`
+  permission from Step 1 rather than the broader `action.manage_config` —
+  deliberately not folded into `api/config-admin.php`, whose shared gate
+  would have defeated the point of a separate permission. Incident-detail
+  dropdowns and reports/export are Steps 4-5, still to come.
+
+- **Structured incident disposition — incident-detail dropdowns (Phase
+  132, Step 4 of 5).** A disposition can now be set from an incident
+  itself, not just via the API: a dropdown beside the Activity Log's note
+  box lets a dispatcher set or change the disposition at any time, and a
+  second dropdown appears in the close-action controls when closing,
+  pre-filled with the incident's current value if one is already set. Both
+  are filtered to the incident type's discipline (`in_types.group`) plus
+  any always-offered (`discipline=''`) dispositions — with a **hard
+  invariant**: a type with no discipline tag, or one that matches no
+  active disposition, falls back to the FULL active list rather than ever
+  showing an empty or truncated dropdown. The filtering is presentation
+  only; the server still only enforces existence and active status.  When
+  `disposition_required_on_close` is on and no disposition is available, a
+  close attempt is blocked client-side with a clear message before it ever
+  reaches the API — the server's own refusal (Step 2) remains the real
+  enforcement boundary. New read-only endpoint `api/dispositions-picker.php`
+  (no `action.manage_dispositions` required — mirrors `api/un-statuses.php`'s
+  pattern of a small reference-list endpoint, distinct from Step 3's
+  admin-only `api/dispositions.php`).
+
+- **Structured incident disposition — reports, export, feed (Phase 132,
+  Step 5 of 5 — feature complete, closes GH #16).** The Incident Summary
+  report gains a disposition breakdown alongside its existing incident-type
+  breakdown, with every undispositioned incident counted under "No
+  Disposition" rather than dropped from the totals — the NULL case is the
+  normal state for most historical incidents, not an error. The incident
+  export target gains `disposition_code` (the stable code, never the
+  renameable label), and the live-incidents feed (JSON/RSS/Atom) carries
+  the same code for any open incident that already has one set. Reaching
+  a value from a JOINed table (`ticket_disposition.code`, not a same-table
+  rename) needed more than the export system's existing same-table
+  `legacy` alias, so `inc/import-export.php` gained a small, generic
+  `joins` + `sql` mechanism — kept minimal, and every other export target
+  (which declares no `joins`) produces byte-for-byte the same SQL as
+  before.
+
+- **Audit-log retention and purge is a real, working setting.** A prior
+  session, asked why CJIS's 365-day retention floor was satisfied, was told to
+  document that the audit log is simply never pruned — and Eric rejected that
+  outright: "This is an issue to fix, not redefine. The solution is to build
+  the setting and ensure it works." A new setting,
+  `audit_log_retention_days` (Settings → Audit Log → Retention & Purge), is
+  **off by default** (`0` = keep everything forever — upgrading never starts
+  deleting anyone's history on its own). Turned on, a daily job — plus an
+  on-demand "Purge now" button — **archives every row older than the
+  threshold to a gzip-compressed file on disk before deleting anything**, so
+  the live table shrinks but the record survives. A manifest table
+  (`audit_log_purges`) records every run — cutoff, row count, archive
+  filename, a sha256 to verify the file later, who or what triggered it — and
+  every successful purge writes its own audit-log entry, after the delete
+  commits, so the record of the purge outlives the purge. CJIS Security
+  Policy §5.4 cites 365 days as a *minimum*; TicketsCAD warns, but does not
+  block, a lower value — different agencies answer to different retention
+  rules, and this software cannot know which apply to a given install. A new
+  RBAC permission (`action.manage_audit_retention`, Super Admin only, same
+  tier as `action.manage_config`) gates changing the setting or triggering a
+  manual purge. This also resolves a real tension with this project's own
+  tamper-resistance advice (revoking DELETE on the audit table from the
+  application's DB user): the purge now probes for that condition *before*
+  doing any work and fails loudly — visible on Settings and on the Scheduled
+  Jobs status page — rather than silently doing nothing, which is exactly
+  what "revoke DELETE" should be expected to cause. See
+  `docs/AUDIT-LOG-REFERENCE.md` § Retention and `docs/CJIS-POSTURE.md` § 5.4.
+
+- **Whether an unavailable unit appears on a PAR roll call is now your
+  decision.** It used to be nobody's: the standby filter matched status names
+  by substring, and "unavailable" contains "available", so a unit marked
+  unavailable was dropped from every PAR roster on every install — by accident,
+  invisibly, with no setting able to bring it back. The two statuses are now
+  told apart properly (matched on the status *group*, `av` versus `unav`, and by
+  prefix rather than substring), and a new setting at **Config → App
+  Preferences → PAR Checks** decides what happens to the unavailable ones.
+  **The default is to include them.** A PAR asks whether every crew committed
+  to the incident is accounted for, not whether every crew is working, and an
+  assigned unit that has gone unavailable may mean the apparatus is out of
+  service *or* that the crew has stopped answering — from the console those look
+  identical. Including them costs one extra acknowledgement when it is the
+  former; excluding them lets a roll call report itself complete when it is the
+  latter. Agencies that treat "unavailable" strictly as a vehicle state, and
+  clear the assignment when a crew leaves, can switch it off. The trade-off is
+  explained at the control itself and in the user guide and in-app help. Raised
+  by Eric Osterberg as a decision that genuinely varies by agency.
+
+- **ICS forms can be deleted.** Until now they could not be — by anyone. Once a
+  form was saved it was permanent: no delete for its author, none for an
+  administrator, no path at any privilege level. Reported by Chris Byrd, who
+  noted he could switch a finalized form back to draft and still not remove it.
+  ICS forms are operational records rather than UI clutter — a finalized
+  ICS-214 is the documentary artefact of a real incident — so deleting one is
+  treated as a records-retention decision: **a draft may be deleted by whoever
+  created it**, **a finalized form is administrator-only** (the new
+  `action.delete_ics_form` permission, held by Super Admin and Org Admin by
+  default and grantable to any role from the Roles UI), and **every delete is
+  soft**. Deleted forms move to Settings → Wastebasket, keep their contents
+  intact, and restore in full. Nothing hard-deletes an ICS form — not the
+  per-row purge button, not "Empty wastebasket", not any other path — and every
+  delete writes an audit entry naming the form, its type, its incident if
+  linked, who did it, and whether they acted as the author or as an
+  administrator. Saving is now also refused for a form sitting in the
+  wastebasket, so a deleted record cannot be edited back into existence without
+  an administrator restoring it first.
+
+- **Clock-consistency audit** (`tools/timezone_audit.php`). A static gate,
+  wired into the pre-commit hook and CI alongside the schema and API-contract
+  audits, that fails the build when a query measures a locally-stamped column
+  against a UTC clock — including the PHP `gmdate()` and JavaScript `+ 'Z'`
+  forms of the same mistake. This class of bug cannot be felt on the UTC
+  machines CI runs on, so it needed a check that does not depend on the
+  server's timezone to notice.
+
 ## [4.2.6] - 2026-08-03
 
 ### Fixed

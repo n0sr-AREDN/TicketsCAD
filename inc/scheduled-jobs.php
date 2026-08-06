@@ -165,6 +165,33 @@ function sched_job_registry(): array {
             'purpose'    => 'Sends queued notifications (push, webhooks, SMS, e-mail, Slack) '
                           . 'and messages held for a security label\'s kill window',
         ],
+        // Phase 133 (2026-08-03). Daily, not 60s — the grace multiplier is
+        // deliberately much smaller than the two ticks above (3 intervals,
+        // not 15): a job that runs once a day and is 45 hours late deserves
+        // attention sooner than "15 missed daily runs" would imply.
+        'audit_log_purge' => [
+            'label'      => 'Audit log retention purge',
+            'interval_s' => 86400,
+            'grace_mult' => 3,
+            'unit'       => $win ? 'TicketsCAD Background Jobs' : 'ticketscad-audit-purge.timer',
+            'unit_kind'  => $win ? 'schtasks' : 'systemd',
+            'command'    => $win ? 'php tools\\audit_log_purge_tick.php' : 'php tools/audit_log_purge_tick.php',
+            'purpose'    => 'Archives and removes audit-log rows older than the configured retention window',
+        ],
+        // Phase 134 (2026-08, GH #23 Model 3). 60s, same grace as par_tick /
+        // pending_messages_tick — polls whichever broker channels have both
+        // declared themselves 'pollable' AND been opted in via Settings
+        // (telegram_poll_inbound / slack_poll_inbound, both default off).
+        'channel_receive_tick' => [
+            'label'      => 'Inbound channel poll (Telegram/Slack)',
+            'interval_s' => 60,
+            'grace_mult' => 15,
+            'unit'       => $win ? 'TicketsCAD Background Jobs' : 'ticketscad-channel-receive-tick.timer',
+            'unit_kind'  => $win ? 'schtasks' : 'systemd',
+            'command'    => $win ? 'php tools\\channel_receive_tick.php' : 'php tools/channel_receive_tick.php',
+            'purpose'    => 'Polls opted-in channels (e.g. Telegram, Slack) for inbound messages and '
+                          . 'routes them to the sender\'s assigned incident',
+        ],
     ];
 }
 
@@ -315,6 +342,64 @@ function sched_job_required(string $jobKey): array {
         return ['required' => false, 'why' => 'Nothing is waiting in the send queue'];
     }
 
+    if ($jobKey === 'audit_log_purge') {
+        // Same "shipped default is not usage" discipline as pending_messages_tick
+        // above: the setting defaults to 0 (disabled) on every install, so a
+        // fresh/CI install must never report this job critical just because
+        // nothing is scheduling it. The moment an admin sets a nonzero
+        // retention window, this turns required — and if nothing is running
+        // the job, critical — which is exactly when it matters.
+        $on = false;
+        try {
+            require_once __DIR__ . '/audit-retention.php';
+            $on = audit_retention_days() > 0;
+        } catch (Exception $e) {}
+        return $on
+            ? ['required' => true,  'why' => 'Audit log retention is enabled']
+            : ['required' => false, 'why' => 'Audit log retention is disabled (Settings → Audit Log → Retention & Purge)'];
+    }
+
+    if ($jobKey === 'channel_receive_tick') {
+        // Same "shipped default is not usage" discipline as pending_messages_
+        // tick and audit_log_purge above: telegram_poll_inbound and
+        // slack_poll_inbound both default unset/'0' on every install
+        // (Phase 134 Step 1's migration seeds neither as on), so a fresh or
+        // CI install must never report this job critical just because
+        // nothing has opted in to polling. The moment an operator flips
+        // EITHER channel's "Poll for inbound messages" switch on, this turns
+        // required — and if nothing is running the job, critical — exactly
+        // when it starts to matter.
+        //
+        // Reads the broker registry's 'pollable' flag rather than a
+        // hardcoded ['telegram','slack'] list, so a future third pollable
+        // channel becomes required-aware automatically (same "capability
+        // flag, not an allowlist" discipline as channel_receive_run() itself
+        // — plan.md §1).
+        $enabledLabels = [];
+        try {
+            require_once __DIR__ . '/channel-receive.php';
+            foreach (channel_receive_pollable_channels() as $ch) {
+                $on = false;
+                try {
+                    $on = function_exists('get_variable') ? get_variable($ch['code'] . '_poll_inbound') : false;
+                } catch (Exception $e) {}
+                if ($on === '1') $enabledLabels[] = $ch['label'];
+            }
+        } catch (Exception $e) {}
+
+        if (!empty($enabledLabels)) {
+            $verb = count($enabledLabels) === 1 ? 'is' : 'are';
+            return [
+                'required' => true,
+                'why'      => _sched_join_and($enabledLabels) . " inbound polling {$verb} enabled",
+            ];
+        }
+        return [
+            'required' => false,
+            'why'      => 'No channel has inbound polling enabled (Settings → Telegram / Slack)',
+        ];
+    }
+
     return ['required' => false, 'why' => 'Unknown job'];
 }
 
@@ -435,4 +520,19 @@ function _sched_dur(int $s): string {
     if ($s < 90) return $s . 's';
     if ($s < 5400) return round($s / 60) . ' min';
     return round($s / 3600) . ' hours';
+}
+
+/**
+ * "X" / "X and Y" / "X, Y, and Z" — used by channel_receive_tick's
+ * required-check to name which pollable channel(s) are opted in, without
+ * hardcoding to today's two (Telegram, Slack).
+ */
+function _sched_join_and(array $items): string {
+    $items = array_values($items);
+    $n = count($items);
+    if ($n === 0) return '';
+    if ($n === 1) return (string) $items[0];
+    if ($n === 2) return $items[0] . ' and ' . $items[1];
+    $last = array_pop($items);
+    return implode(', ', $items) . ', and ' . $last;
 }

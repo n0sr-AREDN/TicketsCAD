@@ -96,6 +96,7 @@
         bindOrganizationsPanel();
         bindCommModesPanel();
         bindAuditLogPanel();
+        bindAuditRetentionPanel();
         bindRoadConditionsPanel();
         bindIncidentNumbersPanel();
         bindSecurityLabelsPanel();
@@ -356,7 +357,7 @@
         else if (tab === 'member-statuses')  loadMemberStatuses();
         else if (tab === 'teams')            loadTeamsConfig();
         else if (tab === 'members')          loadMembersSummary();
-        else if (tab === 'audit-log')        loadAuditLog();
+        else if (tab === 'audit-log')        { loadAuditLog(); loadAuditRetentionStatus(); }
         else if (tab === 'lookup-services')  loadLookupConfig();
         else if (tab === 'database-info')    loadDatabaseInfo();
         else if (tab === 'std-messages')     loadStdMessages();
@@ -372,6 +373,7 @@
         else if (tab === 'sms-config')       loadSmsConfig();
         else if (tab === 'telegram')         loadTelegramConfig();
         else if (tab === 'incident-numbers') loadIncidentNumbers();
+        else if (tab === 'incident-dispositions') loadDispositions();
         else if (tab === 'par-checks')       loadPARConfig();
         else if (tab === 'net-checkins')     loadNetCheckinConfig();
         else if (tab === 'security-labels')  loadSecurityLabels();
@@ -3098,7 +3100,8 @@
 
         var slackMap = {
             setSlackMode: 'slack_mode', setSlackChannel: 'slack_channel',
-            setSlackWebhook: 'slack_webhook', setSlackToken: 'slack_token'
+            setSlackWebhook: 'slack_webhook', setSlackToken: 'slack_token',
+            setSlackPollInbound: 'slack_poll_inbound'
         };
 
         apiGet('settings').then(function (data) {
@@ -3113,6 +3116,10 @@
                     el.placeholder = s[key + '_set']
                         ? '•••• stored — leave blank to keep, type to replace'
                         : 'Not set — enter to configure';
+                } else if (el.type === 'checkbox') {
+                    // A checkbox's value is unrelated to its checked state — see
+                    // collectSettingsFromForm()'s comment on the same bug class.
+                    el.checked = (s[key] === '1');
                 } else if (s[key] !== undefined) {
                     el.value = s[key];
                 }
@@ -3128,7 +3135,7 @@
                 if (!el) continue;
                 // Blank secret = keep stored value (never overwrite with empty).
                 if (el.getAttribute('data-secret') === '1' && (el.value || '') === '') continue;
-                pairs[slackMap[id]] = el.value;
+                pairs[slackMap[id]] = el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value;
             }
             apiPost('settings', { settings: pairs }).then(function (data) {
                 showAlert('Slack settings saved.', 'success');
@@ -8532,11 +8539,8 @@
                 (function (btn) {
                     btn.addEventListener('click', function () {
                         if (!confirm('Delete training entry "' + btn.getAttribute('data-name') + '"?')) return;
-                        fetchJSON('api/personnel-config.php', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'delete_certification', id: parseInt(btn.getAttribute('data-id'), 10) })
-                        }).then(function () {
+                        apiPostDirect('personnel-config', { action: 'delete_certification', id: parseInt(btn.getAttribute('data-id'), 10) })
+                        .then(function () {
                             loadedPanels['certifications'] = false;
                             loadTrainCatalog();
                         }).catch(function (err) {
@@ -8572,11 +8576,7 @@
                 required: document.getElementById('trainCatRequired').checked ? 1 : 0
             };
 
-            fetchJSON('api/personnel-config.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            }).then(function (data) {
+            apiPostDirect('personnel-config', payload).then(function (data) {
                 if (data.error) { showAlert(data.error, 'danger'); return; }
                 document.getElementById('trainCatEditId').value = '0';
                 document.getElementById('trainCatName').value = '';
@@ -8648,11 +8648,8 @@
                 (function (btn) {
                     btn.addEventListener('click', function () {
                         if (!confirm('Delete vehicle type "' + btn.getAttribute('data-name') + '"?')) return;
-                        fetchJSON('api/vehicles.php', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'delete_type', id: parseInt(btn.getAttribute('data-id')) })
-                        }).then(function () {
+                        apiPostDirect('vehicles', { action: 'delete_type', id: parseInt(btn.getAttribute('data-id')) })
+                        .then(function () {
                             loadVehicleTypes();
                         }).catch(function (err) {
                             showAlert('Delete failed: ' + err.message, 'danger');
@@ -8683,11 +8680,7 @@
                     sort_order: parseInt(document.getElementById('vehTypeSortOrder').value) || 0
                 };
 
-                fetchJSON('api/vehicles.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                }).then(function () {
+                apiPostDirect('vehicles', body).then(function () {
                     // Reset form
                     document.getElementById('vehTypeEditId').value = '0';
                     document.getElementById('vehTypeName').value = '';
@@ -8896,11 +8889,8 @@
                 (function (btn) {
                     btn.addEventListener('click', function () {
                         if (!confirm('Delete certification "' + btn.getAttribute('data-name') + '"?')) return;
-                        fetchJSON('api/personnel-config.php', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'delete_certification', id: parseInt(btn.getAttribute('data-id'), 10) })
-                        }).then(function () {
+                        apiPostDirect('personnel-config', { action: 'delete_certification', id: parseInt(btn.getAttribute('data-id'), 10) })
+                        .then(function () {
                             loadedPanels['certifications'] = false;
                             loadCertifications();
                         }).catch(function (err) {
@@ -8938,11 +8928,7 @@
                 nims_credential_type: (document.getElementById('certNimsType').value || '').trim()
             };
 
-            fetchJSON('api/personnel-config.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            }).then(function (data) {
+            apiPostDirect('personnel-config', payload).then(function (data) {
                 if (data.error) { showAlert(data.error, 'danger'); return; }
                 // Reset form
                 document.getElementById('certEditId').value = '0';
@@ -9019,11 +9005,8 @@
                 (function (btn) {
                     btn.addEventListener('click', function () {
                         if (!confirm('Delete member type "' + btn.getAttribute('data-name') + '"?')) return;
-                        fetchJSON('api/personnel-config.php', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'delete_member_type', id: parseInt(btn.getAttribute('data-id'), 10) })
-                        }).then(function () {
+                        apiPostDirect('personnel-config', { action: 'delete_member_type', id: parseInt(btn.getAttribute('data-id'), 10) })
+                        .then(function () {
                             loadedPanels['member-types'] = false;
                             loadMemberTypes();
                         }).catch(function (err) {
@@ -9058,11 +9041,7 @@
                 background: (document.getElementById('mtBackground').value || 'White').trim()
             };
 
-            fetchJSON('api/personnel-config.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            }).then(function (data) {
+            apiPostDirect('personnel-config', payload).then(function (data) {
                 if (data.error) { showAlert(data.error, 'danger'); return; }
                 document.getElementById('mtEditId').value = '0';
                 document.getElementById('mtName').value = '';
@@ -9135,11 +9114,8 @@
                 (function (btn) {
                     btn.addEventListener('click', function () {
                         if (!confirm('Delete member status "' + btn.getAttribute('data-name') + '"?')) return;
-                        fetchJSON('api/personnel-config.php', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'delete_member_status', id: parseInt(btn.getAttribute('data-id'), 10) })
-                        }).then(function () {
+                        apiPostDirect('personnel-config', { action: 'delete_member_status', id: parseInt(btn.getAttribute('data-id'), 10) })
+                        .then(function () {
                             loadedPanels['member-statuses'] = false;
                             loadMemberStatuses();
                         }).catch(function (err) {
@@ -9174,11 +9150,7 @@
                 background: (document.getElementById('msBackground').value || 'White').trim()
             };
 
-            fetchJSON('api/personnel-config.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            }).then(function (data) {
+            apiPostDirect('personnel-config', payload).then(function (data) {
                 if (data.error) { showAlert(data.error, 'danger'); return; }
                 document.getElementById('msEditId').value = '0';
                 document.getElementById('msName').value = '';
@@ -9190,6 +9162,213 @@
                 loadMemberStatuses();
             }).catch(function (err) {
                 showAlert('Save failed: ' + err.message, 'danger');
+            });
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  INCIDENT DISPOSITIONS CONFIG (Phase 132 Step 3, GH #16)
+    // ═══════════════════════════════════════════════════════════════
+
+    var dispositionsById = {};
+    var dispositionOrgsCache = null;
+
+    function loadDispositions() {
+        var tbody = document.getElementById('dispositionsBody');
+        var orgSelect = document.getElementById('dispOrgId');
+
+        // Two independent sources: the disposition list itself, and the
+        // organizations list to populate the Org <select> (mirrors
+        // populateUserOrgDropdowns()'s cache-then-fetch shape).
+        var orgsPromise = dispositionOrgsCache
+            ? Promise.resolve(dispositionOrgsCache)
+            : fetch('api/organizations.php', { credentials: 'same-origin' })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    dispositionOrgsCache = data.organizations || [];
+                    return dispositionOrgsCache;
+                })
+                .catch(function () { dispositionOrgsCache = []; return []; });
+
+        Promise.all([fetchJSON('api/dispositions.php'), orgsPromise]).then(function (results) {
+            var data = results[0];
+            var orgs = results[1];
+
+            // Populate the Org <select> — blank = every org (org_id NULL).
+            if (orgSelect) {
+                var orgOpts = '<option value="">&mdash; every org &mdash;</option>';
+                for (var o = 0; o < orgs.length; o++) {
+                    if (parseInt(orgs[o].active, 10) === 0) continue;
+                    orgOpts += '<option value="' + orgs[o].id + '">' + esc(orgs[o].name || '') + '</option>';
+                }
+                orgSelect.innerHTML = orgOpts;
+            }
+
+            // Enforcement toggle — initialize from this same response.
+            var enforceEl = document.getElementById('dispRequiredOnClose');
+            if (enforceEl) enforceEl.checked = (data.disposition_required_on_close === '1');
+
+            var rows = data.dispositions || [];
+            if (!tbody) return;
+
+            if (rows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-body-secondary py-3">No dispositions defined. Add one above.</td></tr>';
+                bindDispositionForm();
+                bindDispositionEnforcementToggle();
+                return;
+            }
+
+            dispositionsById = {};
+            var orgNameById = {};
+            for (var oi = 0; oi < orgs.length; oi++) orgNameById[orgs[oi].id] = orgs[oi].name;
+
+            var html = '';
+            for (var i = 0; i < rows.length; i++) {
+                var d = rows[i];
+                dispositionsById[d.id] = d;
+                var isActive = parseInt(d.active, 10) === 1;
+                var statusBadge = isActive
+                    ? '<span class="badge bg-success">Active</span>'
+                    : '<span class="badge bg-secondary">Retired</span>';
+                var orgLabel = d.org_id ? esc(orgNameById[d.org_id] || ('#' + d.org_id)) : '<span class="text-body-secondary">every org</span>';
+                var rowClass = isActive ? '' : ' class="text-body-secondary"';
+
+                html += '<tr' + rowClass + '>' +
+                    '<td class="ps-3 fw-semibold">' + esc(d.status_val) +
+                        (d.description ? '<br><small class="text-body-secondary">' + esc(d.description) + '</small>' : '') + '</td>' +
+                    '<td><code>' + esc(d.code) + '</code></td>' +
+                    '<td>' + (d.discipline ? esc(d.discipline) : '<span class="text-body-secondary">any</span>') + '</td>' +
+                    '<td>' + orgLabel + '</td>' +
+                    '<td class="text-center">' + d.sort_order + '</td>' +
+                    '<td class="text-center">' + statusBadge + '</td>' +
+                    '<td class="text-center">' +
+                        '<button class="btn btn-sm btn-link p-0 me-1 disp-edit-btn" data-id="' + d.id + '" title="Edit"><i class="bi bi-pencil text-primary"></i></button>' +
+                        (isActive
+                            ? '<button class="btn btn-sm btn-link p-0 disp-retire-btn" data-id="' + d.id + '" data-name="' + esc(d.status_val) + '" title="Retire"><i class="bi bi-archive text-warning"></i></button>'
+                            : '<button class="btn btn-sm btn-link p-0 disp-reactivate-btn" data-id="' + d.id + '" data-name="' + esc(d.status_val) + '" title="Reactivate"><i class="bi bi-arrow-counterclockwise text-success"></i></button>') +
+                    '</td></tr>';
+            }
+            tbody.innerHTML = html;
+
+            var editBtns = tbody.querySelectorAll('.disp-edit-btn');
+            for (var e = 0; e < editBtns.length; e++) {
+                (function (btn) {
+                    btn.addEventListener('click', function () {
+                        var row = dispositionsById[btn.getAttribute('data-id')];
+                        if (!row) return;
+                        document.getElementById('dispEditId').value = row.id;
+                        document.getElementById('dispStatusVal').value = row.status_val || '';
+                        document.getElementById('dispDescription').value = row.description || '';
+                        document.getElementById('dispDiscipline').value = row.discipline || '';
+                        document.getElementById('dispSortOrder').value = row.sort_order || 0;
+                        document.getElementById('dispRequiresComment').checked = parseInt(row.requires_comment, 10) === 1;
+                        var orgSel = document.getElementById('dispOrgId');
+                        if (orgSel) orgSel.value = row.org_id ? String(row.org_id) : '';
+                        // Code is immutable once created (api/dispositions.php
+                        // ignores it on update regardless) — disable the field
+                        // so the UI doesn't suggest it's editable.
+                        var codeEl = document.getElementById('dispCode');
+                        codeEl.value = row.code || '';
+                        codeEl.disabled = true;
+                        document.getElementById('btnAddDisposition').innerHTML = '<i class="bi bi-check-lg me-1"></i>Update';
+                    });
+                })(editBtns[e]);
+            }
+
+            var retireBtns = tbody.querySelectorAll('.disp-retire-btn');
+            for (var r = 0; r < retireBtns.length; r++) {
+                (function (btn) {
+                    btn.addEventListener('click', function () {
+                        if (!confirm('Retire disposition "' + btn.getAttribute('data-name') + '"? It will no longer be offered on new/edited incidents, but stays visible on incidents that already have it.')) return;
+                        apiPostDirect('dispositions', { action: 'retire', id: parseInt(btn.getAttribute('data-id'), 10) })
+                        .then(function () { loadDispositions(); })
+                        .catch(function (err) { showAlert('Retire failed: ' + err.message, 'danger'); });
+                    });
+                })(retireBtns[r]);
+            }
+
+            var reactivateBtns = tbody.querySelectorAll('.disp-reactivate-btn');
+            for (var a = 0; a < reactivateBtns.length; a++) {
+                (function (btn) {
+                    btn.addEventListener('click', function () {
+                        apiPostDirect('dispositions', { action: 'reactivate', id: parseInt(btn.getAttribute('data-id'), 10) })
+                        .then(function () { loadDispositions(); })
+                        .catch(function (err) { showAlert('Reactivate failed: ' + err.message, 'danger'); });
+                    });
+                })(reactivateBtns[a]);
+            }
+
+            bindDispositionForm();
+            bindDispositionEnforcementToggle();
+        }).catch(function (err) {
+            if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-danger py-3">Failed to load: ' + esc(err.message) + '</td></tr>';
+        });
+    }
+
+    function bindDispositionForm() {
+        var addBtn = document.getElementById('btnAddDisposition');
+        if (!addBtn || addBtn.hasAttribute('data-bound')) return;
+        addBtn.setAttribute('data-bound', '1');
+
+        addBtn.addEventListener('click', function () {
+            var editId = parseInt(document.getElementById('dispEditId').value, 10) || 0;
+            var label = (document.getElementById('dispStatusVal').value || '').trim();
+            if (!label) { showAlert('Label is required.', 'warning'); return; }
+
+            var codeEl = document.getElementById('dispCode');
+            var code = (codeEl.value || '').trim();
+            if (editId === 0 && !code) { showAlert('Code is required.', 'warning'); return; }
+
+            var payload = {
+                action: 'save',
+                id: editId,
+                status_val: label,
+                description: (document.getElementById('dispDescription').value || '').trim(),
+                code: code,
+                discipline: (document.getElementById('dispDiscipline').value || '').trim(),
+                org_id: document.getElementById('dispOrgId').value || null,
+                sort_order: parseInt(document.getElementById('dispSortOrder').value, 10) || 0,
+                requires_comment: document.getElementById('dispRequiresComment').checked ? 1 : 0
+            };
+
+            apiPostDirect('dispositions', payload).then(function (data) {
+                if (data.error) { showAlert(data.error, 'danger'); return; }
+                document.getElementById('dispEditId').value = '0';
+                document.getElementById('dispStatusVal').value = '';
+                document.getElementById('dispDescription').value = '';
+                document.getElementById('dispDiscipline').value = '';
+                document.getElementById('dispSortOrder').value = '0';
+                document.getElementById('dispRequiresComment').checked = false;
+                if (document.getElementById('dispOrgId')) document.getElementById('dispOrgId').value = '';
+                codeEl.value = '';
+                codeEl.disabled = false;
+                addBtn.innerHTML = '<i class="bi bi-plus-lg me-1"></i>Add';
+                loadDispositions();
+            }).catch(function (err) {
+                showAlert('Save failed: ' + err.message, 'danger');
+            });
+        });
+    }
+
+    function bindDispositionEnforcementToggle() {
+        var toggle = document.getElementById('dispRequiredOnClose');
+        if (!toggle || toggle.hasAttribute('data-bound')) return;
+        toggle.setAttribute('data-bound', '1');
+
+        toggle.addEventListener('change', function () {
+            var value = toggle.checked ? '1' : '0';
+            apiPostDirect('dispositions', { action: 'set_enforcement', value: value }).then(function (data) {
+                if (data.error) {
+                    showAlert(data.error, 'danger');
+                    toggle.checked = !toggle.checked; // revert on failure
+                    return;
+                }
+                showAlert(toggle.checked
+                    ? 'A disposition is now required before closing an incident.'
+                    : 'Disposition is no longer required at close.', 'success');
+            }).catch(function (err) {
+                showAlert('Save failed: ' + err.message, 'danger');
+                toggle.checked = !toggle.checked;
             });
         });
     }
@@ -9993,6 +10172,199 @@
             opt2.textContent = activities[j];
             actSelect.appendChild(opt2);
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  AUDIT LOG — RETENTION & PURGE (Phase 133, 2026-08-03)
+    //  Deliberately its own submit handler hitting api/audit-retention.php
+    //  directly, NOT the generic [data-key] / apiPost('settings', ...)
+    //  mechanism — that path is gated only by action.manage_config, and this
+    //  feature has its own dedicated action.manage_audit_retention permission
+    //  that must actually do the gating.
+    // ═══════════════════════════════════════════════════════════════
+    var _auditRetentionEligibleTimer = null;
+
+    function bindAuditRetentionPanel() {
+        var form = document.getElementById('auditRetentionForm');
+        if (!form) return;
+
+        var daysInput = document.getElementById('setAuditRetentionDays');
+        var purgeBtn  = document.getElementById('btnAuditPurgeNow');
+
+        form.addEventListener('submit', function (ev) {
+            ev.preventDefault();
+            saveAuditRetentionSetting();
+        });
+
+        if (daysInput) {
+            daysInput.addEventListener('input', function () {
+                if (_auditRetentionEligibleTimer) clearTimeout(_auditRetentionEligibleTimer);
+                _auditRetentionEligibleTimer = setTimeout(function () {
+                    refreshAuditRetentionEligible(parseInt(daysInput.value, 10) || 0);
+                }, 300);
+            });
+        }
+
+        if (purgeBtn) {
+            purgeBtn.addEventListener('click', function () {
+                purgeAuditLogNow();
+            });
+        }
+    }
+
+    function loadAuditRetentionStatus() {
+        var box = document.getElementById('auditRetentionStatusBox');
+        fetch('api/audit-retention.php?action=status', { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var st = data.status;
+                if (!st) { if (box) box.innerHTML = '<div class="small text-body-secondary">Status unavailable.</div>'; return; }
+
+                var daysInput = document.getElementById('setAuditRetentionDays');
+                if (daysInput && document.activeElement !== daysInput) {
+                    daysInput.value = st.retention_days;
+                }
+                updateAuditRetentionEligibleReadout(st.eligible_count);
+                updateAuditRetentionCjisWarning(st.below_cjis_floor, st.cjis_warning);
+                if (box) box.innerHTML = renderAuditRetentionStatus(st, data.scheduled_job);
+            })
+            .catch(function () {
+                if (box) box.innerHTML = '<div class="small text-body-secondary">Status unavailable.</div>';
+            });
+    }
+
+    function refreshAuditRetentionEligible(days) {
+        fetch('api/audit-retention.php?action=eligible_count&days=' + encodeURIComponent(days), { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                updateAuditRetentionEligibleReadout(data.eligible_count);
+                updateAuditRetentionCjisWarning(data.below_cjis_floor, data.cjis_warning);
+            })
+            .catch(function () { /* readout stays at its last known value */ });
+    }
+
+    function updateAuditRetentionEligibleReadout(count) {
+        var el = document.getElementById('auditRetentionEligible');
+        if (el) el.textContent = (typeof count === 'number' ? count : 0) + ' row(s)';
+    }
+
+    function updateAuditRetentionCjisWarning(below, text) {
+        var wrap = document.getElementById('auditRetentionCjisWarning');
+        var span = document.getElementById('auditRetentionCjisWarningText');
+        if (!wrap) return;
+        if (below && text) {
+            if (span) span.textContent = text;
+            wrap.classList.remove('d-none');
+        } else {
+            wrap.classList.add('d-none');
+        }
+    }
+
+    function renderAuditRetentionStatus(st, job) {
+        var h = '';
+        var badge = st.enabled
+            ? '<span class="badge bg-success">On</span>'
+            : '<span class="badge bg-secondary">Off (keep forever)</span>';
+        h += '<div class="d-flex flex-wrap align-items-center gap-3 mb-2">';
+        h += '<div><strong class="small">Automatic purge</strong> ' + badge + '</div>';
+        h += '</div>';
+
+        h += '<div class="row g-2 small">';
+        h += '<div class="col-6 col-lg-4"><div class="text-body-secondary">Last run</div><div class="fw-semibold">' +
+             (st.last_run_at ? esc(new Date(st.last_run_at * 1000).toLocaleString()) : 'never') + '</div></div>';
+        h += '<div class="col-6 col-lg-4"><div class="text-body-secondary">Last result</div><div class="fw-semibold">' +
+             esc(st.last_status || '') + '</div></div>';
+        h += '<div class="col-12 col-lg-4"><div class="text-body-secondary">Archive folder</div><div class="fw-semibold text-break"><code>' +
+             esc(st.directory || '') + '</code></div></div>';
+        h += '</div>';
+
+        // Loud failure, never a silent no-op — the whole point of the
+        // capability probe in inc/audit-retention.php.
+        if (st.last_failed) {
+            h += '<div class="alert alert-danger small mt-2 mb-0 py-2">' +
+                 '<i class="bi bi-shield-exclamation me-1"></i>' + esc(st.last_status) + '</div>';
+        }
+
+        if (job) {
+            var jobBadge = job.severity === 'critical' ? 'bg-danger'
+                         : (job.severity === 'warn' ? 'bg-warning text-dark' : 'bg-success');
+            h += '<div class="small text-body-secondary mt-2">Scheduled job: <span class="badge ' + jobBadge + '">' +
+                 esc(job.state) + '</span> ' + esc(job.note || '') + '</div>';
+        }
+
+        var exp = st.directory_exposure;
+        if (exp && (exp.served || exp.suspect)) {
+            h += '<div class="alert alert-warning small mt-2 mb-0 py-2">' +
+                 '<i class="bi bi-exclamation-triangle-fill me-1"></i>Archive folder may be web-reachable: ' +
+                 esc(exp.why || '') + '</div>';
+        }
+
+        return h;
+    }
+
+    function saveAuditRetentionSetting() {
+        var daysInput = document.getElementById('setAuditRetentionDays');
+        var statusEl  = document.getElementById('auditRetentionSettingsStatus');
+        var days = parseInt(daysInput ? daysInput.value : '0', 10);
+        if (isNaN(days) || days < 0) days = 0;
+
+        if (statusEl) { statusEl.textContent = 'Saving...'; statusEl.className = 'small'; }
+
+        fetch('api/audit-retention.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ action: 'save_setting', days: days, csrf_token: csrfToken })
+        }).then(function (r) { return r.json(); })
+          .then(function (data) {
+              if (data.error) {
+                  if (statusEl) { statusEl.textContent = data.error; statusEl.className = 'small text-danger'; }
+                  return;
+              }
+              if (statusEl) { statusEl.textContent = 'Saved.'; statusEl.className = 'small text-success'; }
+              updateAuditRetentionEligibleReadout(data.eligible_count);
+              updateAuditRetentionCjisWarning(data.below_cjis_floor, data.cjis_warning);
+              loadAuditRetentionStatus();
+          })
+          .catch(function (err) {
+              if (statusEl) { statusEl.textContent = err.message; statusEl.className = 'small text-danger'; }
+          });
+    }
+
+    function purgeAuditLogNow() {
+        var btn = document.getElementById('btnAuditPurgeNow');
+        var statusEl = document.getElementById('auditRetentionSettingsStatus');
+        if (!confirm('Purge audit log rows older than the configured threshold now? Removed rows are archived to disk first.')) return;
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Purging...';
+        if (statusEl) { statusEl.textContent = ''; statusEl.className = 'small'; }
+
+        fetch('api/audit-retention.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ action: 'purge_now', csrf_token: csrfToken })
+        }).then(function (r) { return r.json(); })
+          .then(function (data) {
+              btn.disabled = false;
+              btn.innerHTML = '<i class="bi bi-archive me-1"></i>Purge now';
+              if (data.error) {
+                  if (statusEl) { statusEl.textContent = data.error; statusEl.className = 'small text-danger'; }
+                  return;
+              }
+              if (statusEl) {
+                  statusEl.textContent = data.detail || '';
+                  statusEl.className = 'small ' + (data.success ? 'text-success'
+                                                : (data.skipped ? 'text-warning' : 'text-danger'));
+              }
+              loadAuditRetentionStatus();
+          })
+          .catch(function (err) {
+              btn.disabled = false;
+              btn.innerHTML = '<i class="bi bi-archive me-1"></i>Purge now';
+              if (statusEl) { statusEl.textContent = err.message; statusEl.className = 'small text-danger'; }
+          });
     }
 
     // ═══════════════════════════════════════════════════════════════

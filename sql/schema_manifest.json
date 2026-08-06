@@ -79,6 +79,16 @@
             "position_count",
             "transport"
         ],
+        "audit_log_purges": [
+            "archive_filename",
+            "archive_sha256",
+            "cutoff_date",
+            "detail",
+            "rows_purged",
+            "status",
+            "triggered_by",
+            "triggered_by_user_id"
+        ],
         "bridge_tokens": [
             "bridge_id",
             "created_by",
@@ -397,6 +407,10 @@
             "set_severity",
             "sort",
             "type"
+        ],
+        "inbound_message_dedupe": [
+            "channel",
+            "external_id"
         ],
         "internal_messages": [
             "body",
@@ -724,6 +738,9 @@
             "name",
             "sort_order"
         ],
+        "newui_vehicles": [
+            "member_id"
+        ],
         "notification_log": [
             "body",
             "channel",
@@ -1043,6 +1060,7 @@
             "deleted_at",
             "deleted_by",
             "description",
+            "disposition_id",
             "facility",
             "in_types_id",
             "incident_number",
@@ -1064,6 +1082,16 @@
             "street",
             "to_address",
             "updated"
+        ],
+        "ticket_disposition": [
+            "active",
+            "code",
+            "description",
+            "discipline",
+            "org_id",
+            "requires_comment",
+            "sort_order",
+            "status_val"
         ],
         "tts_engines": [
             "config_json",
@@ -1300,6 +1328,7 @@
         "aprs_watchlist",
         "assigns",
         "atak_unbound_uids",
+        "audit_log_purges",
         "bridge_tokens",
         "capacity_categories",
         "captions",
@@ -1344,6 +1373,7 @@
         "ics_forms",
         "ics_positions",
         "in_types",
+        "inbound_message_dedupe",
         "internal_messages",
         "languages",
         "location_ingest_tokens",
@@ -1434,6 +1464,7 @@
         "teams",
         "tfa_remember_tokens",
         "ticket",
+        "ticket_disposition",
         "time_activity_types",
         "tracks",
         "training_records",
@@ -1465,8 +1496,8 @@
     "_meta": {
         "generated_by": "tools/gen_schema_manifest.php",
         "purpose": "columns this code writes to + tables it references; checked by inc/schema-verify.php",
-        "tables": 131,
-        "columns": 1026,
-        "required_tables": 171
+        "tables": 135,
+        "columns": 1046,
+        "required_tables": 174
     }
 }

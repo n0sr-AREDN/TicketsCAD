@@ -268,7 +268,19 @@ function resolve_unit_address(int $memberOrResponderId, string $transport, strin
  * meshcore (no inbound-handle use case yet). Keeping a separate map here
  * avoids widening the send-side map with receive-only keys.
  *
- * @param string $transport  zello | dmr | meshtastic | aprs
+ * Phase 134 (Model 3, GH #23) adds telegram + slack, both RECEIVE-side only
+ * (inbound group/channel messages routed to the sender's open assignment).
+ * telegram resolves on 'username' (the handle a member would actually type,
+ * not their numeric user id); slack resolves on 'user_id' (Slack's stable
+ * U/W-prefixed member id — display names change, this does not). Both keys
+ * MUST match the `key` declared in the matching comm_modes row's
+ * fields_json exactly — seeded by sql/run_phase134_inbound_routing.php,
+ * which documents and verifies this alignment. This is the same
+ * schema-mismatch failure class CLAUDE.md documents extensively: a seed key
+ * and a reverse-map key that quietly drift apart make resolution return
+ * null forever with no error anywhere.
+ *
+ * @param string $transport  zello | dmr | meshtastic | aprs | telegram | slack
  * @param string $handle     Raw sender handle/username/id from the message
  * @return int|null          member_id, or null if unknown / on error
  */
@@ -280,6 +292,11 @@ function comm_resolve_member_by_address(string $transport, string $handle): ?int
         'dmr'        => 'radio_id',
         'meshtastic' => 'node_id',
         'aprs'       => 'callsign_ssid',
+        'telegram'   => 'username',   // Telegram username, not numeric user id —
+                                       // matches what a member would actually type
+        'slack'      => 'user_id',    // Slack's stable U0123456-style id, NOT
+                                       // a display name (display names change;
+                                       // this comment is important, keep it)
     ];
 
     $code = strtolower(trim($transport));

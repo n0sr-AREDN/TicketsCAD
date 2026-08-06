@@ -29,6 +29,11 @@ if ($ticketId && !user_can_access_entity('incident', $ticketId)) {
 }
 
 // Load incident data if ticket_id provided
+// Soft-delete sweep (issue #25 follow-up) — exporting a soft-deleted
+// incident's ICS-213 form pulled the same street/contact/narrative content
+// the two fixed endpoints in 1502157 stopped leaking. A deleted incident
+// now resolves $incident to null, same as a nonexistent id, which
+// generateICS213() already renders as a blank/unpopulated form below.
 $incident = null;
 if ($ticketId) {
     try {
@@ -36,7 +41,8 @@ if ($ticketId) {
             "SELECT t.*, it.name AS incident_type_name
              FROM " . db_table('ticket') . " t
              LEFT JOIN " . db_table('in_types') . " it ON t.in_types_id = it.id
-             WHERE t.id = ?",
+             WHERE t.id = ?
+               AND (t.deleted_at IS NULL OR t.deleted_at = '0000-00-00 00:00:00')",
             [$ticketId]
         );
     } catch (Exception $e) {

@@ -130,6 +130,7 @@ function get_table_config(string $target): array
             'columns' => [
                 'id'               => ['label' => 'ID',              'type' => 'int',    'required' => false, 'import' => false, 'export' => true],
                 'member_id'        => ['label' => 'Member ID',       'type' => 'int',    'required' => false, 'import' => true,  'export' => true],
+                'owner_org_id'     => ['label' => 'Owner Agency ID', 'type' => 'int',    'required' => false, 'import' => true,  'export' => true],
                 'vehicle_type_id'  => ['label' => 'Vehicle Type ID', 'type' => 'int',    'required' => false, 'import' => true,  'export' => true],
                 'year'             => ['label' => 'Year',            'type' => 'int',    'required' => false, 'import' => true,  'export' => true],
                 'make'             => ['label' => 'Make',            'type' => 'string', 'required' => false, 'import' => true,  'export' => true],
@@ -306,6 +307,20 @@ function get_table_config(string $target): array
             'id_column'    => 'id',
             'match_columns' => [],
             'audit_cols'   => [],
+            // Phase 132 Step 5 (GH #16) — disposition_code below needs a
+            // value from a JOINed table (`ticket_disposition`.`code`), not
+            // just another column of `ticket`, so the existing `legacy`
+            // alias mechanism (same-table rename only) can't express it.
+            // `joins` is a structured list export_csv() turns into real
+            // LEFT JOIN clauses at query-build time — see that function
+            // for how `table`/`alias`/`on_local`/`on_foreign` are used.
+            // Kept as plain data (no db_table() calls here) so this
+            // function stays a pure config builder, matching every other
+            // target above.
+            'joins' => [
+                ['table' => 'ticket_disposition', 'alias' => 'td',
+                 'on_local' => 'disposition_id', 'on_foreign' => 'id'],
+            ],
             'columns' => [
                 'id'           => ['label' => 'ID',            'type' => 'int',     'required' => false, 'import' => false, 'export' => true],
                 'scope'        => ['label' => 'Scope/Summary', 'type' => 'string',  'required' => false, 'import' => false, 'export' => true],
@@ -339,6 +354,22 @@ function get_table_config(string $target): array
                 'call_received'=> ['label' => 'Call Received',  'type' => 'string', 'required' => false, 'import' => false, 'export' => true, 'legacy' => 'date'],
                 'problemstart' => ['label' => 'Problem Start',  'type' => 'string', 'required' => false, 'import' => false, 'export' => true],
                 'closed'       => ['label' => 'Closed',         'type' => 'string', 'required' => false, 'import' => false, 'export' => true, 'legacy' => 'problemend'],
+                // Phase 132 Step 5 (GH #16) — the disposition's stable
+                // `code`, never the renameable `status_val` label (plan.md
+                // §6: "export `code`, not the label" — the whole reason
+                // `code` exists is to survive local relabeling). `sql` is a
+                // raw, already-qualified SELECT expression consumed by
+                // export_csv() instead of the plain-column/`legacy` paths;
+                // `joined_table`/`joined_column` let
+                // tests/test_import_export_schema.php verify it against the
+                // JOINed table's real schema rather than `ticket`'s (which
+                // has no such column). Export-only, like every other column
+                // in this target: a NULL disposition_id (the normal state
+                // for most incidents) exports as an empty string, not an
+                // error — see export_csv()'s CSV-row builder.
+                'disposition_code' => ['label' => 'Disposition Code', 'type' => 'string', 'required' => false,
+                    'import' => false, 'export' => true, 'sql' => '`td`.`code`',
+                    'joined_table' => 'ticket_disposition', 'joined_column' => 'code'],
             ],
         ],
     ];
@@ -695,17 +726,40 @@ function export_csv(array $config, array $filters = []): string
     $pdo = db();
     $table = db_table($config['table']);
     $columns = $config['columns'];
+    $hasJoins = !empty($config['joins']);
+
+    // Phase 132 Step 5 (GH #16) — turn the config's structured `joins`
+    // list into real LEFT JOIN clauses. Kept out of get_table_config() so
+    // that function stays a pure data builder; db_table() is only ever
+    // called from executable code in this file, same as everywhere else
+    // here.
+    $joinSQL = '';
+    foreach (($config['joins'] ?? []) as $j) {
+        $joinTable = db_table($j['table']);
+        $joinSQL .= " LEFT JOIN {$joinTable} `{$j['alias']}` ON {$table}.`{$j['on_local']}` = `{$j['alias']}`.`{$j['on_foreign']}`";
+    }
 
     // Build SELECT with export columns
     $selectCols = [];
     $headerLabels = [];
     foreach ($columns as $dbCol => $def) {
         if (!$def['export']) continue;
-        // Use legacy column with alias for export
-        if (isset($def['legacy'])) {
-            $selectCols[] = "`{$def['legacy']}` AS `{$dbCol}`";
+        if (isset($def['sql'])) {
+            // A value from a JOINed table — the `legacy` mechanism only
+            // re-points to another column of the SAME table, so a raw,
+            // already-qualified SQL expression is the only way to reach
+            // one from here.
+            $selectCols[] = "{$def['sql']} AS `{$dbCol}`";
+        } elseif (isset($def['legacy'])) {
+            // A JOIN puts the joined table's columns in scope too, so an
+            // unqualified `legacy` reference that used to be unambiguous
+            // (e.g. `id`, which `ticket_disposition` also has) can stop
+            // being one. Qualify with the base table whenever a join is
+            // present; every other target has no joins, so this leaves
+            // their SQL text unchanged.
+            $selectCols[] = ($hasJoins ? "{$table}." : '') . "`{$def['legacy']}` AS `{$dbCol}`";
         } else {
-            $selectCols[] = "`{$dbCol}`";
+            $selectCols[] = ($hasJoins ? "{$table}." : '') . "`{$dbCol}`";
         }
         $headerLabels[] = $def['label'];
     }
@@ -718,8 +772,12 @@ function export_csv(array $config, array $filters = []): string
         $searchCols = [];
         foreach ($columns as $dbCol => $def) {
             if ($def['type'] === 'string' && $def['export']) {
-                $actual = isset($def['legacy']) ? $def['legacy'] : $dbCol;
-                $searchCols[] = "`{$actual}` LIKE ?";
+                if (isset($def['sql'])) {
+                    $searchCols[] = "{$def['sql']} LIKE ?";
+                } else {
+                    $actual = isset($def['legacy']) ? $def['legacy'] : $dbCol;
+                    $searchCols[] = ($hasJoins ? "{$table}." : '') . "`{$actual}` LIKE ?";
+                }
                 $params[] = $term;
             }
         }
@@ -729,7 +787,10 @@ function export_csv(array $config, array $filters = []): string
     }
 
     $whereSQL = !empty($where) ? 'WHERE ' . implode(' AND ', $where) : '';
-    $sql = "SELECT " . implode(', ', $selectCols) . " FROM {$table} {$whereSQL} ORDER BY `{$config['id_column']}` LIMIT 10000";
+    // Same ambiguity reasoning as the SELECT list above: qualify the
+    // ORDER BY column with the base table whenever a join is present.
+    $orderCol = ($hasJoins ? "{$table}." : '') . "`{$config['id_column']}`";
+    $sql = "SELECT " . implode(', ', $selectCols) . " FROM {$table}{$joinSQL} {$whereSQL} ORDER BY {$orderCol} LIMIT 10000";
 
     try {
         $rows = db_fetch_all($sql, $params);
