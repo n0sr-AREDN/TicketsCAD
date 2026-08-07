@@ -3,6 +3,24 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.9] — 2026-08-06
+
+### Fixed
+
+- **Updating to v4.2.8 could duplicate every team in the list.** `teams` had
+  a primary key on `id` and nothing else — no unique constraint on the team
+  name — so `sql/membership.sql`'s starter-team seed was never actually
+  protected by its own `INSERT IGNORE` the way its sibling seeds are.
+  Whenever that file's tracked content changed, the standard "safe to
+  re-import" install/update path re-inserted the same four starter teams
+  again. A real UNIQUE constraint on the team name now makes that guarantee
+  true. Existing duplicates are merged automatically on update — the copy
+  with more members is kept, any team members on the removed copy are
+  moved over first (a member on both copies is kept once, not doubled), and
+  nothing is deleted that wasn't a true duplicate. Saving a team with a
+  name already in use now shows a clear message instead of a database
+  error. Reported by Chris Byrd, Google Group.
+
 ## [4.2.8] — 2026-08-06
 
 ### Fixed

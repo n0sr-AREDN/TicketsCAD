@@ -3839,7 +3839,8 @@ CREATE TABLE `teams` (
   `by` int(7) NOT NULL COMMENT 'user index',
   `from` varchar(16) NOT NULL COMMENT 'IP addr',
   `on` datetime NOT NULL COMMENT 'last update',
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_teams_team_name` (`team`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

@@ -67,36 +67,54 @@ function team_upsert_internal(array $input, int $userId, ?int $existingId = null
             return ['id' => 0, 'errors' => ['not_found'], 'is_new' => false];
         }
 
-        db_query(
-            "UPDATE " . db_table('teams') . "
-             SET `team` = ?, `mission` = ?, `ttypes_id` = ?, `leader` = ?, `leader_dpty` = ?,
-                 `nims_resource_type` = ?, `nims_typing_level` = ?, `rtlt_code` = ?,
-                 `updated_at` = NOW()
-             WHERE `id` = ?",
-            [
-                $name, $description, $teamTypeId, $leaderId, $deputyId,
-                $nimsResourceType, $nimsTypingLevel, $rtltCode,
-                $id,
-            ]
-        );
+        try {
+            db_query(
+                "UPDATE " . db_table('teams') . "
+                 SET `team` = ?, `mission` = ?, `ttypes_id` = ?, `leader` = ?, `leader_dpty` = ?,
+                     `nims_resource_type` = ?, `nims_typing_level` = ?, `rtlt_code` = ?,
+                     `updated_at` = NOW()
+                 WHERE `id` = ?",
+                [
+                    $name, $description, $teamTypeId, $leaderId, $deputyId,
+                    $nimsResourceType, $nimsTypingLevel, $rtltCode,
+                    $id,
+                ]
+            );
+        } catch (Exception $e) {
+            // Phase 137 (2026-08-06) added a real UNIQUE KEY on teams.team --
+            // translate the duplicate-key exception into the same friendly
+            // shape as the 'not_found'/'name is required' cases above,
+            // rather than letting the raw MySQL message reach the user.
+            if (stripos($e->getMessage(), 'Duplicate entry') !== false) {
+                return ['id' => 0, 'errors' => ["A team named \"{$name}\" already exists"], 'is_new' => false];
+            }
+            throw $e;
+        }
     } else {
         // INSERT — `sub-group`, `by`, `from`, `on` columns are legacy
         // NOT NULL with no default; supply empty/zero placeholders.
-        db_query(
-            "INSERT INTO " . db_table('teams') . "
-             (`team`, `sub-group`, `mission`, `ttypes_id`, `leader`, `leader_dpty`,
-              `nims_resource_type`, `nims_typing_level`, `rtlt_code`,
-              `formed`, `by`, `from`, `on`, `created_at`)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?, '', NOW(), NOW())",
-            [
-                $name,
-                '',  // sub-group
-                $description,
-                $teamTypeId, $leaderId, $deputyId,
-                $nimsResourceType, $nimsTypingLevel, $rtltCode,
-                $userId,
-            ]
-        );
+        try {
+            db_query(
+                "INSERT INTO " . db_table('teams') . "
+                 (`team`, `sub-group`, `mission`, `ttypes_id`, `leader`, `leader_dpty`,
+                  `nims_resource_type`, `nims_typing_level`, `rtlt_code`,
+                  `formed`, `by`, `from`, `on`, `created_at`)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?, '', NOW(), NOW())",
+                [
+                    $name,
+                    '',  // sub-group
+                    $description,
+                    $teamTypeId, $leaderId, $deputyId,
+                    $nimsResourceType, $nimsTypingLevel, $rtltCode,
+                    $userId,
+                ]
+            );
+        } catch (Exception $e) {
+            if (stripos($e->getMessage(), 'Duplicate entry') !== false) {
+                return ['id' => 0, 'errors' => ["A team named \"{$name}\" already exists"], 'is_new' => true];
+            }
+            throw $e;
+        }
         $id = (int) db_insert_id();
     }
 

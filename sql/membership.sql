@@ -74,8 +74,19 @@ CREATE TABLE IF NOT EXISTS `member_certifications` (
 -- UNIQUE KEY on `name` set on each target table's CREATE TABLE above
 -- (member_types.name and member_status.name were added earlier in this
 -- file; certifications.name was added 2026-07-03 alongside the equipment
--- fix; teams.name is in seed_demo_data / installer-managed elsewhere so
--- INSERT IGNORE here is defensive.)
+-- fix).
+--
+-- teams.team did NOT have a backing UNIQUE KEY until Phase 137
+-- (sql/run_phase137_teams_name_unique.php, 2026-08-06) -- this comment
+-- previously called the INSERT IGNORE below "defensive" on the assumption
+-- that was good enough. It was not: install_fresh.php re-imports this file
+-- whenever its tracked content hash changes (by design, for genuinely
+-- idempotent tables), and INSERT IGNORE with no constraint to violate does
+-- not suppress anything -- it just inserts the same four teams again.
+-- Confirmed live: GH: Chris Byrd, Google Group 2026-08-06, "it duplicated
+-- all the teams in the list" after updating to v4.2.8. Phase 137 merges any
+-- existing duplicates and adds `uk_teams_team_name` UNIQUE KEY(team), so
+-- this INSERT IGNORE is now backed the same way as its siblings above.
 INSERT IGNORE INTO `member_types` (`name`, `description`, `color`, `sort_order`) VALUES
 ('Full Member', 'Active full member', '#198754', 1),
 ('Associate', 'Associate/auxiliary member', '#0d6efd', 2),
