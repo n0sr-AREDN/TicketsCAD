@@ -604,7 +604,22 @@ function map_row_to_record($row, $columnMap, $defaults, $firstNameCol, $lastName
 }
 
 /**
- * Find an existing constituent that matches by name+phone or name+email.
+ * Find an existing constituent that matches by name+phone, name+email, or
+ * (GH#37) name+street when neither phone nor email is available.
+ *
+ * Originally required a phone or email to even attempt a match, so a
+ * contact recorded with neither -- ordinary for a personal contacts list,
+ * not everyone has a phone number written down -- could never be
+ * recognized on a re-import. Re-running the same file, even once, silently
+ * inserted a second copy of every such contact with no warning shown.
+ * Reported by Chris Byrd: "Contacts Doubled."
+ *
+ * Street is a reasonable fallback identifier (two different people sharing
+ * both a full name AND a street address is unlikely) but is deliberately
+ * NOT enough on its own without a name match, and name alone is still never
+ * enough -- this stays conservative rather than risk merging two different
+ * people who happen to share a name.
+ *
  * Returns the existing record or null.
  */
 function find_existing_match($record, $prefix) {
@@ -613,9 +628,10 @@ function find_existing_match($record, $prefix) {
 
     $phone = normalize_phone($record['phone'] ?? '');
     $email = strtolower(trim($record['email'] ?? ''));
+    $street = strtolower(trim($record['street'] ?? ''));
 
     // Must have at least name + one identifier
-    if ($phone === '' && $email === '') return null;
+    if ($phone === '' && $email === '' && $street === '') return null;
 
     $conditions = [];
     $params = [];
@@ -624,7 +640,7 @@ function find_existing_match($record, $prefix) {
     $conditions[] = 'LOWER(TRIM(`contact`)) = ?';
     $params[] = $name;
 
-    // Build phone/email OR condition
+    // Build phone/email/street OR condition
     $idConditions = [];
 
     if ($phone !== '') {
@@ -642,6 +658,14 @@ function find_existing_match($record, $prefix) {
     if ($email !== '') {
         $idConditions[] = '(LOWER(TRIM(`email`)) = ?)';
         $params[] = $email;
+    }
+
+    // Fallback only -- never the sole path when phone/email exist, since a
+    // typo'd address shouldn't stop a real phone/email match, but it DOES
+    // extend the check to contacts that have neither.
+    if ($street !== '') {
+        $idConditions[] = '(LOWER(TRIM(`street`)) = ?)';
+        $params[] = $street;
     }
 
     if (empty($idConditions)) return null;

@@ -3,6 +3,20 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.11] — 2026-08-07
+
+### Fixed
+
+- **A contact with no phone number or email on file could never be
+  recognized on a re-import**, so running the same import file again —
+  even once — silently inserted a second copy of every such contact, with
+  nothing shown to indicate it had happened. Import now also matches by
+  name and street address when neither a phone nor an email is available,
+  so a repeat import merges instead of duplicating. Deliberately
+  conservative: a real phone/email match still wins first, and a name by
+  itself is still never enough on its own to merge two records. Reported
+  by Chris Byrd, GitHub #37.
+
 ## [4.2.10] — 2026-08-07
 
 ### Fixed
