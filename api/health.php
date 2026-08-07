@@ -425,19 +425,31 @@ function checkBackups(): array
         $lastStatus = (string) $st['last_status'];
         $refused    = strpos($lastStatus, 'skipped:') === 0;
         $failed     = strpos($lastStatus, 'failed') === 0;
+        // GH#32: $lastStatus is only rewritten when a real backup attempt
+        // runs, so a one-time space refusal can outlive the condition that
+        // caused it (opportunistic scheduling defaults to a 24h retry
+        // interval). Only fly the "error" banner while backup_status()'s
+        // LIVE re-check (space_ok_now) confirms the disk is still short —
+        // otherwise this is history, not a current problem.
+        $refusedNow = $refused && !$st['space_ok_now'];
 
         if (!$st['enabled']) {
             $status  = 'warn';
             $message = 'Automatic backups are turned off';
-        } elseif ($refused || $failed) {
+        } elseif ($refusedNow || $failed) {
             $status  = 'error';
-            $message = $refused ? 'Last backup was refused — not enough room' : 'Last backup failed';
+            $message = $refusedNow ? 'Last backup was refused — not enough room' : 'Last backup failed';
         } elseif ($st['last_ok_at'] === null) {
             $status  = 'error';
             $message = 'No backup has ever completed';
         } elseif ($st['stale']) {
             $status  = 'warn';
             $message = 'Last verified backup was ' . (int) $st['last_ok_age_hours'] . 'h ago';
+        } elseif ($refused) {
+            // Refused historically, but the live check now passes -- don't
+            // keep showing an error for a condition that has since cleared.
+            $status  = 'warn';
+            $message = 'A past backup attempt was refused for space, but that has since cleared';
         } elseif ($st['space_warning'] !== '') {
             $status  = 'warn';
             $message = 'Backup storage is near its limit';
@@ -461,6 +473,7 @@ function checkBackups(): array
                 'cap_pct'        => (int) $st['cap_pct'],
                 'free_size'      => (string) $st['free_size'],
                 'min_free_size'  => (string) $st['min_free_size'],
+                'temp_free_size' => (string) $st['temp_free_size'],
                 'last_status'    => $lastStatus,
                 'directory'      => (string) $st['directory'],
                 'space_warning'  => (string) $st['space_warning'],

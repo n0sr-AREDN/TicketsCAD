@@ -160,5 +160,91 @@ $rs2 = @file_get_contents("$base/tools/restore.php") ?: '';
 foreach (glob("$tmp2/*") ?: [] as $f) @unlink($f);
 @rmdir($tmp2);
 
+// ── 8. GH#32 — space_warning must reflect LIVE conditions, not a stale
+//    historical string. A refusal deliberately advances backup_last_run_at
+//    (see backup_run_now's comment), so on an install with the default 24h
+//    opportunistic interval a one-time space problem can sit in
+//    backup_last_status, worded as current, long after it cleared — while the
+//    live free-space figures shown right next to it on Status already look
+//    fine. That contradiction is exactly what was reported: "System Status
+//    shows issue detected... Last Backup refused -- not enough room."
+//
+// get_variable() caches the WHOLE settings table in a function-static on its
+// first call per process (inc/functions.php) and never invalidates it, so a
+// backup_setting_set() write later in THIS SAME PROCESS is invisible to any
+// later backup_setting()/backup_status() call here -- fine in production
+// (every real request is its own process) but fatal to a test that wants to
+// see its own write take effect. Read back through a fresh subprocess instead.
+function backupStatusFresh(string $base): array {
+    $script = rtrim(sys_get_temp_dir(), '/\\') . '/tcad_bk_status_' . getmypid() . '_' . mt_rand() . '.php';
+    file_put_contents($script, "<?php\nrequire " . var_export("$base/config.php", true) . ";\n"
+        . "require_once " . var_export("$base/inc/backup_schedule.php", true) . ";\n"
+        . "echo json_encode(backup_status());\n");
+    $php = defined('PHP_BINARY') && PHP_BINARY ? PHP_BINARY : 'php';
+    $cmd = escapeshellarg($php) . ' ' . escapeshellarg($script);
+    exec($cmd . ' 2>&1', $lines, $exit);
+    @unlink($script);
+    $decoded = $exit === 0 ? json_decode(implode("\n", $lines), true) : null;
+    return is_array($decoded) ? $decoded : ['__error' => implode("\n", $lines), '__exit' => $exit];
+}
+
+$savedStatus  = backup_setting('backup_last_status', 'never run');
+$savedSkipAt  = backup_setting('backup_last_skip_at', '0');
+$savedFloorMb = backup_setting('backup_min_free_mb', '1024');
+
+try {
+    $staleReason = 'skipped: on the backup directory (' . sys_get_temp_dir()
+        . '): not enough disk space: 1 KB free, this backup needs about 1 MB, '
+        . 'which would leave 0 B -- below the 1048576 GB reserve.';
+    backup_setting_set('backup_last_status', $staleReason);
+    backup_setting_set('backup_last_skip_at', (string) (time() - 3600));
+
+    // (a) The historical refusal is real, but THIS machine's actual free
+    //     space and the default 1024 MB floor are nowhere near each other --
+    //     the condition has plainly cleared.
+    backup_setting_set('backup_min_free_mb', $savedFloorMb !== '' ? $savedFloorMb : '1024');
+    $st = backupStatusFresh($base);
+    ($st['space_ok_now'] ?? null) === true
+        ? ok('GH#32: live space check passes when the real floor is sane')
+        : bad('GH#32: live check should pass', json_encode($st));
+    (strpos($st['space_warning'] ?? '', 'since cleared') !== false)
+        ? ok('GH#32: a cleared refusal is worded as history, not a live emergency')
+        : bad('GH#32: cleared-refusal wording', $st['space_warning'] ?? json_encode($st));
+    (strpos($st['space_warning'] ?? '', 'condition is still present') === false)
+        ? ok('GH#32: cleared refusal does not claim to still be happening')
+        : bad('GH#32: should not claim still-present', $st['space_warning'] ?? '');
+
+    // (b) Now make the floor genuinely impossible to satisfy (no real disk
+    //     has 1000 TB free) -- the SAME stale message should now correctly
+    //     read as a live, current problem.
+    backup_setting_set('backup_min_free_mb', (string) (1000 * 1024 * 1024)); // ~1000 TB
+    $st2 = backupStatusFresh($base);
+    ($st2['space_ok_now'] ?? null) === false
+        ? ok('GH#32: live space check fails against an impossible floor')
+        : bad('GH#32: live check should fail', json_encode($st2));
+    (strpos($st2['space_warning'] ?? '', 'condition is still present') !== false)
+        ? ok('GH#32: a genuinely current refusal is worded as a live problem')
+        : bad('GH#32: still-present wording', $st2['space_warning'] ?? json_encode($st2));
+
+    // (c) backup_live_space_check() itself reports both targets the guard
+    //     actually checks (backup dir AND temp dir -- the dump lands in temp
+    //     before compression), so an admin can see which one is short rather
+    //     than only ever seeing the backup directory's own number.
+    $live = backup_live_space_check(backup_dir());
+    (array_key_exists('backup_directory', $live['targets']) && array_key_exists('temporary_directory', $live['targets']))
+        ? ok('GH#32: live check reports both the backup dir and the temp dir')
+        : bad('GH#32: live check targets shape', json_encode(array_keys($live['targets'])));
+    (array_key_exists('temp_free_size', $st2) && array_key_exists('temp_directory', $st2))
+        ? ok('GH#32: backup_status() surfaces the temp-directory numbers too')
+        : bad('GH#32: temp dir surfaced in status()', json_encode($st2));
+} finally {
+    // Never leave the real settings table worse than we found it -- this test
+    // exists BECAUSE a stale/impossible setting silently poisoned status
+    // output; leaving one behind here would be the same bug self-inflicted.
+    backup_setting_set('backup_last_status', $savedStatus);
+    backup_setting_set('backup_last_skip_at', $savedSkipAt);
+    backup_setting_set('backup_min_free_mb', $savedFloorMb);
+}
+
 echo "\n$pass passed, $fail failed\n";
 exit($fail ? 1 : 0);

@@ -3,6 +3,48 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.10] — 2026-08-07
+
+### Fixed
+
+- **Equipment activity log showed the wrong person checking equipment in or
+  out.** The log's "By:" line is who performed the action, stored as the
+  logged-in user's account id — but was being looked up in the personnel
+  roster instead of the account list, two separate id sequences that only
+  occasionally happen to match. Whichever unrelated roster member shared
+  that number showed up instead of the real person. Reported by Chris Byrd,
+  GitHub #34.
+
+- **System Overview showed inflated counts for Facilities, Units, and
+  Personnel** — the only three of the six counted there that support
+  delete/restore. The counts included anything sitting in the wastebasket;
+  the real list pages already excluded it, which is why those pages showed
+  the correct numbers. Incident Types and Teams (no delete/restore on
+  either) were already correct. Reported by Chris Byrd, GitHub #36.
+
+- **New Incident's responder-assignment list could show a unit twice.** If a
+  unit was ever deleted and re-added under the same name — a normal cleanup
+  step — the old deleted copy stayed in that list right alongside its
+  replacement. Fixed by excluding deleted units, matching how the rest of
+  the app already treats them. Reported by Chris Byrd, GitHub #40.
+
+- **A one-time backup space refusal could show as a current problem for up
+  to a day.** The "backup was refused, not enough room" warning on System
+  Status was only ever rewritten when a real backup attempt ran, so on the
+  default 24-hour schedule a condition that had already cleared could keep
+  reading as urgent — while the live free-space number shown right next to
+  it already looked fine. The warning now re-checks live conditions before
+  it's shown, and the temp-directory space (the guard checks that too, not
+  just the backup folder) is now visible alongside it. Reported by Chris
+  Byrd, GitHub #32.
+
+- **Adding an org-scoping column could fail outright on an older table**,
+  silently, with a database error that was only ever logged and never
+  surfaced — found on this project's own Teams table, which reported a
+  normal, current row format everywhere it was checked but still refused
+  the change. Now retried once against a version of the table that gets
+  the same result but succeeds.
+
 ## [4.2.9] — 2026-08-06
 
 ### Fixed

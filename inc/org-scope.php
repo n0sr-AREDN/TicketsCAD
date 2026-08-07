@@ -399,7 +399,31 @@ function ensure_org_id_column(string $table): void
             [$fullTable]
         );
         if ($existing) return;
-        db_query("ALTER TABLE `{$fullTable}` ADD COLUMN `org_id` INT NULL DEFAULT NULL");
+        try {
+            db_query("ALTER TABLE `{$fullTable}` ADD COLUMN `org_id` INT NULL DEFAULT NULL");
+        } catch (Exception $e) {
+            // MySQL/MariaDB 1118 "Row size too large" -- seen in the wild on
+            // teams, a table old enough to predate Barracuda/Dynamic becoming
+            // the default InnoDB row format. information_schema.TABLES and
+            // even SHOW TABLE STATUS can report such a table as ROW_FORMAT
+            // 'Dynamic' while its .ibd file is still physically the old,
+            // tighter format -- that metadata field reflects what a NEW table
+            // would get today, not necessarily what THIS table has on disk
+            // until it is rebuilt. An explicit ROW_FORMAT=DYNAMIC forces that
+            // rebuild, letting the variable-length columns store off-page and
+            // freeing the room a plain ADD COLUMN needs. Reproduced and
+            // verified against a real affected install's teams table before
+            // writing this -- retried ONLY for this specific error; anything
+            // else still just logs and gives up, same as before.
+            $msg = $e->getMessage();
+            if (strpos($msg, '1118') !== false || stripos($msg, 'Row size too large') !== false) {
+                db_query("ALTER TABLE `{$fullTable}` ROW_FORMAT=DYNAMIC");
+                db_query("ALTER TABLE `{$fullTable}` ADD COLUMN `org_id` INT NULL DEFAULT NULL");
+                error_log("[ensure_org_id_column] {$fullTable} needed ROW_FORMAT=DYNAMIC before org_id would fit");
+            } else {
+                throw $e;
+            }
+        }
         error_log("[ensure_org_id_column] added org_id column to {$fullTable}");
     } catch (Exception $e) {
         error_log("[ensure_org_id_column] {$fullTable} check/add failed: " . $e->getMessage());

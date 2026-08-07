@@ -56,7 +56,35 @@ if (empty($facilities)) {
     );
 }
 
-// Available responders — include active assignment count for real availability status
+// Available responders — include active assignment count for real availability status.
+//
+// GH#40 (Chris Byrd, 2026-08-07): "All assign responders are duplicated" on
+// the New Incident screen. The old 3-tier hide-column try/fallback never
+// actually reached a deleted_at filter in practice: base_schema.sql's
+// responder table has no `hide` column at all, so on every fresh v4.0
+// install (Chris's included) the first two tiers threw "unknown column
+// r.hide" and silently fell through to the third, which had NO soft-delete
+// filter whatsoever -- every responder, including ones soft-deleted and
+// re-added under the same name (a common cleanup step), showed up next to
+// its replacement, reading as "duplicated." Detect both optional columns
+// via information_schema instead, matching api/responders.php's own real
+// list query (which already gets this right) -- one query, correct on
+// fresh installs, legacy installs with `hide`, and everything between.
+$hasHide = (bool) db_fetch_value(
+    "SELECT 1 FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'hide'",
+    [$prefix . 'responder']
+);
+$hasDeletedAt = (bool) db_fetch_value(
+    "SELECT 1 FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'deleted_at'",
+    [$prefix . 'responder']
+);
+$responderFilters = [];
+if ($hasHide) $responderFilters[] = '(`r`.`hide` = 0 OR `r`.`hide` IS NULL)';
+if ($hasDeletedAt) $responderFilters[] = '`r`.`deleted_at` IS NULL';
+$responderWhere = $responderFilters ? ('WHERE ' . implode(' AND ', $responderFilters)) : '';
+
 $responders = safe_fetch_all(
     "SELECT `r`.`id`, `r`.`name`, `r`.`handle`, `r`.`type`,
             `s`.`description` AS `status`,
@@ -64,20 +92,9 @@ $responders = safe_fetch_all(
              WHERE `a`.`responder_id` = `r`.`id` AND `a`.`clear` IS NULL) AS `active_assignments`
      FROM `{$prefix}responder` `r`
      LEFT JOIN `{$prefix}un_status` `s` ON `r`.`un_status_id` = `s`.`id`
-     WHERE (`r`.`hide` = 0 OR `r`.`hide` IS NULL)
+     {$responderWhere}
      ORDER BY `r`.`name`"
 );
-if (empty($responders)) {
-    $responders = safe_fetch_all(
-        "SELECT `r`.`id`, `r`.`name`, `r`.`handle`, `r`.`type`,
-                `s`.`description` AS `status`,
-                (SELECT COUNT(*) FROM `{$prefix}assigns` `a`
-                 WHERE `a`.`responder_id` = `r`.`id` AND `a`.`clear` IS NULL) AS `active_assignments`
-         FROM `{$prefix}responder` `r`
-         LEFT JOIN `{$prefix}un_status` `s` ON `r`.`un_status_id` = `s`.`id`
-         ORDER BY `r`.`name`"
-    );
-}
 if (empty($responders)) {
     $responders = safe_fetch_all(
         "SELECT `id`, `name`, `handle`, `type`, '' AS `status`, 0 AS `active_assignments`

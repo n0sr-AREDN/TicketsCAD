@@ -442,6 +442,7 @@ $csrf     = csrf_token();
         cap_pct: 'Limit Used',
         free_size: 'Disk Free',
         min_free_size: 'Reserve',
+        temp_free_size: 'Temp Dir Free',
         last_status: 'Last Result',
         directory: 'Folder',
         space_warning: 'Warning'

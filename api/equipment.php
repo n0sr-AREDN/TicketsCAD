@@ -131,12 +131,26 @@ function handleGet() {
         if (empty($rows)) json_error('Equipment not found', 404);
 
         // Activity log
+        //
+        // GH#34 (Chris Byrd, 2026-08-07): "By:" showed the wrong person,
+        // "off by 2 based on position in roster". Root cause: performed_by
+        // is written as $current_user_id (api/auth.php: the LOGIN account's
+        // `user`.id), but this query joined it against `member`.id -- a
+        // completely different id sequence (member records aren't created
+        // 1:1 with login accounts, and `user`.`member` links them, often
+        // NULL). Whichever member happened to share that numeric id showed
+        // up instead of the actual logged-in user -- verified directly: on
+        // this dev box, user.id=3 (the real admin, linked member.id=13,
+        // "ERIC OSTERBERG") joined against member.id=3 and showed "Sarah
+        // Chen" instead. member_id (who equipment is checked out TO) was
+        // never affected -- that column is genuinely a member.id throughout
+        // the checkout/checkin write path, so only the "By:" line was wrong.
         $log = safe_fetch_all_eq(
             "SELECT el.*, CONCAT(m.first_name, ' ', m.last_name) AS member_name,
-                    CONCAT(u.first_name, ' ', u.last_name) AS performed_by_name
+                    COALESCE(NULLIF(TRIM(CONCAT(u.name_f, ' ', u.name_l)), ''), u.`user`) AS performed_by_name
              FROM " . db_table('newui_equipment_log') . " el
              LEFT JOIN " . db_table('member') . " m ON el.member_id = m.id
-             LEFT JOIN " . db_table('member') . " u ON el.performed_by = u.id
+             LEFT JOIN " . db_table('user') . " u ON el.performed_by = u.id
              WHERE el.equipment_id = ?
              ORDER BY el.created_at DESC
              LIMIT 100",

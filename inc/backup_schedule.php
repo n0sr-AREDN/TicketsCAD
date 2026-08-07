@@ -672,6 +672,68 @@ function backup_guard(string $dir): array {
 }
 
 /**
+ * Read-only mirror of backup_guard()'s space/cap checks — same two targets
+ * (backup directory + system temp directory, since the uncompressed dump
+ * lands in temp before compression), but with NO side effects (no retention
+ * pruning, no setting writes). Safe to call on every Status/Settings page
+ * load, unlike backup_guard() itself.
+ *
+ * Exists because backup_status() used to answer "is there a space problem?"
+ * by re-printing backup_last_status verbatim — a string written the last time
+ * a REAL backup attempt ran, which can be hours or days stale on an install
+ * with backup_opportunistic on and a 24h interval (a refusal deliberately
+ * advances backup_last_run_at, see backup_run_now, so a full-disk skip is not
+ * retried until the next interval). Conditions can and do change in that
+ * window — disk fills up transiently during a Windows Update, or clears once
+ * something else is deleted — and the old code had no way to tell "still
+ * true" from "was true once." Reported as GH#32: System Status showed "Last
+ * Backup refused — not enough room" while the live free-space figure shown
+ * right next to it was nowhere near the reserve, because that figure was
+ * computed fresh (from backup_dir() only) while the refusal text was frozen
+ * from whatever the guard saw — sometimes a DIFFERENT directory (temp) than
+ * the one the live figure described.
+ *
+ * @return array{ok:bool,reason:string,undetermined:bool,
+ *   targets:array<string,array{path:string,free:?int,free_size:string,need:?int,ok:bool}>}
+ */
+function backup_live_space_check(string $dir): array {
+    $floor = backup_min_free_bytes();
+    $cap   = backup_max_dir_bytes();
+    $usage = backup_dir_usage($dir);
+    $est   = backup_estimate_bytes($dir);
+
+    $out = ['ok' => true, 'reason' => 'space and limits ok', 'undetermined' => false, 'targets' => []];
+
+    $capVerdict = backup_cap_verdict($usage['bytes'], $usage['count'], $est['archive'], $cap);
+    if (!$capVerdict['ok']) {
+        $out['ok']     = false;
+        $out['reason'] = $capVerdict['reason'] . ' (' . $dir . ')';
+    }
+
+    $targets = [
+        'backup_directory'    => [$dir,               $est['archive']],
+        'temporary_directory' => [sys_get_temp_dir(),  $est['sql']],
+    ];
+    foreach ($targets as $key => [$path, $need]) {
+        $free    = backup_free_bytes((string) $path);
+        $verdict = backup_space_verdict($free, $need !== null ? (int) $need : null, $floor);
+        $out['targets'][$key] = [
+            'path'      => $path,
+            'free'      => $free,
+            'free_size' => $free !== null ? backup_format_size($free) : 'unknown',
+            'need'      => $need,
+            'ok'        => $verdict['ok'],
+        ];
+        if (!empty($verdict['undetermined'])) $out['undetermined'] = true;
+        if ($out['ok'] && !$verdict['ok']) {
+            $out['ok']     = false;
+            $out['reason'] = 'on the ' . str_replace('_', ' ', $key) . ' (' . $path . '): ' . $verdict['reason'];
+        }
+    }
+    return $out;
+}
+
+/**
  * Create one backup: dump → package → VERIFY → record status → prune.
  * Returns ['ok'=>bool, 'path'=>?string, 'detail'=>string].
  */
@@ -1076,10 +1138,24 @@ function backup_status(): array {
     $nearCap   = ($cap > 0 && $capPct >= 80);
     $lastStatus = backup_setting('backup_last_status', 'never run');
     $skipped    = strpos($lastStatus, 'skipped:') === 0;
+    $lastSkipAt = (int) backup_setting('backup_last_skip_at', '0');
+
+    // GH#32: backup_last_status is written only when a real backup attempt
+    // runs, so on an install with the opportunistic scheduler (24h default
+    // interval) a one-time refusal could sit there, worded as if current, for
+    // up to a day after the actual condition cleared. Re-check LIVE before
+    // presenting a "refused" banner so the message and the numbers next to it
+    // never disagree.
+    $live = backup_live_space_check($dir);
 
     $spaceWarning = '';
-    if ($skipped) {
-        $spaceWarning = 'The last automatic backup was refused: ' . substr($lastStatus, 9);
+    if ($skipped && !$live['ok']) {
+        $spaceWarning = 'The last automatic backup was refused and the condition is still present: '
+            . $live['reason'];
+    } elseif ($skipped) {
+        $spaceWarning = 'A backup attempt' . ($lastSkipAt > 0 ? ' on ' . date('Y-m-d H:i', $lastSkipAt) : '')
+            . ' was refused (' . substr($lastStatus, 9) . '), but that condition has since cleared — '
+            . 'the next scheduled attempt should succeed.';
     } elseif ($nearCap && $lowDisk) {
         $spaceWarning = 'Backups are using ' . backup_format_size($usage['bytes']) . ' of their '
             . backup_format_size($cap) . ' limit, and only ' . backup_format_size((int) $free)
@@ -1110,6 +1186,15 @@ function backup_status(): array {
         'cap_pct'         => $capPct,
         'min_free_bytes'  => $floor,
         'min_free_size'   => $floor > 0 ? backup_format_size($floor) : 'no reserve',
+        // The dump also has to fit in the system temp directory before it is
+        // compressed into the archive — a second location the guard checks
+        // (backup_guard, backup_live_space_check) that the older status
+        // report never surfaced, even though a refusal could be about THIS
+        // one while every other number on the page describes the other.
+        'temp_directory'  => $live['targets']['temporary_directory']['path'] ?? sys_get_temp_dir(),
+        'temp_free_bytes' => $live['targets']['temporary_directory']['free'] ?? null,
+        'temp_free_size'  => $live['targets']['temporary_directory']['free_size'] ?? 'unknown',
+        'space_ok_now'    => $live['ok'],
         'space_warning'   => $spaceWarning,
         'last_skip_at'    => (int) backup_setting('backup_last_skip_at', '0') ?: null,
         'last_ok_at'      => $lastOk ?: null,

@@ -31,18 +31,34 @@ $summary = [
 ];
 
 // Counts
-$queries = [
-    'users'      => "SELECT COUNT(*) FROM `{$prefix}user`",
-    'members'    => "SELECT COUNT(*) FROM `{$prefix}member`",
-    'responders' => "SELECT COUNT(*) FROM `{$prefix}responder`",
-    'incidents'  => "SELECT COUNT(*) FROM `{$prefix}in_types`",
-    'facilities' => "SELECT COUNT(*) FROM `{$prefix}facilities`",
-    'teams'      => "SELECT COUNT(*) FROM `{$prefix}teams`",
+//
+// GH#36 (Chris Byrd, 2026-08-07): these were bare COUNT(*) queries, so a
+// soft-deleted member/responder/facility still counted here even though
+// every real list page (api/members.php, api/responders.php,
+// api/facilities.php) filters `deleted_at IS NULL`. Overview showed 59
+// facilities against a real 30, 20 units against a real 10, 17 personnel
+// against a real 14 -- exactly the tables with a wastebasket, while
+// incidents/teams (no deleted_at column) reported correctly. Detect the
+// column per table rather than assuming it exists, matching the pattern
+// api/responders.php already uses for the same reason.
+$tables = [
+    'users'      => $prefix . 'user',
+    'members'    => $prefix . 'member',
+    'responders' => $prefix . 'responder',
+    'incidents'  => $prefix . 'in_types',
+    'facilities' => $prefix . 'facilities',
+    'teams'      => $prefix . 'teams',
 ];
 
-foreach ($queries as $key => $sql) {
+foreach ($tables as $key => $table) {
     try {
-        $summary[$key]['count'] = (int) db_fetch_value($sql);
+        $hasDeletedAt = (bool) db_fetch_value(
+            "SELECT 1 FROM information_schema.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'deleted_at'",
+            [$table]
+        );
+        $where = $hasDeletedAt ? ' WHERE `deleted_at` IS NULL' : '';
+        $summary[$key]['count'] = (int) db_fetch_value("SELECT COUNT(*) FROM `{$table}`{$where}");
     } catch (Exception $e) {
         // Table may not exist
     }
