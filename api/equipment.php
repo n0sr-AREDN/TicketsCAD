@@ -87,6 +87,29 @@ function ensureClothingType() {
     }
 }
 
+/**
+ * GH#38 -- whether newui_equipment_log has been migrated to soft-delete
+ * (sql/run_equipment_log_soft_delete.php). On an install that hasn't run
+ * migrations yet, `deleted_at IS NULL` would 42S22 and safe_fetch_all_eq's
+ * try/catch would silently return an EMPTY log -- worse than not filtering
+ * at all. Mirrors inc/ics-forms-write.php's ics_forms_has_soft_delete().
+ */
+function equipmentLogHasSoftDelete() {
+    static $cached = null;
+    if ($cached !== null) return $cached;
+    try {
+        $n = (int) db_fetch_value(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+                AND COLUMN_NAME IN ('deleted_at', 'deleted_by')",
+            [($GLOBALS['db_prefix'] ?? '') . 'newui_equipment_log']
+        );
+        return $cached = ($n === 2);
+    } catch (Throwable $e) {
+        return $cached = false;
+    }
+}
+
 // Ensure Clothing/Uniform type + size column exist (lazy migration)
 ensureClothingType();
 ensureSizeColumn();
@@ -145,17 +168,30 @@ function handleGet() {
         // Chen" instead. member_id (who equipment is checked out TO) was
         // never affected -- that column is genuinely a member.id throughout
         // the checkout/checkin write path, so only the "By:" line was wrong.
+        $logHasSoftDelete = equipmentLogHasSoftDelete();
+        $logNotDeleted = $logHasSoftDelete ? ' AND el.deleted_at IS NULL' : '';
         $log = safe_fetch_all_eq(
             "SELECT el.*, CONCAT(m.first_name, ' ', m.last_name) AS member_name,
                     COALESCE(NULLIF(TRIM(CONCAT(u.name_f, ' ', u.name_l)), ''), u.`user`) AS performed_by_name
              FROM " . db_table('newui_equipment_log') . " el
              LEFT JOIN " . db_table('member') . " m ON el.member_id = m.id
              LEFT JOIN " . db_table('user') . " u ON el.performed_by = u.id
-             WHERE el.equipment_id = ?
+             WHERE el.equipment_id = ?{$logNotDeleted}
              ORDER BY el.created_at DESC
              LIMIT 100",
             [$id]
         );
+
+        // GH#38 (Chris Byrd, 2026-08-07) -- admin-only delete of activity log
+        // entries, "like the delete function on the ICS Forms." Unlike ICS
+        // forms there's no creator/ownership exception -- see
+        // sql/run_equipment_log_soft_delete.php's docblock for why. Gated on
+        // the migration having run too, or the button would appear and then
+        // 400 on click.
+        $canDeleteLog = $logHasSoftDelete && (is_admin() || rbac_can('action.delete_equipment_log'));
+        foreach ($log as $i => $row) {
+            $log[$i]['can_delete'] = $canDeleteLog;
+        }
 
         json_response(['equipment' => $rows[0], 'log' => $log]);
     }
@@ -332,6 +368,49 @@ function handlePost() {
             audit_log('asset', 'delete', 'equipment', $id, "Deleted equipment '{$eqName}'");
         } catch (Exception $e) {
             json_error('Failed to delete: ' . $e->getMessage());
+        }
+        json_response(['success' => true]);
+    }
+
+    // GH#38 (Chris Byrd, 2026-08-07): "Would like to be able to delete the
+    // Activity Log entries for equipment checked in and out... Be able to
+    // delete like the delete function on the ICS Forms." Admin-only, no
+    // ownership exception (Eric: "admin-only is the right default for
+    // something that removes an audit trail entry") -- unlike ICS forms
+    // there is no creator-may-delete-their-own-draft carve-out here.
+    // Soft delete only (deleted_at/deleted_by), restorable from Settings ->
+    // Wastebasket like every other soft-deletable type in this app.
+    if ($action === 'delete_log_entry') {
+        if (!is_admin() && !rbac_can('action.delete_equipment_log')) {
+            json_error('Forbidden — requires equipment log delete permission', 403);
+        }
+        if (!equipmentLogHasSoftDelete()) {
+            json_error('This install has not run the equipment log migration yet '
+                . '(php sql/run_equipment_log_soft_delete.php)', 400);
+        }
+        $logId = intval($input['log_id'] ?? $input['id'] ?? 0);
+        if (!$logId) json_error('Missing log_id');
+
+        $row = safe_fetch_all_eq(
+            "SELECT id, equipment_id FROM " . db_table('newui_equipment_log') . "
+             WHERE id = ? AND deleted_at IS NULL",
+            [$logId]
+        );
+        if (empty($row)) json_error('Log entry not found', 404);
+
+        try {
+            db_query(
+                "UPDATE " . db_table('newui_equipment_log') . "
+                 SET `deleted_at` = NOW(), `deleted_by` = ?
+                 WHERE id = ?",
+                [$current_user_id, $logId]
+            );
+            audit_log('asset', 'delete', 'equipment_log', $logId,
+                "Deleted equipment activity log entry #{$logId}",
+                ['equipment_id' => $row[0]['equipment_id']]
+            );
+        } catch (Exception $e) {
+            json_error('Failed to delete log entry: ' . $e->getMessage());
         }
         json_response(['success' => true]);
     }

@@ -2,7 +2,7 @@
 /**
  * Import/Export dataset definitions vs the real schema.
  *
- * GH TicketsCAD#14 (a beta tester): four of the eleven Import/Export targets
+ * GH TicketsCAD#14 (Ron Jones): four of the eleven Import/Export targets
  * declared columns their table has never had — twelve phantom columns in
  * total. Exporting Facilities, Teams, User Accounts or Incidents failed
  * outright on a stock schema, and the failure misdirected: the operator was

@@ -269,9 +269,18 @@
         } else {
             selectedLog.forEach(function (entry) {
                 logHtml += '<div class="log-entry action-' + esc(entry.action) + '">';
-                logHtml += '<div class="d-flex justify-content-between">';
+                logHtml += '<div class="d-flex justify-content-between align-items-start">';
                 logHtml += '<span class="fw-semibold">' + actionLabel(entry.action) + '</span>';
-                logHtml += '<span class="text-body-secondary">' + formatDateTime(entry.created_at) + '</span>';
+                logHtml += '<span class="text-body-secondary d-flex align-items-center gap-2">' + formatDateTime(entry.created_at);
+                // GH#38 (Chris Byrd) — delete a single activity log entry,
+                // "like the delete function on the ICS Forms." The server
+                // decides can_delete (admin-only, no ownership exception);
+                // this button never guesses.
+                if (entry.can_delete) {
+                    logHtml += ' <button type="button" class="btn btn-sm btn-link text-danger p-0 btn-delete-log-entry" ' +
+                        'data-log-id="' + entry.id + '" title="Delete this log entry"><i class="bi bi-trash"></i></button>';
+                }
+                logHtml += '</span>';
                 logHtml += '</div>';
                 if (entry.member_name) logHtml += '<div>Member: ' + esc(entry.member_name) + '</div>';
                 if (entry.performed_by_name) logHtml += '<div class="text-body-secondary">By: ' + esc(entry.performed_by_name) + '</div>';
@@ -417,6 +426,25 @@
             detailEmpty.classList.remove('d-none');
             showAlert('success', 'Equipment deleted.');
             loadEquipment();
+        })
+        .catch(function (err) { showAlert('danger', 'Delete failed: ' + err.message); });
+    }
+
+    // GH#38 (Chris Byrd) — delete a single equipment activity log entry.
+    // Soft delete; restorable by an admin from Settings → Wastebasket.
+    function deleteLogEntry(logId) {
+        if (!confirm('Delete this activity log entry? It can be restored from the Wastebasket.')) return;
+
+        fetch('api/equipment.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'delete_log_entry', log_id: logId, csrf_token: window.CSRF_TOKEN || '' })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.error) { showAlert('danger', data.error); return; }
+            showAlert('success', 'Log entry deleted.');
+            if (selectedItem) selectItem(selectedItem.id);
         })
         .catch(function (err) { showAlert('danger', 'Delete failed: ' + err.message); });
     }
@@ -626,6 +654,13 @@
         document.getElementById('btnCheckin').addEventListener('click', checkinEquipment);
         document.getElementById('btnConfirmCheckout').addEventListener('click', confirmCheckout);
         document.getElementById('btnCancelCheckout').addEventListener('click', cancelCheckout);
+
+        // GH#38 — delegated so it keeps working after every renderDetail() re-render.
+        document.getElementById('detailEquipLog').addEventListener('click', function (e) {
+            var btn = e.target.closest('.btn-delete-log-entry');
+            if (!btn) return;
+            deleteLogEntry(parseInt(btn.getAttribute('data-log-id'), 10));
+        });
 
         // Escape key
         document.addEventListener('keydown', function (e) {

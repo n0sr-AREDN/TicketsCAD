@@ -88,6 +88,21 @@ function get_record_label($type, $row) {
         case 'ics_forms':
             return ics_form_label($row);
 
+        case 'equipment_log':
+            // GH#38 -- the select list is deliberately columns-only (no join,
+            // matching every other arm here), so resolve the equipment name
+            // with one small lookup rather than widening the shared SELECT.
+            $actionLabel = ucfirst((string) ($row['action'] ?? 'activity'));
+            $eqName = null;
+            try {
+                $eq = db_fetch_one(
+                    "SELECT name FROM `" . ($GLOBALS['db_prefix'] ?? '') . "newui_equipment` WHERE id = ?",
+                    [(int) ($row['equipment_id'] ?? 0)]
+                );
+                $eqName = $eq['name'] ?? null;
+            } catch (Exception $e) {}
+            return $actionLabel . ' — ' . ($eqName ?: ('Equipment #' . ($row['equipment_id'] ?? '?')));
+
         default:
             return '#' . ($row['id'] ?? '?');
     }
@@ -144,6 +159,16 @@ $tableConfig = [
         'icon'      => 'bi-file-earmark-text',
         'select'    => 'id, form_type, title, status, incident_id, deleted_at, deleted_by',
         'purgeable' => false,
+    ],
+    // GH#38 (Chris Byrd, 2026-08-07) — equipment checkout/checkin activity
+    // log entries. Unlike ICS forms this type IS purgeable (default, so no
+    // 'purgeable' key needed): a mis-logged checkout/checkin line is a much
+    // lower-stakes record than a finalized incident form.
+    'equipment_log' => [
+        'table'   => $prefix . 'newui_equipment_log',
+        'label'   => 'Equipment Log Entry',
+        'icon'    => 'bi-clock-history',
+        'select'  => 'id, equipment_id, `action`, member_id, notes, created_at, deleted_at, deleted_by',
     ],
 ];
 

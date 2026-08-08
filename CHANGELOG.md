@@ -3,6 +3,33 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.12] — 2026-08-08
+
+### Added
+
+- **Equipment activity log entries can now be deleted**, admin-only with no
+  ownership exception — modeled on the existing ICS Forms delete, but
+  without its creator-may-delete-their-own-draft carve-out, since an
+  equipment log entry is a straight audit-trail record rather than a
+  work-in-progress document. Soft delete, restorable from Settings →
+  Wastebasket. Requested by Chris Byrd, GitHub #38.
+- **Places now has a real edit screen.** The old edit flow only ever
+  prompted for name, street, and city — state and lat/long could be set
+  once on creation but never touched again. One modal now backs both
+  creating and editing a Place, with every field (including a Lookup
+  button that geocodes a typed address into latitude/longitude). Requested
+  by Chris Byrd, GitHub #39.
+
+### Fixed
+
+- **A self-hosted upgrade via `git pull` could silently miss a dependency
+  security patch.** `vendor/` is gitignored, so a fix delivered as a
+  Composer hook (like the #31 Web Push vendor patch) only applies if the
+  operator runs `composer install`/`update` — which `docs/UPDATE-CHECKLIST.md`
+  never told them to do. Added as a checklist step, and named as a third
+  failure class alongside the two the doc already covered. Reported by
+  Ron Jones, GitHub #31.
+
 ## [4.2.11] — 2026-08-07
 
 ### Fixed

@@ -439,6 +439,7 @@ foreach ($personnelSections as $sec) {
                     <option value="ticket">Incidents</option>
                     <option value="facilities">Facilities</option>
                     <option value="ics_forms">ICS Forms</option>
+                    <option value="equipment_log">Equipment Log Entries</option>
                 </select>
                 <button class="btn btn-sm btn-outline-secondary" id="wbRefreshBtn">
                     <i class="bi bi-arrow-clockwise me-1"></i>Refresh
@@ -6509,6 +6510,83 @@ foreach ($personnelSections as $sec) {
                         <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                         <button type="button" class="btn btn-sm btn-primary" id="btnImportPlacesSubmit">
                             <i class="bi bi-check-lg me-1"></i>Run
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GH#39 (Chris Byrd, 2026-08-07): "you can enter state and lat/long
+             during the first entry on the pop ups, but there is no option to
+             edit to change anything." One modal now handles both New Place
+             and Edit Place, with every field (including state and lat/lon,
+             which the old edit-only prompt() chain omitted) and a Lookup
+             button for lat/long autofill via the shared Geocode helper. -->
+        <div class="modal fade" id="placeEditModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header py-2">
+                        <h6 class="modal-title" id="placeEditModalTitle"><i class="bi bi-geo me-1"></i>New Place</h6>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body py-2">
+                        <input type="hidden" id="placeEditId" value="">
+                        <div class="mb-2">
+                            <label class="form-label form-label-sm mb-0">Name</label>
+                            <input type="text" class="form-control form-control-sm" id="placeEditName" maxlength="64" placeholder="e.g. The Stadium">
+                        </div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-8">
+                                <label class="form-label form-label-sm mb-0">Street</label>
+                                <input type="text" class="form-control form-control-sm" id="placeEditStreet" maxlength="96">
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label form-label-sm mb-0">Applies To</label>
+                                <select class="form-select form-select-sm" id="placeEditApplyTo">
+                                    <option value="bldg">Building / address</option>
+                                    <option value="city">City-wide</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-8">
+                                <label class="form-label form-label-sm mb-0">City</label>
+                                <input type="text" class="form-control form-control-sm" id="placeEditCity" maxlength="32">
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label form-label-sm mb-0">State</label>
+                                <input type="text" class="form-control form-control-sm text-uppercase" id="placeEditState" maxlength="4">
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-1 align-items-end">
+                            <div class="col-4">
+                                <label class="form-label form-label-sm mb-0">Latitude</label>
+                                <input type="text" class="form-control form-control-sm font-monospace" id="placeEditLat" inputmode="decimal" placeholder="44.9778">
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label form-label-sm mb-0">Longitude</label>
+                                <input type="text" class="form-control form-control-sm font-monospace" id="placeEditLon" inputmode="decimal" placeholder="-93.2650">
+                            </div>
+                            <div class="col-4">
+                                <button type="button" class="btn btn-sm btn-outline-primary w-100" id="btnPlaceEditLookup">
+                                    <i class="bi bi-search me-1"></i>Lookup
+                                </button>
+                            </div>
+                        </div>
+                        <div id="placeEditLookupMsg" class="small mb-2"></div>
+                        <div class="mb-2">
+                            <label class="form-label form-label-sm mb-0">Map Zoom on Select <span class="text-body-secondary">(1-20)</span></label>
+                            <input type="number" class="form-control form-control-sm" id="placeEditZoom" min="1" max="20" value="16" style="max-width:100px;">
+                        </div>
+                        <div class="mb-1">
+                            <label class="form-label form-label-sm mb-0">Information <span class="text-body-secondary">(shown to the dispatcher)</span></label>
+                            <textarea class="form-control form-control-sm" id="placeEditInformation" rows="2" maxlength="1024"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer py-1">
+                        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-sm btn-primary" id="btnPlaceEditSave">
+                            <i class="bi bi-check-lg me-1"></i>Save
                         </button>
                     </div>
                 </div>

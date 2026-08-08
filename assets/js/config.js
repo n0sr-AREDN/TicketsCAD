@@ -1856,47 +1856,108 @@
         html += '</tbody></table></div>';
         body.innerHTML = html;
     }
-    function openNewPlacePrompt() {
-        var name = prompt('Place name (e.g. "The Stadium"):'); if (!name) return;
-        var street = prompt('Street address (optional):') || '';
-        var city = prompt('City (optional):') || '';
-        var state = prompt('State (e.g. MN):') || '';
-        var latStr = prompt('Latitude (optional, decimal):') || '';
-        var lonStr = prompt('Longitude (optional, decimal):') || '';
-        fetch('api/places.php?action=create', {
-            method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                csrf_token: getCsrfToken(),
-                name: name.trim(), street: street.trim(), city: city.trim(), state: state.trim().toUpperCase().substr(0, 4),
-                lat: latStr ? parseFloat(latStr) : null,
-                lon: lonStr ? parseFloat(lonStr) : null,
-                apply_to: 'bldg'
-            })
-        }).then(function (r) { return r.json(); })
-          .then(function (data) {
-            if (data && data.error) return showAlert(data.error, 'danger');
-            showAlert('Created "' + data.name + '"', 'success');
-            loadPlaces();
-          });
+    // GH#39 (Chris Byrd, 2026-08-07): "you can enter state and lat/long during
+    // the first entry on the pop ups, but there is no option to edit to
+    // change anything." One modal now backs both New Place and Edit Place —
+    // every field, plus a Lookup button for lat/long autofill (via the shared
+    // Geocode helper — never a hardcoded geocoder host, see geocode.js).
+    function bindPlaceEditModal() {
+        var lookupBtn = document.getElementById('btnPlaceEditLookup');
+        if (lookupBtn && !lookupBtn._gh39) {
+            lookupBtn._gh39 = true;
+            lookupBtn.addEventListener('click', function () {
+                var street = document.getElementById('placeEditStreet').value.trim();
+                var city   = document.getElementById('placeEditCity').value.trim();
+                var state  = document.getElementById('placeEditState').value.trim();
+                var msg = document.getElementById('placeEditLookupMsg');
+                var query = [street, city, state].filter(Boolean).join(', ');
+                if (!query) {
+                    msg.innerHTML = '<span class="text-warning">Enter a street, city, or state to look up.</span>';
+                    return;
+                }
+                msg.innerHTML = '<span class="text-body-secondary">Looking up…</span>';
+                lookupBtn.disabled = true;
+                Geocode.search({ q: query, limit: 1 })
+                    .then(function (res) {
+                        lookupBtn.disabled = false;
+                        if (!res.ok) { msg.innerHTML = '<span class="text-warning">' + escapeHtml(res.message) + '</span>'; return; }
+                        if (!res.results.length) { msg.innerHTML = '<span class="text-warning">Address not found. Enter the coordinates directly instead.</span>'; return; }
+                        var r = res.results[0];
+                        document.getElementById('placeEditLat').value = r.lat;
+                        document.getElementById('placeEditLon').value = r.lon;
+                        var addr = r.address || {};
+                        if (!city && (addr.city || addr.town || addr.village)) {
+                            document.getElementById('placeEditCity').value = addr.city || addr.town || addr.village;
+                        }
+                        if (!state && addr.state) document.getElementById('placeEditState').value = addr.state.substr(0, 4).toUpperCase();
+                        msg.innerHTML = '<span class="text-success">Found: ' + escapeHtml(r.display_name || (r.lat + ', ' + r.lon)) + '</span>';
+                    });
+            });
+        }
+        var saveBtn = document.getElementById('btnPlaceEditSave');
+        if (saveBtn && !saveBtn._gh39) {
+            saveBtn._gh39 = true;
+            saveBtn.addEventListener('click', savePlaceEdit);
+        }
     }
+    function openPlaceEditModal(place) {
+        bindPlaceEditModal();
+        var isEdit = !!(place && place.id);
+        document.getElementById('placeEditModalTitle').innerHTML = isEdit
+            ? '<i class="bi bi-geo me-1"></i>Edit Place'
+            : '<i class="bi bi-geo me-1"></i>New Place';
+        document.getElementById('placeEditId').value = isEdit ? place.id : '';
+        document.getElementById('placeEditName').value = (place && place.name) || '';
+        document.getElementById('placeEditApplyTo').value = (place && place.apply_to) || 'bldg';
+        document.getElementById('placeEditStreet').value = (place && place.street) || '';
+        document.getElementById('placeEditCity').value = (place && place.city) || '';
+        document.getElementById('placeEditState').value = (place && place.state) || '';
+        document.getElementById('placeEditLat').value = (place && place.lat !== null && place.lat !== undefined) ? place.lat : '';
+        document.getElementById('placeEditLon').value = (place && place.lon !== null && place.lon !== undefined) ? place.lon : '';
+        document.getElementById('placeEditZoom').value = (place && place.zoom) || 16;
+        document.getElementById('placeEditInformation').value = (place && place.information) || '';
+        document.getElementById('placeEditLookupMsg').innerHTML = '';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('placeEditModal')).show();
+    }
+    function openNewPlacePrompt() { openPlaceEditModal(null); }
     window.__pl_edit = function (id) {
         var p = placesCache.find(function (x) { return x.id === id; });
         if (!p) return;
-        var name = prompt('Name:', p.name);
-        if (name === null) return;
-        var street = prompt('Street:', p.street || '');
-        var city   = prompt('City:', p.city || '');
-        fetch('api/places.php?action=update', {
+        openPlaceEditModal(p);
+    };
+    function savePlaceEdit() {
+        var id = document.getElementById('placeEditId').value;
+        var name = document.getElementById('placeEditName').value.trim();
+        if (!name) { showAlert('Name is required.', 'warning'); return; }
+        var latStr = document.getElementById('placeEditLat').value.trim();
+        var lonStr = document.getElementById('placeEditLon').value.trim();
+        var payload = {
+            csrf_token: getCsrfToken(),
+            name: name,
+            apply_to: document.getElementById('placeEditApplyTo').value,
+            street: document.getElementById('placeEditStreet').value.trim(),
+            city: document.getElementById('placeEditCity').value.trim(),
+            state: document.getElementById('placeEditState').value.trim().toUpperCase().substr(0, 4),
+            information: document.getElementById('placeEditInformation').value.trim(),
+            lat: latStr ? parseFloat(latStr) : null,
+            lon: lonStr ? parseFloat(lonStr) : null,
+            zoom: parseInt(document.getElementById('placeEditZoom').value, 10) || 16
+        };
+        var isEdit = !!id;
+        if (isEdit) payload.id = parseInt(id, 10);
+        fetch('api/places.php?action=' + (isEdit ? 'update' : 'create'), {
             method: 'POST', credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ csrf_token: getCsrfToken(), id: id, name: name, street: street, city: city })
+            body: JSON.stringify(payload)
         }).then(function (r) { return r.json(); })
           .then(function (data) {
             if (data && data.error) return showAlert(data.error, 'danger');
+            bootstrap.Modal.getInstance(document.getElementById('placeEditModal')).hide();
+            showAlert(isEdit ? 'Saved "' + name + '"' : 'Created "' + name + '"', 'success');
+            placesCache = null;
             loadPlaces();
           });
-    };
+    }
     window.__pl_del = function (id) {
         if (!confirm('Delete this place?')) return;
         fetch('api/places.php?action=delete', {

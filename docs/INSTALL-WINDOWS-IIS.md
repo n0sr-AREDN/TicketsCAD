@@ -8,7 +8,7 @@ lose you a day each, and until now they were only recorded in issue comments.
 This page covers those six, then points back at the main guide for the rest.
 
 Every item below was found on a real Windows 11 / IIS / PHP 8.4.22 / MySQL 8.0
-install by **a beta tester (@rjonesbsink)**, who traced each one to its mechanism and
+install by **Ron Jones (@rjonesbsink)**, who traced each one to its mechanism and
 verified the fixes through actual HTTP requests rather than only the command
 line. Reported as [openises/TicketsCAD#5][i5], [#8][i8], [#18][i18] and [#29][i29].
 
@@ -124,7 +124,7 @@ An application-pool recycle also spawns fresh children. A reboot certainly does.
 > guide previously claimed that FastCGI's `environmentVariables` collection
 > *replaces* the inherited environment rather than merging with it, and that a
 > machine-wide `setx` therefore could not reach the web UI. That is not what
-> happens. a beta tester subsequently tested the full matrix — each location alone,
+> happens. Ron subsequently tested the full matrix — each location alone,
 > with and without a reboot, each run after killing `php-cgi.exe` — and the
 > machine variable alone works in the FastCGI worker. The pooled-worker behaviour
 > above is the better explanation for what both of us originally observed, and

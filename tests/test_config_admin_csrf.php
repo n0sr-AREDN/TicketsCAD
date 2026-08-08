@@ -2,7 +2,7 @@
 /**
  * Every Settings write must carry a CSRF token.
  *
- * GH TicketsCAD#15 (a beta tester): Settings -> Regions was read-only in practice.
+ * GH TicketsCAD#15 (Ron Jones): Settings -> Regions was read-only in practice.
  * Saving, adding and deleting a region all failed with "Invalid CSRF token",
  * because those two handlers called fetchJSON() directly instead of apiPost().
  * apiPost() is the wrapper that attaches csrf_token; fetchJSON() deliberately

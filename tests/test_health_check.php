@@ -48,7 +48,7 @@ function skip($label, $why) {
 /**
  * Run a program as discrete arguments; return [outputLines, exitCode, ran].
  *
- * GH TicketsCAD#13 (a beta tester): these checks used exec(), wrapped in
+ * GH TicketsCAD#13 (Ron Jones): these checks used exec(), wrapped in
  * `catch (Throwable)` with a pessimistic pre-initialised result. On a host with
  * `disable_functions = exec, shell_exec, …` — a common Windows/IIS hardening
  * default — calling exec() raises `Error: Call to undefined function exec()`.

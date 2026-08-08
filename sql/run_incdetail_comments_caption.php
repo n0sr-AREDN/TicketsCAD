@@ -1,6 +1,6 @@
 <?php
 /**
- * GH TicketsCAD#16 (a beta tester) — seed incdetail.label.comments.
+ * GH TicketsCAD#16 (Ron Jones) — seed incdetail.label.comments.
  *
  * incident-detail.php hardcoded this field's label as "Comments" with no t()
  * wrapper, while 110 sibling incdetail.* captions on the same page are seeded

@@ -2,7 +2,7 @@
 /**
  * Settings -> Database Migrations: "Preview script content" must not fatal.
  *
- * GH TicketsCAD#11 (a beta tester): expanding any migration's preview row fatally
+ * GH TicketsCAD#11 (Ron Jones): expanding any migration's preview row fatally
  * errored, every time, for every file:
  *
  *   PHP Fatal error: Uncaught TypeError: feof(): supplied resource is not a

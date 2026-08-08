@@ -207,7 +207,7 @@ function get_table_config(string $target): array
                 'type'        => ['label' => 'Type',         'type' => 'int',    'required' => false, 'import' => true,  'export' => true],
                 'description' => ['label' => 'Description',  'type' => 'string', 'required' => true,  'import' => true,  'export' => true],
                 // History:
-                //   2026-07-31 (a beta tester, GH TicketsCAD#14): four of these
+                //   2026-07-31 (Ron Jones, GH TicketsCAD#14): four of these
                 //   named columns `facilities` has never had, so exporting
                 //   Facilities failed outright. `zip` and `capacity` were
                 //   dropped — no facility screen offers a postcode, and
@@ -264,7 +264,7 @@ function get_table_config(string $target): array
             'audit_cols'   => [],
             'columns' => [
                 // History:
-                //   2026-07-31 (a beta tester, GH TicketsCAD#14): `description` and
+                //   2026-07-31 (Ron Jones, GH TicketsCAD#14): `description` and
                 //   `team_type_id` are not columns of `teams`; the real ones
                 //   are `mission` and `ttypes_id`. `name` is worse than it
                 //   looks — it exists ONLY where sql/seed_scheduling_data.php
@@ -328,7 +328,7 @@ function get_table_config(string $target): array
                 'status'       => ['label' => 'Status',        'type' => 'int',     'required' => false, 'import' => false, 'export' => true],
                 'severity'     => ['label' => 'Severity',      'type' => 'int',     'required' => false, 'import' => false, 'export' => true],
                 // History:
-                //   2026-07-31 (a beta tester, GH TicketsCAD#14): six of these named
+                //   2026-07-31 (Ron Jones, GH TicketsCAD#14): six of these named
                 //   columns `ticket` does not have. Each alias below is
                 //   grounded in how the app itself uses the column, not
                 //   inferred from the name:

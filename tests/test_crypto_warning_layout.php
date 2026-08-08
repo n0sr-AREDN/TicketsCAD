@@ -2,7 +2,7 @@
 /**
  * The "encryption unavailable" banner must not depend on its parent's layout.
  *
- * GH TicketsCAD#12 (a beta tester): served over plain HTTP, the login card was pushed
+ * GH TicketsCAD#12 (Ron Jones): served over plain HTTP, the login card was pushed
  * to one side instead of centred. assets/js/field-encrypt.js injects its
  * warning banner as the first child of <body>, which is right in normal block
  * flow — the dashboard renders it exactly as intended. But login.php centres

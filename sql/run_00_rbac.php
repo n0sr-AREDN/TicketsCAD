@@ -207,6 +207,10 @@ $perms = [
     // mapping IS a broad NOT IN. Deleting a draft you created yourself needs
     // no permission at all (see inc/ics-forms-write.php).
     ['action.delete_ics_form', 'Delete ICS Forms',     'action'],
+    // 2026-08-07 (Chris Byrd, GH#38) — deleting an equipment activity-log entry.
+    // Same tier and reasoning as action.delete_ics_form directly above, except
+    // there is no ownership exception at all (Eric: admin-only, full stop).
+    ['action.delete_equipment_log', 'Delete Equipment Log Entries', 'action'],
     // Phase 131 — net-control check-ins (/net). OPERATIONAL, not administrative,
     // so it is deliberately NOT added to the Org Admin `NOT IN (...)` exclusion
     // list below: Super Admin (broad SELECT) and Org Admin (broad NOT IN) should

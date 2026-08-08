@@ -2,7 +2,7 @@
 /**
  * VAPID keypair generation on hosts whose OpenSSL cannot find its config.
  *
- * GH TicketsCAD#8 / #5 (a beta tester): Settings -> Web Push -> "Generate new key
+ * GH TicketsCAD#8 / #5 (Ron Jones): Settings -> Web Push -> "Generate new key
  * pair" failed on stock Windows PHP with "VAPID keypair generation failed:
  * Unable to create the key" — the library's message, passed through verbatim.
  * True, and it answers nothing. One layer down, openssl_error_string() was

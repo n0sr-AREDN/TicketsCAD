@@ -1,7 +1,7 @@
 # After Every Update (Self-Hosted Installs)
 
-This checklist exists because two classes of post-update breakage keep
-biting self-hosted installs that deploy with `git pull`:
+This checklist exists because three classes of post-update breakage keep
+biting self-hosted installs that deploy with `git pull` (or a ZIP download):
 
 1. **File ownership/permissions.** When you run `git pull` as root (or any
    user other than the web server user), *new* files and directories the
@@ -17,9 +17,20 @@ biting self-hosted installs that deploy with `git pull`:
    apache2/php-fpm is reloaded — so fixes "don't take effect" even though
    the files on disk are correct.
 
-TicketsCAD NewUI **detects and warns about both — it never auto-fixes**.
-If you manage your file permissions your own way, keep doing that; the
-health check will tell you if something is actually broken.
+3. **Stale `vendor/`.** It is gitignored, so `git pull` never touches it.
+   A fix that ships as a Composer dependency bump or a patch applied via a
+   Composer hook (see step 2) is silently absent until `composer install`
+   or `composer update` actually runs — reported by Ron Jones (@rjonesbsink)
+   in [#31][i31], where the [#8][i8] Web Push key-generation fix had shipped
+   in the release but the send-path half of it lived in a vendored file that
+   only a Composer run would touch.
+
+TicketsCAD NewUI **detects and warns about the first two — it never
+auto-fixes**. If you manage your file permissions your own way, keep doing
+that; the health check will tell you if something is actually broken. The
+third has no detector yet; running step 2 every time is the mitigation.
+
+[i8]: https://github.com/openises/TicketsCAD/issues/8
 
 ## The checklist
 
@@ -121,7 +132,29 @@ If you manage permissions your own way (ACLs, a deploy user in the
 web group, setgid directories, ...), **keep doing that** — skip this
 step. The health check (step 4) will tell you if something is broken.
 
-### 2. Reload the web server (clears opcache)
+### 2. Update Composer dependencies
+
+```bash
+composer install --no-dev --optimize-autoloader
+```
+
+`vendor/` is gitignored, so `git pull` never touches it on its own — a
+dependency version bump, a new package, or a **security patch applied to a
+vendored file via a Composer hook** (for example the `minishlink/web-push`
+patch from [#31][i31], which only reapplies itself when this command runs)
+all land only if this step runs. Skipping it after a `git pull` is exactly
+the shape of "the code changed, the fix reportedly shipped, and the bug is
+still there" — the checklist existed for the two failure modes above before
+this, but a `git pull`-only upgrade path missing this step is the same
+disease as either of them: a change genuinely reached your disk and never
+took effect. Idempotent — safe to run every time, even when nothing
+actually changed. If you upgrade from a downloaded ZIP instead of `git
+pull`, run this too; it's not git-specific, only `vendor/` being untracked
+is what makes it necessary.
+
+[i31]: https://github.com/openises/TicketsCAD/issues/31
+
+### 3. Reload the web server (clears opcache)
 
 Always do this after a pull — it is cheap and it is the only reliable way
 to make sure the new PHP code is actually what's running:
@@ -135,7 +168,7 @@ sudo systemctl reload php8.2-fpm
 A *reload* is graceful (no dropped connections); you do not need a full
 restart.
 
-### 3. Apply database migrations
+### 4. Apply database migrations
 
 ```bash
 php sql/run_migrations.php
@@ -144,7 +177,7 @@ php sql/run_migrations.php
 Idempotent — safe to run every time. Admins also get an in-app banner
 when migrations are pending.
 
-### 4. Run the health check
+### 5. Run the health check
 
 ```bash
 php tools/check-health.php
@@ -212,7 +245,7 @@ sudo systemctl reload apache2   # or: sudo systemctl reload php8.2-fpm
 
 Nothing is ever executed for you. Review, adapt, run, then re-check.
 
-## 5. Confirm the version actually moved
+## 6. Confirm the version actually moved
 
 Open the user menu (top right) → **About**. The version there is read from the
 git-tracked `VERSION` file, so after a successful `git pull` **it changes on its

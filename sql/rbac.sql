@@ -142,6 +142,12 @@ INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VAL
     -- Without it a user may STILL delete a draft they created themselves —
     -- that path is ownership, not permission (inc/ics-forms-write.php).
     ('action.delete_ics_form', 'Delete ICS Forms',     'action', 'Delete any saved ICS form to the wastebasket, including finalized forms'),
+    -- 2026-08-07 (Chris Byrd, GH#38) — deleting an equipment check-out/check-in
+    -- log entry. ADMINISTRATIVE, same tier as action.delete_ics_form and for the
+    -- same reason: removing an entry is a records-retention decision. Unlike ICS
+    -- forms there is no creator-may-delete-their-own exception — admin-only, full
+    -- stop (Eric's explicit call). Listed in the Dispatcher `NOT IN (...)` exclusion below.
+    ('action.delete_equipment_log', 'Delete Equipment Log Entries', 'action', 'Delete a checked-out/checked-in activity log entry for a piece of equipment'),
     -- Phase 131 — net-control check-ins (/net). OPERATIONAL, not administrative:
     -- running a net is a dispatcher's job, so this is deliberately absent from the
     -- Org Admin and Dispatcher `NOT IN (...)` exclusion lists below and is meant to
@@ -193,6 +199,8 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
         'action.delete_ics_form',      -- deleting an ICS form is records retention, not dispatch
                                        -- (roles 1-2, 2026-08-02); a dispatcher can still delete
                                        -- a draft they created themselves
+        'action.delete_equipment_log', -- deleting an equipment log entry is records retention,
+                                       -- admin-only with no ownership exception (roles 1-2, 2026-08-07)
         'action.manage_audit_retention', -- audit-log retention/purge is admin-only (roles 1 only,
                                        -- 2026-08-03) — same tier as action.manage_config
         'action.manage_dispositions'  -- managing the incident-disposition list is admin-only

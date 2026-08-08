@@ -2,7 +2,7 @@
 /**
  * VAPID (Web Push) keypair generation that works on stock Windows PHP.
  *
- * GH TicketsCAD#8 / #5 (a beta tester): on a stock Windows PHP install,
+ * GH TicketsCAD#8 / #5 (Ron Jones): on a stock Windows PHP install,
  * Settings -> Web Push Notifications -> "Generate new key pair" fails with
  *
  *     VAPID keypair generation failed: Unable to create the key
