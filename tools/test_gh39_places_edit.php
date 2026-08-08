@@ -21,6 +21,17 @@
  * JSON body). A regression here would silently strand the new UI the same
  * way the old prompt() chain was stranded.
  *
+ * REOPENED (Chris Byrd, 2026-08-08): the Lookup button wrote the geocoder's
+ * FULL state name ("Minnesota") into the 4-char `state` column. The real
+ * fix is client-side (assets/js/config.js now resolves the name against the
+ * states_translator-backed list before writing it -- not testable from this
+ * PHP suite), but auditing api/places.php's update handler while fixing it
+ * found a related server-side gap this test now covers: every field was
+ * truncated to a blanket 1024 chars regardless of its real column width,
+ * which only worked by accident because this install's sql_mode has
+ * STRICT_TRANS_TABLES off (MySQL silently truncates instead of erroring).
+ * `create` already used per-field lengths; `update` now matches it.
+ *
  * Usage: php tools/test_gh39_places_edit.php
  */
 
@@ -42,13 +53,14 @@ echo "=== GH#39 — Places edit (full field set, not just name/street/city) ===\
 // fails loudly if a future edit narrows which fields it accepts -- exactly
 // the class of regression that stranded the old UI in the first place.
 function placesUpdateSql(array $input): array {
+    $maxLen = ['name' => 64, 'street' => 96, 'city' => 32, 'state' => 4, 'information' => 1024, 'apply_to' => 4];
     $sets = [];
     $params = [];
     foreach (['name','street','city','state','information','apply_to'] as $f) {
         if (isset($input[$f])) {
             $sets[] = "`{$f}` = ?";
             if ($f === 'apply_to' && !in_array((string) $input[$f], ['city','bldg'], true)) $input[$f] = 'bldg';
-            $params[] = substr((string) $input[$f], 0, 1024);
+            $params[] = substr((string) $input[$f], 0, $maxLen[$f]);
         }
     }
     foreach (['lat','lon'] as $f) {
@@ -119,6 +131,17 @@ try {
     ($row2 && $row2['state'] === 'WI') ? ok('a partial update leaves untouched fields (state) intact') : bad('partial update leaves state intact', 'got ' . var_export($row2['state'] ?? null, true));
     ($row2 && $row2['city'] === $editPayload['city']) ? ok('a partial update leaves untouched fields (city) intact') : bad('partial update leaves city intact');
     ($row2 && abs((float) $row2['lat'] - 46.0) < 0.0001) ? ok('a partial update still applies the fields it does send (lat)') : bad('partial update applies lat');
+
+    // ── 4. GH#39 reopened: a too-long state value (the geocoder's full name,
+    //      if the client-side fix ever regresses) must be truncated to the
+    //      column's real 4-char width on update, not the old blanket 1024 --
+    //      defense in depth so a client bug can't silently write garbage.
+    [$sets3, $params3] = placesUpdateSql(['state' => 'Minnesota']);
+    $params3[] = $placeId;
+    db_query("UPDATE `{$prefix}places` SET " . implode(', ', $sets3) . " WHERE id = ?", $params3);
+    $row3 = db_fetch_one("SELECT state FROM `{$prefix}places` WHERE id = ?", [$placeId]);
+    ($row3 && $row3['state'] === 'Minn') ? ok('update() truncates state to its real 4-char column width, not a blanket 1024')
+        : bad('update() truncates state to 4 chars', 'got ' . var_export($row3['state'] ?? null, true));
 } finally {
     db_query("DELETE FROM `{$prefix}places` WHERE id = ?", [$placeId]);
 }

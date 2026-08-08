@@ -377,11 +377,33 @@ if ($method === 'POST') {
         $days = (int) ($input['days'] ?? 30);
         if ($days < 1) $days = 30;
         $purged = 0;
+        // GH#43 (Chris Byrd, 2026-08-08): "Says 1 deleted item. ICS Form does
+        // not delete." Not a bug -- ICS Forms are deliberately excluded from
+        // Empty (see wb_is_purgeable()), and the "1 deleted item" was some
+        // OTHER eligible record entirely. The defect was that the response
+        // never said so, leaving an admin who was watching one specific
+        // record with no way to tell "skipped on purpose" from "silently
+        // failed". $skippedLabels counts and names what Empty is about to
+        // leave behind, of exactly the age that would otherwise qualify.
+        $skippedLabels = [];
 
         foreach ($tableConfig as $type => $cfg) {
             if (!table_has_soft_delete($cfg['table'])) continue;
             // Never swept up by a bulk empty — see wb_is_purgeable().
-            if (!wb_is_purgeable($cfg)) continue;
+            if (!wb_is_purgeable($cfg)) {
+                try {
+                    $skipCnt = (int) db_fetch_value(
+                        "SELECT COUNT(*) FROM `{$cfg['table']}`
+                          WHERE `deleted_at` IS NOT NULL
+                            AND `deleted_at` < DATE_SUB(NOW(), INTERVAL ? DAY)",
+                        [$days]
+                    );
+                    if ($skipCnt > 0) {
+                        $skippedLabels[] = $skipCnt . ' ' . $cfg['label'] . ($skipCnt === 1 ? '' : 's');
+                    }
+                } catch (Exception $e) { /* non-fatal — reporting only */ }
+                continue;
+            }
 
             try {
                 // Count what we are about to purge
@@ -421,12 +443,21 @@ if ($method === 'POST') {
         }
 
         audit_log('system', 'delete', 'wastebasket', null,
-            "Emptied wastebasket: purged {$purged} records older than {$days} days", null, 4);
+            "Emptied wastebasket: purged {$purged} records older than {$days} days"
+                . (!empty($skippedLabels) ? '; left in place (not purgeable): ' . implode(', ', $skippedLabels) : ''),
+            null, 4);
+
+        $message = "Purged {$purged} record" . ($purged === 1 ? '' : 's') . " older than {$days} day" . ($days === 1 ? '' : 's') . ".";
+        if (!empty($skippedLabels)) {
+            $message .= ' Left in place: ' . implode(', ', $skippedLabels)
+                . ' — these are operational records that are never permanently deleted, only restored.';
+        }
 
         json_response([
             'success' => true,
             'purged'  => $purged,
-            'message' => "Purged {$purged} records older than {$days} days"
+            'skipped' => $skippedLabels,
+            'message' => $message
         ]);
     }
 

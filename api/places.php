@@ -99,13 +99,20 @@ if ($action === 'update' && $method === 'POST') {
     }
     $id = (int) ($input['id'] ?? 0);
     if ($id <= 0) json_error('id required');
+    // GH#39 reopened (Chris Byrd, 2026-08-08): every field here was truncated to
+    // a blanket 1024 chars regardless of its real column width (state is
+    // varchar(4), city varchar(32), street varchar(96)) -- harmless only because
+    // this install's sql_mode has STRICT_TRANS_TABLES off, so MySQL silently
+    // truncated the rest of the way instead of erroring. Match create's
+    // per-field lengths so update can't rely on that.
+    $maxLen = ['name' => 64, 'street' => 96, 'city' => 32, 'state' => 4, 'information' => 1024, 'apply_to' => 4];
     $sets = [];
     $params = [];
     foreach (['name','street','city','state','information','apply_to'] as $f) {
         if (isset($input[$f])) {
             $sets[] = "`{$f}` = ?";
             if ($f === 'apply_to' && !in_array((string) $input[$f], ['city','bldg'], true)) $input[$f] = 'bldg';
-            $params[] = substr((string) $input[$f], 0, 1024);
+            $params[] = substr((string) $input[$f], 0, $maxLen[$f]);
         }
     }
     foreach (['lat','lon'] as $f) {

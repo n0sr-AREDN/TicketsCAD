@@ -325,6 +325,23 @@ foreach ($personnelSections as $sec) {
                 <div class="col-md-6 d-flex align-items-center gap-2">
                     <button class="btn btn-sm btn-primary" id="btnAuditSearch"><i class="bi bi-search me-1"></i>Search</button>
                     <button class="btn btn-sm btn-outline-secondary" id="btnAuditClear"><i class="bi bi-x-lg me-1"></i>Clear</button>
+                    <!-- GH#37 (Chris Byrd, 2026-08-08) — admin-only, matches
+                         whatever filters are currently applied above. -->
+                    <div class="dropdown">
+                        <!-- id is btnAuditLogExport, NOT btnAuditExport -- that id already
+                             belongs to the Roles & Permissions -> Audit Trail panel's own
+                             export button (search this file for it before ever reusing
+                             "btnAuditExport" again). getElementById() silently resolves to
+                             whichever one comes first in the DOM, so a collision here breaks
+                             one button's click handler and makes the other one fire both. -->
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="btnAuditLogExport" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-download me-1"></i>Export
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="btnAuditLogExport">
+                            <li><a class="dropdown-item" href="#" id="btnAuditExportCsv"><i class="bi bi-filetype-csv me-1"></i>CSV</a></li>
+                            <li><a class="dropdown-item" href="#" id="btnAuditExportJson"><i class="bi bi-filetype-json me-1"></i>JSON</a></li>
+                        </ul>
+                    </div>
                     <span class="text-body-secondary small ms-auto" id="auditSummary"></span>
                 </div>
             </div>
@@ -10317,7 +10334,15 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
         var url = 'api/wastebasket.php' + (typeVal ? '?type=' + encodeURIComponent(typeVal) : '');
         if (wbStatus) wbStatus.textContent = 'Loading...';
 
-        fetch(url, { credentials: 'same-origin' })
+        // GH#43 (Chris Byrd, 2026-08-08) — returns the fetch chain so a
+        // caller (wbAction, the Empty handler) can wait for the reload to
+        // actually finish before showing its OWN result message. Before this,
+        // every action set a clear message ("Purged 1 record... left in
+        // place: 1 ICS Form") and then immediately called this function,
+        // which itself set "Loading..." and then the ambient wastebasket
+        // count right on top of it a moment later -- the meaningful message
+        // was never visible long enough to read.
+        return fetch(url, { credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (data.error) {
@@ -10382,7 +10407,14 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                     });
                 }
 
-                if (wbStatus) wbStatus.textContent = count + ' deleted item' + (count !== 1 ? 's' : '');
+                // GH#43 — "N deleted items" read as an action confirmation
+                // ("N items were just deleted"), not what it actually means
+                // here: N items are CURRENTLY sitting in the wastebasket,
+                // soft-deleted and awaiting restore or purge. That ambiguity
+                // is exactly what made Chris read this ambient count as
+                // confirming his Empty click, when the number he saw was
+                // actually the ICS Form still waiting there.
+                if (wbStatus) wbStatus.textContent = count + ' item' + (count !== 1 ? 's' : '') + ' currently in the wastebasket';
             })
             .catch(function (err) {
                 if (wbStatus) wbStatus.textContent = 'Error: ' + err.message;
@@ -10408,8 +10440,13 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
             if (data.error) {
                 if (wbStatus) wbStatus.textContent = 'Error: ' + data.error;
             } else {
-                if (wbStatus) wbStatus.textContent = data.message || 'Done';
-                loadWastebasket();
+                // GH#43 — set the result message AFTER the reload finishes,
+                // not before: loadWastebasket() starts by writing "Loading…"
+                // and ends by writing the ambient item count, either of
+                // which would otherwise overwrite this a moment later.
+                loadWastebasket().then(function () {
+                    if (wbStatus) wbStatus.textContent = data.message || 'Done';
+                });
             }
         })
         .catch(function (err) {
@@ -10421,7 +10458,11 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
     if (wbEmptyBtn) {
         wbEmptyBtn.addEventListener('click', function () {
             var days = parseInt(wbPurgeDays.value, 10) || 30;
-            if (!confirm('Permanently delete ALL records older than ' + days + ' days? This cannot be undone.')) return;
+            // GH#43 — "ALL" overclaimed: ICS Forms (and any future
+            // never-purge type) are always skipped, by design, and the old
+            // wording gave no hint of that before the admin confirmed.
+            if (!confirm('Permanently delete eligible records older than ' + days + ' days? ' +
+                'Some record types (like ICS Forms) are never permanently deleted and will be left in place. This cannot be undone.')) return;
             if (wbStatus) wbStatus.textContent = 'Emptying...';
 
             fetch('api/wastebasket.php', {
@@ -10439,8 +10480,15 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                 if (data.error) {
                     if (wbStatus) wbStatus.textContent = 'Error: ' + data.error;
                 } else {
-                    if (wbStatus) wbStatus.textContent = data.message || 'Done';
-                    loadWastebasket();
+                    // GH#43 — same ordering fix as wbAction(): show the
+                    // server's message (which now names anything skipped,
+                    // e.g. "Left in place: 1 ICS Form — these are
+                    // operational records...") only after the reload has
+                    // finished, so the ambient item count can't clobber it
+                    // a moment later.
+                    loadWastebasket().then(function () {
+                        if (wbStatus) wbStatus.textContent = data.message || 'Done';
+                    });
                 }
             })
             .catch(function (err) {

@@ -1889,8 +1889,31 @@
                         if (!city && (addr.city || addr.town || addr.village)) {
                             document.getElementById('placeEditCity').value = addr.city || addr.town || addr.village;
                         }
-                        if (!state && addr.state) document.getElementById('placeEditState').value = addr.state.substr(0, 4).toUpperCase();
-                        msg.innerHTML = '<span class="text-success">Found: ' + escapeHtml(r.display_name || (r.lat + ', ' + r.lon)) + '</span>';
+                        var found = '<span class="text-success">Found: ' + escapeHtml(r.display_name || (r.lat + ', ' + r.lon)) + '</span>';
+                        // GH#39 reopened (Chris Byrd, 2026-08-08): the geocoder returns the
+                        // FULL state name ("Minnesota"), not the 2-4 char code this column
+                        // holds -- writing it straight in truncated to garbage ("MINN").
+                        // Resolve it against the same states_translator list the rest of
+                        // the app uses (states-select.js) rather than guessing a US-only
+                        // abbreviation table -- a beta tester's Canadian provinces go through the
+                        // same lookup. If no match is found, leave the field alone rather
+                        // than write something wrong.
+                        if (!state && addr.state && window.TCADStates) {
+                            TCADStates.load().then(function (list) {
+                                var wanted = addr.state.toLowerCase();
+                                var match = null;
+                                for (var i = 0; i < list.length; i++) {
+                                    if ((list[i].name && list[i].name.toLowerCase() === wanted) || list[i].code.toLowerCase() === wanted) {
+                                        match = list[i];
+                                        break;
+                                    }
+                                }
+                                if (match) document.getElementById('placeEditState').value = match.code;
+                                msg.innerHTML = found;
+                            });
+                            return;
+                        }
+                        msg.innerHTML = found;
                     });
             });
         }
@@ -10117,6 +10140,22 @@
             loadAuditLog();
         });
 
+        // GH#37 — Export CSV / JSON, carrying whatever filters are set above.
+        var btnExportCsv = document.getElementById('btnAuditExportCsv');
+        var btnExportJson = document.getElementById('btnAuditExportJson');
+        if (btnExportCsv) {
+            btnExportCsv.addEventListener('click', function (e) {
+                e.preventDefault();
+                exportAuditLog('csv');
+            });
+        }
+        if (btnExportJson) {
+            btnExportJson.addEventListener('click', function (e) {
+                e.preventDefault();
+                exportAuditLog('json');
+            });
+        }
+
         // Enter key on search field
         document.getElementById('auditSearch').addEventListener('keydown', function (e) {
             if (e.key === 'Enter') {
@@ -10154,7 +10193,10 @@
         });
     }
 
-    function loadAuditLog() {
+    // GH#37 — the filter params the Audit Log panel is currently showing,
+    // shared by loadAuditLog() and the Export buttons so an export always
+    // matches what's on screen rather than re-deriving its own filter set.
+    function buildAuditFilterParams() {
         var params = [];
         var cat = document.getElementById('auditCategory').value;
         var act = document.getElementById('auditActivity').value;
@@ -10171,10 +10213,22 @@
         if (q)   params.push('q=' + encodeURIComponent(q));
         if (df)  params.push('date_from=' + df);
         if (dt)  params.push('date_to=' + dt);
-        params.push('sort=' + auditSort);
-        params.push('order=' + auditOrder);
-        params.push('limit=' + auditLimit);
-        params.push('offset=' + auditOffset);
+        return params;
+    }
+
+    // GH#37 (Chris Byrd, 2026-08-08): "I would be glad to export the log
+    // but I do not see a function to do that." There wasn't one -- this
+    // navigates to the export endpoint (a plain GET download, same pattern
+    // as the Places export) carrying whatever filters are currently set.
+    function exportAuditLog(format) {
+        var params = buildAuditFilterParams();
+        var url = 'api/audit-log.php?action=export&format=' + encodeURIComponent(format);
+        if (params.length) url += '&' + params.join('&');
+        window.location.href = url;
+    }
+
+    function loadAuditLog() {
+        var params = buildAuditFilterParams();
 
         var status = document.getElementById('auditStatus');
         status.textContent = 'Loading...';

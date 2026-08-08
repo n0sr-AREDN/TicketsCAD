@@ -28,7 +28,7 @@
 # deleted records (or must see them to stay consistent), not around them.
 
 api/log.php:62 | audit log viewer — a "Incident Deleted" log entry (code 15) is ABOUT the very ticket it references; the audit trail must keep resolving its scope/case-number even after deletion, not blank out the one entry that explains what happened.
-api/audit-log.php:163 | audit log viewer — batched incident_number lookup for display; same reasoning as api/log.php:62, and it must resolve numbers for entries about since-deleted incidents too.
+api/audit-log.php:260 | audit log viewer — batched incident_number lookup for display; same reasoning as api/log.php:62, and it must resolve numbers for entries about since-deleted incidents too. (line shifted by the GH#37 export action added above it, 2026-08-08 — same code, same reasoning.)
 api/message-tray.php:79 | _mt_logged_ticket() shows which incident a message was historically attached to (informational record of a past action), not a live incident browser; matches the audit-log reasoning.
 api/time-entries.php:339 | a logged time entry's hours remain valid after its incident is deleted; the entry should keep showing the incident label it was worked under, same as an audit trail.
 inc/ics214_timeline.php:63 | personal ICS-214 activity timeline — an accountability record of what a responder did ("dispatched to X"), which must stay intact even if the incident is later deleted; the responder's own signable record should not go blank.

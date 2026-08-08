@@ -32,10 +32,12 @@ try {
         `incident_id`  INT          DEFAULT NULL,
         `is_broadcast` TINYINT(1)   NOT NULL DEFAULT 0,
         `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `deleted_by_sender_at` DATETIME DEFAULT NULL,
         KEY `idx_im_from_user` (`from_user_id`),
         KEY `idx_im_created`   (`created_at`),
         KEY `idx_im_incident`  (`incident_id`),
-        KEY `idx_im_broadcast` (`is_broadcast`)
+        KEY `idx_im_broadcast` (`is_broadcast`),
+        KEY `idx_im_deleted_by_sender` (`from_user_id`, `deleted_by_sender_at`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (Exception $e) { /* table exists */ }
 
@@ -164,13 +166,17 @@ if ($method === 'GET') {
             // function query would be the next step.
             $currentUserName = (string) ($_SESSION['user'] ?? '');
 
+            // GH#42 — excludes messages the sender removed from their own Sent
+            // view (internal_messages.deleted_by_sender_at). Independent of
+            // message_recipients.deleted_at, which is each recipient's own
+            // inbox copy — deleting your sent copy never unsends it.
             $internal = db_fetch_all(
                 "SELECT m.id, m.subject, m.priority, m.incident_id, m.is_broadcast, m.created_at,
                         GROUP_CONCAT(u.user ORDER BY u.user SEPARATOR ', ') AS to_names
                  FROM `{$prefix}internal_messages` m
                  LEFT JOIN `{$prefix}message_recipients` mr ON mr.message_id = m.id
                  LEFT JOIN `{$prefix}user` u ON u.id = mr.to_user_id
-                 WHERE m.from_user_id = ?
+                 WHERE m.from_user_id = ? AND m.deleted_by_sender_at IS NULL
                  GROUP BY m.id
                  ORDER BY m.created_at DESC
                  LIMIT 500",
@@ -367,19 +373,39 @@ if ($method === 'POST') {
     }
 
     // ── Delete message (soft) ──
+    //
+    // GH#42 (Chris Byrd, 2026-08-08): deleting from the Sent view did
+    // nothing. This action only ever updated message_recipients, keyed by
+    // to_user_id -- a message you SENT has no message_recipients row where
+    // you are the recipient (unless you mailed yourself), so the UPDATE
+    // matched zero rows every time. scope=sent updates the sender's own
+    // deleted_by_sender_at instead, verified against from_user_id so a
+    // caller cannot delete someone else's sent message by guessing an id.
+    // Never touches message_recipients -- removing your sent copy must not
+    // un-deliver it from anyone's inbox.
     if ($action === 'delete') {
         $msgId = (int) ($input['message_id'] ?? 0);
+        $scope = ($input['scope'] ?? 'inbox') === 'sent' ? 'sent' : 'inbox';
         if ($msgId <= 0) {
             json_error('Invalid message_id');
         }
 
         try {
-            db_query(
-                "UPDATE `{$prefix}message_recipients`
-                 SET deleted_at = NOW()
-                 WHERE message_id = ? AND to_user_id = ? AND deleted_at IS NULL",
-                [$msgId, $current_user_id]
-            );
+            if ($scope === 'sent') {
+                db_query(
+                    "UPDATE `{$prefix}internal_messages`
+                     SET deleted_by_sender_at = NOW()
+                     WHERE id = ? AND from_user_id = ? AND deleted_by_sender_at IS NULL",
+                    [$msgId, $current_user_id]
+                );
+            } else {
+                db_query(
+                    "UPDATE `{$prefix}message_recipients`
+                     SET deleted_at = NOW()
+                     WHERE message_id = ? AND to_user_id = ? AND deleted_at IS NULL",
+                    [$msgId, $current_user_id]
+                );
+            }
         } catch (Exception $e) {
             json_error('Failed to delete message', 500);
         }

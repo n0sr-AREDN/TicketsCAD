@@ -357,8 +357,15 @@ ok(strpos($wbSrc, 'function wb_is_purgeable') !== false,
    'wastebasket: wb_is_purgeable() exists');
 ok(preg_match("/if\s*\(!wb_is_purgeable\(\\\$cfg\)\)\s*\{\s*json_error/", $wbSrc) === 1,
    'wastebasket: the purge action refuses a non-purgeable type');
-ok(preg_match("/if\s*\(!wb_is_purgeable\(\\\$cfg\)\)\s*continue;/", $wbSrc) === 1,
+// GH#43 (2026-08-08) — the skip is now a block (it also tallies a
+// human-readable count of what it left behind, so an admin can tell
+// "skipped on purpose" from "silently failed"), not a bare one-liner, so
+// this allows anything between the guard and its continue rather than
+// requiring them adjacent.
+ok(preg_match("/if\s*\(!wb_is_purgeable\(\\\$cfg\)\)\s*\{.*?continue;/s", $wbSrc) === 1,
    'wastebasket: "Empty wastebasket" skips non-purgeable types');
+ok(strpos($wbSrc, '$skippedLabels') !== false,
+   'wastebasket: "Empty wastebasket" reports what it skipped, not just what it purged (GH#43)');
 ok(strpos($wbSrc, "'can_purge'") !== false,
    'wastebasket: the list emits can_purge for the UI');
 ok(strpos($wbSrc, "case 'ics_forms':") !== false,

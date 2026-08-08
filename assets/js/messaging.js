@@ -16,6 +16,7 @@
     var usersCache = null;
     var currentMsgId = null;
     var currentMsgFromUserId = null;   // GH #87 — sender of the open message, for Reply pre-select
+    var currentMsgFolder = 'inbox';    // GH #42 — which list opened the detail modal, so Delete knows what to refresh
     var selectedIds  = {};
 
     // ── Helpers ──────────────────────────────────────────────────
@@ -305,7 +306,7 @@
         for (var j = 0; j < rows.length; j++) {
             (function (row) {
                 row.addEventListener('click', function () {
-                    openMessage(parseInt(row.getAttribute('data-msg-id'), 10));
+                    openMessage(parseInt(row.getAttribute('data-msg-id'), 10), 'sent');
                 });
             })(rows[j]);
         }
@@ -380,8 +381,9 @@
 
     // ── Message Detail ───────────────────────────────────────────
 
-    function openMessage(msgId) {
+    function openMessage(msgId, folder) {
         currentMsgId = msgId;
+        currentMsgFolder = folder || 'inbox';
         apiGet('api/messaging.php?id=' + msgId, function (err, data) {
             if (err || !data || !data.message) return;
             var m = data.message;
@@ -1241,7 +1243,14 @@
     function deleteMessage(msgId) {
         if (!confirm('Move this message to trash?')) return;
 
-        apiPost('delete', { message_id: msgId }, function (err, data) {
+        // GH#42 — scope tells the API whether to remove the SENDER's own
+        // Sent-view copy or the current user's Inbox copy; they're
+        // independent, so deleting one never affects the other. Refresh
+        // whichever list is actually showing -- always refreshing the inbox
+        // was why a Sent-view delete looked like it did nothing even once
+        // the backend half of this bug is fixed.
+        var folder = currentMsgFolder;
+        apiPost('delete', { message_id: msgId, scope: folder }, function (err, data) {
             if (err || (data && data.error)) {
                 alert('Failed to delete: ' + (data ? data.error : 'Network error'));
                 return;
@@ -1251,9 +1260,12 @@
             var modal = bootstrap.Modal.getInstance(document.getElementById('msgDetailModal'));
             if (modal) modal.hide();
 
-            // Refresh inbox
-            loadInbox();
-            loadUnreadCount();
+            if (folder === 'sent') {
+                loadSent();
+            } else {
+                loadInbox();
+                loadUnreadCount();
+            }
         });
     }
 

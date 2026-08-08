@@ -3,6 +3,41 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.13] — 2026-08-08
+
+### Added
+
+- **Audit Log can now be exported as CSV or JSON**, matching whatever
+  filters are applied in the browse view. Admin-only — stricter than the
+  `action.view_audit` permission that gates plain browsing, since exporting
+  the whole dataset in one shot is treated as more sensitive than paginated
+  reading. Requested by Chris Byrd in the course of investigating issue #37.
+
+### Fixed
+
+- **Places' new Lookup button could write a truncated, wrong state value**
+  instead of a real abbreviation — typing an address with no state filled
+  in and clicking Lookup wrote the first four letters of the returned state
+  name (e.g. `Minnesota` → `MINN`) instead of resolving it to `MN`. Fixed
+  to resolve against the same state list used everywhere else in the app.
+  Also hardened the server-side save to enforce real per-column length
+  limits instead of a single blanket cutoff. Regression in the Places edit
+  screen shipped in 4.2.12 (#39).
+- **Deleting a message from Sent did nothing.** The delete action only
+  ever recognized a message from the recipient's side (removing it from
+  their inbox); there was no way to represent "the sender removed their
+  own copy," so a Sent-view delete matched zero rows and silently no-opped.
+  Sent messages can now be deleted independently of what happens to the
+  recipient's copy. Reported by Chris Byrd, GitHub #42.
+- **Emptying the Wastebasket undercounted what it purged, and said so
+  confusingly.** ICS Forms are deliberately never hard-deleted (restorable
+  operational records only) — the empty action always skipped them, but
+  the confirmation and result messages never said so, reading as though
+  the purge had failed or missed something. The response now names what
+  was purged and what was left in place and why. Also fixed a race where
+  the item-count refresh could overwrite that message a moment after it
+  appeared. Reported by Chris Byrd, GitHub #43.
+
 ## [4.2.12] — 2026-08-08
 
 ### Added
